@@ -21,8 +21,11 @@ use crate::config::{Config, Paths};
 use crate::credentials::{CredentialStore, KeyringStore};
 use crate::integration;
 use crate::nav::BackStack;
-use crate::playback::tracks::{self, Measures};
+use crate::playback::infinity::{InfinityTrigger, TopUp};
+use crate::playback::report::Reporter;
+use crate::playback::tracks::Measures;
 use crate::playback::{Enqueue, Playback};
+use crate::playing::{Measured, Pending};
 use crate::screens::{self, Ctx, Page, PageMsg, PlaylistSummary, Route, Section, login};
 use crate::session::{self, Connection, Effect, Event, Phase};
 use crate::store_worker::StoreHandle;
@@ -88,6 +91,15 @@ pub(crate) struct Signed {
     pub measures: Measures,
     /// While the seek bar is dragged: where it is.
     pub scrub: Option<u64>,
+    /// Bumped by every request that replaces the queue, so a slower earlier
+    /// one does not land on top of it.
+    pub play_generation: u64,
+    /// The sidecar measures tracks (false after a 404 on both endpoints).
+    pub measures_available: bool,
+    /// The sidecar answers `/aoide/next` (false after a 404).
+    pub next_available: bool,
+    pub reporter: Reporter,
+    pub infinity: InfinityTrigger,
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +127,9 @@ pub enum Message {
     Row(RowAction),
     Favourited(String, Result<bool, String>),
     Play(PlayRequest),
+    Measured(Box<(Pending, Measured)>),
+    Restore(Box<Pending>),
+    ToppedUp(Box<TopUp>),
     Player(Transport),
     Notice(String),
     Dismiss,
@@ -160,7 +175,14 @@ impl App {
         let artwork = Artwork::new(paths.as_ref().map(|p| p.artwork_dir.clone()));
         let mut playback = Playback::start(config.volume);
         let _ = playback.set_settings(config.settings.player());
-        let keyring: Arc<dyn CredentialStore> = Arc::new(KeyringStore);
+        // A development build can keep the token in memory instead, so a
+        // rebuilt binary doesn't meet the Keychain's "allow this app" prompt.
+        let keyring: Arc<dyn CredentialStore> =
+            if cfg!(debug_assertions) && std::env::var_os("AOIDE_DEV_MEMORY_KEYRING").is_some() {
+                Arc::new(crate::credentials::MemoryStore::default())
+            } else {
+                Arc::new(KeyringStore)
+            };
 
         let (phase, restore) = match config.account.clone() {
             Some(account) => (
@@ -368,6 +390,12 @@ impl App {
                 Task::none()
             }
             Message::Play(request) => self.play(request),
+            Message::Measured(measured) => {
+                let (pending, measured) = *measured;
+                self.measured(pending, measured)
+            }
+            Message::Restore(pending) => self.measure_then_queue(*pending),
+            Message::ToppedUp(found) => self.topped_up(*found),
             Message::Player(control) => self.transport(control),
             Message::Notice(notice) => {
                 self.notice = Some(notice);
@@ -415,6 +443,11 @@ impl App {
             panel: None,
             measures: Measures::default(),
             scrub: None,
+            play_generation: 0,
+            measures_available: true,
+            next_available: true,
+            reporter: Reporter::default(),
+            infinity: InfinityTrigger::default(),
         });
 
         let mut tasks = Vec::new();
@@ -432,7 +465,7 @@ impl App {
 
     /// What runs once the store is known to be this account's.
     fn after_claim(&mut self) -> Task<Message> {
-        self.load_playlists()
+        Task::batch([self.load_playlists(), self.restore_queue()])
     }
 
     /// Claims the store for the signed-in account before anything reads it.
@@ -498,6 +531,7 @@ impl App {
             return Task::none();
         }
         self.phase = phase;
+        let report = self.final_report();
         let Some(signed) = self.session.take() else {
             return Task::none();
         };
@@ -526,9 +560,10 @@ impl App {
                 }
                 Effect::NotifyServer => {
                     let client = signed.connection.client.clone();
-                    tasks.push(Task::perform(session::notify_server(client), |()| {
-                        Message::Ignore
-                    }));
+                    tasks.push(Task::perform(
+                        crate::playing::leave_server(client, report.clone()),
+                        |()| Message::Ignore,
+                    ));
                 }
                 Effect::AdoptAccount | Effect::Connect => {}
             }
@@ -689,10 +724,13 @@ impl App {
     }
 
     /// A setting changed: saved, and handed to whatever it governs.
-    fn settings_changed(&mut self, _which: screens::settings::Toggle) -> Task<Message> {
+    fn settings_changed(&mut self, which: screens::settings::Toggle) -> Task<Message> {
         self.save_config();
         let _ = self.playback.set_settings(self.config.settings.player());
-        Task::none()
+        match which {
+            screens::settings::Toggle::Infinity => self.infinity_switched(),
+            _ => Task::none(),
+        }
     }
 
     // MARK: - Row actions
@@ -894,33 +932,6 @@ impl App {
 
     // MARK: - Playing
 
-    pub(crate) fn play(&mut self, request: PlayRequest) -> Task<Message> {
-        let Some(signed) = self.session.as_mut() else {
-            return Task::none();
-        };
-        signed.menu = None;
-        let built: Vec<_> = request
-            .tracks
-            .iter()
-            .filter_map(|meta| {
-                tracks::build(
-                    &signed.connection.client,
-                    meta,
-                    &signed.measures,
-                    &self.config.settings,
-                )
-                .ok()
-            })
-            .collect();
-        if let Err(error) =
-            self.playback
-                .enqueue(built, request.how, request.source, &HashMap::new())
-        {
-            self.notice = Some(error);
-        }
-        Task::none()
-    }
-
     fn transport(&mut self, control: Transport) -> Task<Message> {
         let result = match control {
             Transport::Toggle => self.playback.toggle(),
@@ -973,13 +984,17 @@ impl App {
         if let Err(error) = result {
             self.notice = Some(error);
         }
-        Task::none()
+        match control {
+            Transport::Toggle => self.report_pause_state(),
+            Transport::Next | Transport::Previous | Transport::Shuffle | Transport::Repeat => {
+                Task::batch([self.check_infinity(), self.save_queue()])
+            }
+            _ => Task::none(),
+        }
     }
 
-    fn engine_event(&mut self, event: EngineEvent) -> Task<Message> {
-        if let Err(error) = self.playback.handle(&event) {
-            self.notice = Some(error);
-        }
+    /// What is playing changed: the panel follows it.
+    pub(crate) fn track_changed(&mut self) -> Task<Message> {
         Task::none()
     }
 
@@ -1057,9 +1072,15 @@ impl App {
     /// finish what it was given, then exits.
     fn quit(&mut self) -> Task<Message> {
         self.save_config();
+        let _ = self.save_queue();
+        let report = self.final_report();
+        let client = self.session.as_ref().map(|s| s.connection.client.clone());
         let store = self.store.clone();
         let now = aoide_store::now_millis();
         Task::future(async move {
+            if let (Some(client), Some(report)) = (client, report) {
+                crate::playing::report_on_quit(client, report).await;
+            }
             store
                 .call(move |w| {
                     let _ = w.recorder.stopped(&w.store, now);
@@ -1137,7 +1158,7 @@ fn device(config: &Config) -> Device {
 }
 
 /// The machine's name, where the system says it.
-fn device_name() -> String {
+pub(crate) fn device_name() -> String {
     std::fs::read_to_string("/etc/hostname")
         .ok()
         .map(|name| name.trim().to_owned())

@@ -16,6 +16,7 @@ mod nav;
 mod now_playing;
 mod playback;
 mod player_bar;
+mod playing;
 mod queue_panel;
 mod screens;
 mod session;
