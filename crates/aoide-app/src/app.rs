@@ -76,7 +76,8 @@ pub(crate) struct Signed {
     pub throttle: SyncThrottle,
     /// The sync in flight, aborted on sign-out.
     pub syncing: Option<Handle>,
-    pub sync_status: Option<String>,
+    /// The last sync's outcome in words: what it did, or why it failed.
+    pub sync_status: Option<Result<String, String>>,
     /// The store held data from before accounts were claimed: only the
     /// listener can say whose it is.
     pub unknown_owner: bool,
@@ -129,6 +130,8 @@ pub enum Message {
     },
     SignOut,
     TokenRejected,
+    /// Sync with the sidecar now, not at the next launch or focus.
+    SyncNow,
     Synced(Result<SyncReport, String>),
     Libraries(Result<Vec<Item>, String>),
     Section(Section),
@@ -354,6 +357,7 @@ impl App {
                 Task::batch([self.request_sync(), self.after_claim()])
             }
             Message::SignOut => self.leave(Event::SignOut),
+            Message::SyncNow => self.sync_now(),
             Message::TokenRejected => {
                 let task = self.leave(Event::TokenRejected);
                 self.login.error =
@@ -367,7 +371,8 @@ impl App {
                 signed.throttle.finished();
                 signed.syncing = None;
                 let changed = result.as_ref().is_ok_and(|r| r.applied > 0);
-                signed.sync_status = result.err();
+                signed.sync_status =
+                    Some(result.as_ref().map(sync::describe).map_err(Clone::clone));
                 if changed {
                     self.load_playlists()
                 } else {
@@ -629,6 +634,24 @@ impl App {
         };
         // Not before the store is known to be this account's.
         if signed.unknown_owner || !signed.throttle.request(now) {
+            return Task::none();
+        }
+        let (task, handle) = Task::perform(sync::run(engine), Message::Synced).abortable();
+        signed.syncing = Some(handle);
+        task
+    }
+
+    /// Sync Now: at once unless a sync is running; the screen goes on as
+    /// the sync runs.
+    fn sync_now(&mut self) -> Task<Message> {
+        let now = self.now();
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let Some(engine) = signed.sync.clone() else {
+            return Task::none();
+        };
+        if signed.unknown_owner || !signed.throttle.request_now(now) {
             return Task::none();
         }
         let (task, handle) = Task::perform(sync::run(engine), Message::Synced).abortable();

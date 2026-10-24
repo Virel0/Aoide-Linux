@@ -134,7 +134,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Quarantine of unreadable or refused ops | 1 | 🟨 | |
 | Covers uploaded before the op naming them | 2 | 🟨 | |
 | Share-revoked edits held back, shares re-read every 5 min | 3 | ⬜ | |
-| Triggers: launch, focus, at most once a minute; "Sync now" | 1 | 🟨 | Launch and window focus, at most once a minute. "Sync now" not yet; not yet run against a real sidecar |
+| Triggers: launch, focus, at most once a minute; "Sync now" | 1 | 🟨 | Launch and window focus, at most once a minute; Sync Now in Settings starts one at once unless one is running, and Settings says the last outcome in words ("Synced: sent 34 changes."). Seen against the stand-in server's empty sync log; not yet run against a real sidecar |
 | Sync status panel | 2 | ⬜ | |
 | Handoff: publish this device's queue; pick up another's | 2 | ⬜ | Electron only published while one page was open; publish always |
 

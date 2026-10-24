@@ -123,7 +123,7 @@ fn sidebar(signed: &Signed) -> Element<'_, Message> {
         body = body.push(heading("Aoide Playlists")).push(lists);
     }
     let mut footer = column![item("Settings".into(), Icon::Settings, Section::Settings)].spacing(4);
-    if let Some(status) = &signed.sync_status {
+    if let Some(Err(status)) = &signed.sync_status {
         footer =
             footer.push(container(widgets::secondary(status.as_str()).size(11)).padding([0, 10]));
     }
@@ -179,6 +179,11 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             state,
             &app.config.settings,
             app.config.account.as_ref(),
+            crate::sync::Status {
+                available: signed.sync.is_some(),
+                running: signed.throttle.is_running(),
+                last: signed.sync_status.as_ref(),
+            },
             &view,
         ),
         page => page.view(&view),
