@@ -63,3 +63,10 @@ For `x` in `a` and `b`:
 
 `adts_x.aac` uses ffmpeg's own AAC encoder because that is what Jellyfin
 transcodes with.
+
+`opus.opus`, the first quarter second of the clicks, is only there to fail
+(symphonia has no Opus decoder); libopus 1.6.1:
+
+```
+ffmpeg -t 0.25 -i clicks_a.wav -c:a libopus -b:a 64k opus.opus
+```

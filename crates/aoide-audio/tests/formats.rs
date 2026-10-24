@@ -31,7 +31,7 @@ mod common;
 use std::path::PathBuf;
 
 use aoide_audio::decode::Decoder;
-use aoide_audio::{EngineEvent, EntryId, MediaSource, MixTransition, TrackSpec};
+use aoide_audio::{EngineEvent, EntryId, Error, MediaSource, MixTransition, TrackSpec};
 use common::*;
 
 /// The fixtures' lengths: the same as the generated files in gapless.rs.
@@ -329,4 +329,49 @@ fn alac_to_alac_is_sample_exact() {
         "the join is not sample-exact"
     );
     assert!(out[total * 2..].iter().all(|&s| s == 0.0));
+}
+
+// Opus: symphonia has no decoder for it.
+
+#[test]
+fn opus_fails_with_a_typed_error() {
+    let error = Decoder::open(&MediaSource::file(fixture("opus.opus")))
+        .err()
+        .expect("Opus does not decode");
+    assert_eq!(error, Error::Unsupported("Opus".into()));
+    assert_eq!(error.to_string(), "unsupported format: Opus");
+}
+
+#[test]
+fn an_opus_track_reports_the_error_and_the_queue_moves_on() {
+    let (mut engine, handle, events) = inline_engine(2);
+    let (opus, next) = (EntryId::fresh(), EntryId::fresh());
+    handle
+        .load(
+            TrackSpec::new(opus, MediaSource::file(fixture("opus.opus"))),
+            0,
+            true,
+        )
+        .unwrap();
+    render(&mut engine, 4_096, 512);
+    assert_eq!(
+        drain(&events),
+        vec![
+            EngineEvent::Error {
+                id: opus,
+                message: "unsupported format: Opus".into(),
+            },
+            EngineEvent::Finished,
+        ]
+    );
+    // The player moves on from Finished; the engine itself is fine to load.
+    handle
+        .load(
+            TrackSpec::new(next, MediaSource::file(fixture("mp3_b.mp3"))),
+            0,
+            true,
+        )
+        .unwrap();
+    render(&mut engine, 4_096, 512);
+    assert_eq!(drain(&events), vec![EngineEvent::TrackStarted { id: next }]);
 }

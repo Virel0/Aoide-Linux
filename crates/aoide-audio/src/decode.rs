@@ -2,7 +2,8 @@
 
 use std::path::PathBuf;
 
-use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
+use symphonia::core::codecs::audio::well_known::CODEC_ID_OPUS;
+use symphonia::core::codecs::audio::{AudioCodecId, AudioDecoder, AudioDecoderOptions};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, TrackType};
@@ -104,7 +105,10 @@ impl Decoder {
             .ok_or_else(|| Error::Unsupported("no audio codec parameters".into()))?;
         let decoder = symphonia::default::get_codecs()
             .make_audio_decoder(params, &AudioDecoderOptions::default())
-            .map_err(|e| Error::Unsupported(e.to_string()))?;
+            .map_err(|e| match missing_codec(params.codec) {
+                Some(name) => Error::Unsupported(name.into()),
+                None => Error::Unsupported(e.to_string()),
+            })?;
         let sample_rate = params
             .sample_rate
             .ok_or_else(|| Error::Unsupported("unknown sample rate".into()))?;
@@ -228,4 +232,12 @@ impl Decoder {
             None => ts,
         }
     }
+}
+
+/// The name of a codec a music library can hold that this build has no
+/// decoder for. symphonia has no Opus decoder; Jellyfin transcodes Opus for
+/// us (the stream URL never offers it), so one only reaches here from a
+/// local file or a server that ignored the list.
+fn missing_codec(codec: AudioCodecId) -> Option<&'static str> {
+    (codec == CODEC_ID_OPUS).then_some("Opus")
 }

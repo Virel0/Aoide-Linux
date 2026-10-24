@@ -36,6 +36,11 @@ impl StreamQuality {
 /// Containers the player can take as they are, so the server hands the file over
 /// untouched. `alac` is deliberately absent: ALAC is a codec inside m4a, not a
 /// Jellyfin container, so listing it would match nothing.
+///
+/// Every one is a format aoide-audio decodes and tests. Nothing that can carry
+/// Opus is offered (no `opus`, `ogg`, `webm`, `mka`): the decoder has none, so the
+/// server transcodes those to the target below, which it does decode. That
+/// costs Ogg Vorbis files a transcode too.
 const DIRECT_CONTAINERS: &str = "mp3,aac,m4a,m4b,flac,wav,aiff";
 
 impl JellyfinClient {
@@ -148,6 +153,28 @@ mod tests {
         assert_eq!(value(&pairs, "container"), Some(DIRECT_CONTAINERS));
         assert_eq!(value(&pairs, "transcodingProtocol"), Some("http"));
         assert_eq!(value(&pairs, "transcodingContainer"), Some("aac"));
+    }
+
+    #[test]
+    fn opus_is_never_offered_so_the_server_transcodes_it_to_adts_aac() {
+        for quality in [StreamQuality::Lossless, StreamQuality::Low] {
+            let url = signed_in("http://host").stream_url("t", quality).unwrap();
+            let pairs = pairs(&url);
+            // A Jellyfin entry may also name codecs, as `container|codec`.
+            let offered: Vec<String> = value(&pairs, "container")
+                .unwrap()
+                .split([',', '|'])
+                .map(str::to_ascii_lowercase)
+                .collect();
+            for opus_carrier in ["opus", "ogg", "oga", "webm", "webma", "mka", "matroska"] {
+                assert!(
+                    !offered.iter().any(|c| c == opus_carrier),
+                    "{opus_carrier} is offered: {offered:?}"
+                );
+            }
+            assert_eq!(value(&pairs, "audioCodec"), Some("aac"));
+            assert_eq!(value(&pairs, "transcodingContainer"), Some("aac"));
+        }
     }
 
     #[test]

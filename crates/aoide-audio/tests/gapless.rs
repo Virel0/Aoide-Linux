@@ -88,6 +88,11 @@ fn flac_to_flac_is_sample_exact() {
 }
 
 #[test]
+fn aiff_to_aiff_is_sample_exact() {
+    join(write_aiff, "aiff", 1024);
+}
+
+#[test]
 fn a_cut_joins_the_same_way() {
     // Cut and gapless differ in the planner, not in the join: neither puts
     // anything between the two tracks.
