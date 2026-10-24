@@ -1,6 +1,6 @@
 //! Settings: exactly the Round 1 rows — Crossfade, Keep albums whole,
 //! Infinity, Skip silence, Level volume, Lyric offset, Hidden from mixes, and
-//! the account.
+//! the account with Sync Now.
 
 use iced::widget::{Column, button, column, container, row, slider, text, toggler};
 use iced::{Center, Element, Fill, Task};
@@ -140,6 +140,7 @@ pub fn view<'a>(
     state: &'a State,
     settings: &Settings,
     account: Option<&'a Account>,
+    sync: crate::sync::Status<'a>,
     view: &View<'a>,
 ) -> Element<'a, App> {
     let key = view.key;
@@ -256,6 +257,33 @@ pub fn view<'a>(
                 widgets::secondary(account.username.as_str())
             ]);
     }
+    let sync_line = if !sync.available {
+        "This server has no Aoide sidecar; playlists and history stay on this computer."
+    } else if sync.running {
+        "Syncing…"
+    } else {
+        match sync.last {
+            Some(Ok(words) | Err(words)) => words.as_str(),
+            None => "Not synced yet.",
+        }
+    };
+    account_rows = account_rows.push(
+        row![
+            column![text("Sync"), widgets::secondary(sync_line).size(13)]
+                .spacing(2)
+                .width(Fill),
+            button(text(if sync.running {
+                "Syncing…"
+            } else {
+                "Sync Now"
+            }))
+            .style(theme::tonal)
+            .padding([6, 14])
+            .on_press_maybe((sync.available && !sync.running).then_some(App::SyncNow)),
+        ]
+        .spacing(10)
+        .align_y(Center),
+    );
     account_rows = account_rows.push(if state.confirm_sign_out {
         Element::from(
             column![

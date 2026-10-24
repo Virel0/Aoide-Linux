@@ -1,0 +1,61 @@
+name: Release (Arch package)
+
+# A tag like v1.2.3 becomes a pacman package plus a repository database named
+# aoide-linux on the GitHub release, so `pacman -Syu` sees it. The package is
+# packaging/arch/PKGBUILD; it installs beside the Electron app's `aoide`.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install build tools
+        run: |
+          pacman -Syu --noconfirm base-devel git rustup pkgconf alsa-lib dbus
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          sudo -u builder rustup default stable
+
+      - name: Check out the tag
+        uses: actions/checkout@v4
+
+      - name: Build the package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          cp -r packaging/arch /tmp/pkg
+          chown -R builder /tmp/pkg
+          cd /tmp/pkg
+          # The tag's own tarball; CI stamps the version so pkgver() need not.
+          sed -i "s/^pkgver=.*/pkgver=$version/" PKGBUILD
+          sudo -u builder makepkg --noconfirm --syncdeps --skipchecksums
+          mkdir -p /tmp/out
+          mv ./*.pkg.tar.zst /tmp/out/
+          cd /tmp/out
+          repo-add aoide-linux.db.tar.gz ./*.pkg.tar.zst
+          # repo-add leaves symlinks; releases want files.
+          for link in aoide-linux.db aoide-linux.files; do
+            cp --remove-destination "$(readlink -f "$link")" "$link"
+          done
+          ls -la
+
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            /tmp/out/*.pkg.tar.zst
+            /tmp/out/aoide-linux.db
+            /tmp/out/aoide-linux.db.tar.gz
+            /tmp/out/aoide-linux.files
+            /tmp/out/aoide-linux.files.tar.gz

@@ -2,7 +2,7 @@
 //! tracks are queued, the Jellyfin reports, the store's play events, the
 //! saved queue, and Infinity.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use aoide_audio::{EngineEvent, RepeatMode};
@@ -23,7 +23,10 @@ use crate::session;
 /// without them.
 pub const MEASURE_WAIT: Duration = Duration::from_secs(2);
 /// How many tracks are measured ahead of being queued: one sidecar call.
+/// The rest of the queue is measured afterwards in batches of this size.
 pub const MEASURE_AHEAD: usize = aoide_sidecar::MAX_IDS_PER_CALL;
+/// How long one of those later batches waits: nothing is held up by it.
+pub const BATCH_WAIT: Duration = Duration::from_secs(30);
 
 /// Tracks on their way into the queue.
 #[derive(Debug, Clone)]
@@ -57,11 +60,16 @@ pub struct Measured {
 
 /// Asks for sound bounds and loudness together, giving up after a short wait.
 pub async fn measure(sidecar: SidecarClient, ids: Vec<String>) -> Measured {
+    measure_within(sidecar, ids, MEASURE_WAIT).await
+}
+
+/// The same, waiting at most `wait`.
+pub async fn measure_within(sidecar: SidecarClient, ids: Vec<String>, wait: Duration) -> Measured {
     if ids.is_empty() {
         return Measured::default();
     }
     let asked = async { tokio::join!(sidecar.sound_bounds(&ids), sidecar.audio_analysis(&ids)) };
-    match tokio::time::timeout(MEASURE_WAIT, asked).await {
+    match tokio::time::timeout(wait, asked).await {
         Ok((bounds, analysis)) => {
             let absent = matches!(bounds, Err(SidecarError::Absent { .. }))
                 && matches!(analysis, Err(SidecarError::Absent { .. }));
@@ -77,6 +85,22 @@ pub async fn measure(sidecar: SidecarClient, ids: Vec<String>) -> Measured {
             ..Measured::default()
         },
     }
+}
+
+/// The next tracks of the queue to ask the sidecar about: not yet measured,
+/// not asked about already this session (a track still being analysed is
+/// asked again only when it is queued again), at most one call's worth.
+pub fn next_batch(
+    measures: &tracks::Measures,
+    asked: &HashSet<String>,
+    queued: Vec<String>,
+) -> Vec<String> {
+    measures
+        .unknown(queued.iter().map(String::as_str))
+        .into_iter()
+        .filter(|id| !asked.contains(id))
+        .take(MEASURE_AHEAD)
+        .collect()
 }
 
 /// The saved queue, read back: ids in order, where it was, how far in.
@@ -231,7 +255,61 @@ impl App {
         if let Err(error) = result {
             self.notice = Some(error);
         }
-        Task::batch([self.check_infinity(), self.save_queue()])
+        Task::batch([
+            self.check_infinity(),
+            self.save_queue(),
+            self.measure_queue(),
+        ])
+    }
+
+    /// Measures the rest of the queue as it grows, one batch at a time, and
+    /// hands the answers to the queued tracks: so tracks past the first
+    /// [`MEASURE_AHEAD`] are measured too.
+    pub(crate) fn measure_queue(&mut self) -> Task<Message> {
+        let queued = self.playback.queued_ids();
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        if signed.measuring || !signed.measures_available {
+            return Task::none();
+        }
+        let Some(sidecar) = signed.sidecar.clone() else {
+            return Task::none();
+        };
+        let batch = next_batch(&signed.measures, &signed.measure_asked, queued);
+        if batch.is_empty() {
+            return Task::none();
+        }
+        signed.measure_asked.extend(batch.iter().cloned());
+        signed.measuring = true;
+        Task::perform(measure_within(sidecar, batch, BATCH_WAIT), |measured| {
+            Message::QueueMeasured(Box::new(measured))
+        })
+    }
+
+    pub(crate) fn queue_measured(&mut self, measured: Measured) -> Task<Message> {
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        signed.measuring = false;
+        if measured.absent {
+            signed.measures_available = false;
+        }
+        signed.measures.absorb(
+            &measured.ids,
+            measured.bounds.as_ref(),
+            measured.analysis.as_ref(),
+        );
+        let ids: HashSet<String> = measured.ids.into_iter().collect();
+        let measures = &signed.measures;
+        let settings = &self.config.settings;
+        let applied = self
+            .playback
+            .apply_measurements(&ids, |id| tracks::applied(id, measures, settings));
+        if let Err(error) = applied {
+            self.notice = Some(error);
+        }
+        self.measure_queue()
     }
 
     /// At launch: the queue as it was left, held, not playing.
@@ -340,7 +418,6 @@ impl App {
             }
             EngineEvent::DeviceError { .. } | EngineEvent::DeviceRestored => {}
         }
-        self.publish();
         Task::batch(tasks)
     }
 
@@ -352,7 +429,6 @@ impl App {
             .session
             .as_mut()
             .and_then(|s| s.reporter.paused(paused, now));
-        self.publish();
         self.send_reports(report.into_iter().collect())
     }
 
@@ -447,33 +523,41 @@ impl App {
         self.session.as_mut().and_then(|s| s.reporter.stopped())
     }
 
-    /// Hands what is playing to the desktop (MPRIS, when it is wired).
+    /// Hands what is playing to the desktop. The cover goes as the cached
+    /// file, never as a server URL: that one carries the token.
     pub(crate) fn publish(&self) {
         let current = self.playback.current().map(|(_, q)| &q.meta);
-        let art_url = self.session.as_ref().and_then(|s| {
-            let (id, tag) = current?.artwork.as_ref()?;
-            Some(
-                s.connection
-                    .client
-                    .artwork_url(id, Some(tag), crate::artwork::WIDTH)
-                    .to_string(),
-            )
-        });
-        crate::integration::publish(&crate::integration::NowPlaying {
-            track_id: current.map(|m| m.id.clone()),
-            title: current.map(|m| m.title.clone()).unwrap_or_default(),
-            artist: current.map(|m| m.artist.clone()).unwrap_or_default(),
-            album: current.map(|m| m.album.clone()).unwrap_or_default(),
-            art_url,
-            length_ms: current
-                .and_then(|m| m.duration_ms)
-                .map(|ms| ms.max(0) as u64),
-            position_ms: self.playback.position_ms(),
-            playing: self.playback.is_playing(),
-            shuffle: self.playback.is_shuffled(),
-            repeat: self.playback.repeat(),
-            volume: self.playback.volume(),
-        });
+        let art_url = current
+            .and_then(|m| m.artwork.as_ref())
+            .zip(self.artwork.dir())
+            .and_then(|((id, tag), dir)| {
+                crate::integration::art_url(
+                    &dir.join(crate::artwork::ArtKey::new(id, tag).file_name()),
+                )
+            });
+        crate::integration::publish(
+            &self.desktop,
+            &crate::integration::NowPlaying {
+                track_id: current.map(|m| m.id.clone()),
+                title: current.map(|m| m.title.clone()).unwrap_or_default(),
+                artist: current.map(|m| m.artist.clone()).unwrap_or_default(),
+                album_artist: current.and_then(|m| m.album_artist.clone()),
+                album: current.map(|m| m.album.clone()).unwrap_or_default(),
+                track_number: current
+                    .and_then(|m| m.track_number)
+                    .and_then(|n| u32::try_from(n).ok()),
+                art_url,
+                length_ms: current
+                    .and_then(|m| m.duration_ms)
+                    .map(|ms| ms.max(0) as u64),
+                position_ms: self.playback.position_ms(),
+                playing: self.playback.is_playing(),
+                has_next: self.playback.ahead() > 0,
+                shuffle: self.playback.is_shuffled(),
+                repeat: self.playback.repeat(),
+                volume: self.playback.volume(),
+            },
+        );
     }
 }
 
@@ -571,6 +655,32 @@ mod tests {
         let bare = MockServer::start().await;
         let sidecar = SidecarClient::new(&bare.uri(), "tok").unwrap();
         assert!(measure(sidecar, vec!["t1".into()]).await.absent);
+    }
+
+    #[test]
+    fn the_queue_is_measured_a_call_at_a_time_and_never_twice() {
+        let queued: Vec<String> = (0..450).map(|n| format!("t{n}")).collect();
+        let mut measures = tracks::Measures::default();
+        let mut asked = HashSet::new();
+
+        let first = next_batch(&measures, &asked, queued.clone());
+        assert_eq!(first.len(), MEASURE_AHEAD);
+        assert_eq!(first[0], "t0");
+        asked.extend(first.iter().cloned());
+        // Measured before it was queued: never asked about.
+        measures.insert("t205", None, None);
+
+        let second = next_batch(&measures, &asked, queued.clone());
+        assert_eq!(second.len(), MEASURE_AHEAD);
+        assert_eq!(second[0], "t200");
+        assert!(!second.contains(&"t205".to_owned()));
+        asked.extend(second.iter().cloned());
+
+        let third = next_batch(&measures, &asked, queued.clone());
+        assert_eq!(third.first().map(String::as_str), Some("t401"));
+        assert_eq!(third.len(), 49);
+        asked.extend(third.iter().cloned());
+        assert!(next_batch(&measures, &asked, queued).is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread")]

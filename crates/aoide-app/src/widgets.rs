@@ -3,11 +3,12 @@
 
 use aoide_store::PlaySource;
 use iced::widget::{
-    Column, button, column, container, grid, image, row, scrollable, space, text, text_input,
+    Column, button, column, container, grid, image, mouse_area, row, scrollable, space, text,
+    text_input,
 };
 use iced::{Center, ContentFit, Element, Fill, Font, Length, Shrink, font};
 
-use crate::actions::{self, Menu, PlayRequest, RowAction};
+use crate::actions::{self, Collection, Menu, PlayRequest, RowAction};
 use crate::app::Message;
 use crate::artwork::{ArtKey, Artwork};
 use crate::icons::{Icon, Tone, icon};
@@ -16,15 +17,30 @@ use crate::playback::tracks::TrackMeta;
 use crate::screens::{Route, View};
 use crate::theme;
 
+/// Inter, bundled (`fonts/`, under the SIL Open Font License), so text looks
+/// the same on every desktop rather than whatever the system's sans-serif
+/// fallback is: on macOS that left bold headings in a monospace face.
+pub const FAMILY: &str = "Inter";
+
+/// Every text not given another font.
+pub const REGULAR: Font = Font::with_name(FAMILY);
+
 pub const BOLD: Font = Font {
     weight: font::Weight::Bold,
-    ..Font::DEFAULT
+    ..REGULAR
 };
 
+/// Inter is bundled in Regular and Bold only; this one is drawn in Bold.
 pub const SEMIBOLD: Font = Font {
     weight: font::Weight::Semibold,
-    ..Font::DEFAULT
+    ..REGULAR
 };
+
+/// The font files, loaded before the window opens.
+pub const FONTS: [&[u8]; 2] = [
+    include_bytes!("../fonts/Inter-Regular.ttf"),
+    include_bytes!("../fonts/Inter-Bold.ttf"),
+];
 
 /// `3:05`, or `1:02:03` past an hour.
 pub fn duration(ms: u64) -> String {
@@ -65,10 +81,25 @@ pub fn art<'a>(
     }
 }
 
-/// An album or artist tile that opens it.
-fn tile_body<'a>(tile: &'a Tile, artwork: &'a Artwork, art_size: Length) -> Column<'a, Message> {
-    column![
-        art(tile.art.as_ref(), artwork, art_size, 8.0),
+/// What a tile's `…` (or a right click on it) opens: the album's or
+/// artist's actions.
+fn tile_menu(tile: &Tile, route: &Route) -> Option<Message> {
+    let collection = match route {
+        Route::Album { id, .. } => Collection::Album(id.clone()),
+        Route::Artist { id, .. } => Collection::Artist(id.clone()),
+        Route::Playlist { id } => Collection::Playlist(id.clone()),
+        Route::Genre { .. } => return None,
+    };
+    Some(Message::Row(RowAction::OpenCollection {
+        anchor: format!("tile:{}", tile.id),
+        collection,
+        title: tile.title.clone(),
+    }))
+}
+
+/// A tile's title and subtitle, with its `…` beside them.
+fn tile_caption<'a>(tile: &'a Tile, menu: Option<Message>) -> Element<'a, Message> {
+    let words = column![
         text(tile.title.as_str())
             .size(14)
             .font(SEMIBOLD)
@@ -76,6 +107,50 @@ fn tile_body<'a>(tile: &'a Tile, artwork: &'a Artwork, art_size: Length) -> Colu
         secondary(tile.subtitle.as_str())
             .size(13)
             .wrapping(text::Wrapping::None),
+    ]
+    .spacing(2)
+    .width(Fill)
+    .clip(true);
+    match menu {
+        Some(menu) => row![
+            words,
+            button(icon(Icon::More, 16.0, Tone::Secondary))
+                .style(theme::row)
+                .padding(4)
+                .on_press(menu),
+        ]
+        .align_y(Center)
+        .into(),
+        None => words.into(),
+    }
+}
+
+/// A tile that opens what it shows; a right click opens its actions.
+fn tile_button<'a>(
+    body: impl Into<Element<'a, Message>>,
+    route: Route,
+    menu: Option<Message>,
+) -> Element<'a, Message> {
+    let button = button(body)
+        .padding(4)
+        .style(theme::row)
+        .on_press(Message::Open(route));
+    match menu {
+        Some(menu) => mouse_area(button).on_right_press(menu).into(),
+        None => button.into(),
+    }
+}
+
+/// An album or artist tile that opens it.
+fn tile_body<'a>(
+    tile: &'a Tile,
+    artwork: &'a Artwork,
+    art_size: Length,
+    menu: Option<Message>,
+) -> Column<'a, Message> {
+    column![
+        art(tile.art.as_ref(), artwork, art_size, 8.0),
+        tile_caption(tile, menu),
     ]
     .spacing(4)
     .clip(true)
@@ -88,23 +163,15 @@ pub fn tile_grid<'a>(
     open: impl Fn(&Tile) -> Route,
 ) -> Element<'a, Message> {
     let cells = tiles.iter().map(|tile| {
+        let route = open(tile);
+        let menu = tile_menu(tile, &route);
         let body = column![
             container(art(tile.art.as_ref(), artwork, Fill, 8.0)).height(Fill),
-            text(tile.title.as_str())
-                .size(14)
-                .font(SEMIBOLD)
-                .wrapping(text::Wrapping::None),
-            secondary(tile.subtitle.as_str())
-                .size(13)
-                .wrapping(text::Wrapping::None),
+            tile_caption(tile, menu.clone()),
         ]
         .spacing(4)
         .clip(true);
-        button(body)
-            .padding(4)
-            .style(theme::row)
-            .on_press(Message::Open(open(tile)))
-            .into()
+        tile_button(body, route, menu)
     });
     grid(cells)
         .fluid(210)
@@ -121,11 +188,13 @@ pub fn shelf<'a>(
     open: impl Fn(&Tile) -> Route,
 ) -> Element<'a, Message> {
     let row = row(tiles.iter().map(|tile| {
-        button(tile_body(tile, artwork, Length::Fixed(160.0)).width(160))
-            .padding(4)
-            .style(theme::row)
-            .on_press(Message::Open(open(tile)))
-            .into()
+        let route = open(tile);
+        let menu = tile_menu(tile, &route);
+        tile_button(
+            tile_body(tile, artwork, Length::Fixed(160.0), menu.clone()).width(160),
+            route,
+            menu,
+        )
     }))
     .spacing(12)
     .padding(iced::Padding::ZERO.bottom(14));
@@ -189,8 +258,31 @@ pub fn track_list<'a>(
     style: ListStyle,
     source: PlaySource,
 ) -> Element<'a, Message> {
+    track_list_with_headings(tracks, view, style, source, &[])
+}
+
+/// A track list with a heading before some rows: `(index, heading)`, in
+/// order, such as "Disc 2" before the first track of the second disc.
+pub fn track_list_with_headings<'a>(
+    tracks: &'a [TrackMeta],
+    view: &View<'a>,
+    style: ListStyle,
+    source: PlaySource,
+    headings: &[(usize, String)],
+) -> Element<'a, Message> {
     let mut list = Column::with_capacity(tracks.len()).spacing(2);
+    let mut headings = headings.iter().peekable();
     for (index, track) in tracks.iter().enumerate() {
+        while let Some((_, heading)) = headings.next_if(|(at, _)| *at <= index) {
+            list = list.push(
+                container(text(heading.clone()).size(15).font(SEMIBOLD)).padding(
+                    iced::Padding::new(0.0)
+                        .top(if index == 0 { 0.0 } else { 14.0 })
+                        .bottom(4.0)
+                        .left(8.0),
+                ),
+            );
+        }
         let anchor = format!("{}:{index}", view.key);
         list = list.push(track_row(track, &anchor, view, style, move || {
             Message::Play(PlayRequest::from(tracks, index, source))
@@ -321,11 +413,27 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
             .padding([6, 10])
             .on_press(Message::Row(act))
     };
-    let mut actions: Vec<Element<'a, Message>> = vec![
+    // A collection's actions wait for its songs.
+    let ready = !menu.loading && !menu.tracks.is_empty();
+    let plain = action;
+    let action = move |label: &'a str, act: RowAction| {
+        let button = plain(label, act);
+        if ready || menu.collection.is_none() {
+            button
+        } else {
+            button.on_press_maybe(None)
+        }
+    };
+    let mut actions: Vec<Element<'a, Message>> = Vec::new();
+    if menu.collection.is_some() {
+        actions.push(action("Play", RowAction::Play).into());
+        actions.push(action("Shuffle", RowAction::Shuffle).into());
+    }
+    actions.extend([
         action("Play Next", RowAction::PlayNext).into(),
         action("Play Last", RowAction::PlayLast).into(),
         action("Add to Playlist…", RowAction::ShowPlaylists).into(),
-    ];
+    ]);
     if let Some(track) = menu.single() {
         let flags = menu.flags.unwrap_or_default();
         let favourite = view
@@ -369,7 +477,17 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
     );
     let actions = row(actions).spacing(6).wrap().vertical_spacing(6);
 
-    let mut body = column![actions].spacing(10);
+    let mut body = column![].spacing(10);
+    if let Some((_, title)) = &menu.collection {
+        body = body.push(text(title.as_str()).size(16).font(SEMIBOLD));
+    }
+    body = body.push(actions);
+    if menu.loading {
+        body = body.push(secondary("Fetching the songs…").size(13));
+    }
+    if let Some(error) = &menu.error {
+        body = body.push(failure(error));
+    }
     if menu.adding {
         let mut lists = column![].spacing(2);
         if view.playlists.len() > actions::PLAYLIST_SEARCH_AFTER {

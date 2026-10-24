@@ -475,3 +475,22 @@ fn the_render_window_stops_at_the_end_and_wraps_under_repeat_all() {
         ["b", "a", "b"]
     );
 }
+
+#[test]
+fn a_track_is_edited_in_place_and_in_the_order_shuffle_restores() {
+    let mut queue = PlayQueue::new();
+    queue.load(vec![1, 2, 3, 4], 0, false);
+    queue.set_shuffled(true);
+    let third = queue.entries().iter().find(|e| e.track == 3).unwrap().id;
+    assert!(queue.edit_track(third, |t| *t = 30));
+    assert!(
+        queue
+            .entries()
+            .iter()
+            .any(|e| e.id == third && e.track == 30)
+    );
+    queue.set_shuffled(false);
+    let order: Vec<i32> = queue.entries().iter().map(|e| e.track).collect();
+    assert_eq!(order, [1, 2, 30, 4]);
+    assert!(!queue.edit_track(aoide_audio::EntryId(u64::MAX), |t| *t = 0));
+}

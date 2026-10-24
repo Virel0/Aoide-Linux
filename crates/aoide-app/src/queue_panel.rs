@@ -59,7 +59,7 @@ pub fn view<'a>(app: &'a App, _signed: &'a Signed) -> Element<'a, Message> {
         list = list.push(heading);
         for (offset, entry) in section.entries.iter().enumerate() {
             let index = section.range.start + offset;
-            let Some(queued) = app.playback.queued(*entry) else {
+            let Some(queued) = app.playback.queued_at(index) else {
                 continue;
             };
             let now = section.heading == Heading::NowPlaying;

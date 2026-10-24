@@ -31,4 +31,5 @@ What is ported from the Electron app, and what is still to come, is in
 
 ## Licence
 
-GPL-3.0-or-later.
+GPL-3.0-or-later. The bundled Inter font (`crates/aoide-app/fonts`) is
+under the SIL Open Font License 1.1; its licence is beside it.

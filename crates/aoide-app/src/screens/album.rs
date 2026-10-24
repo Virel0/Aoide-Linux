@@ -60,9 +60,12 @@ impl State {
             }
             Message::Album(Err(_)) => {}
             Message::Tracks(result) => {
-                self.tracks = Load::from(
-                    result.map(|items| items.iter().map(TrackMeta::from_item).collect()),
-                );
+                self.tracks = Load::from(result.map(|items| {
+                    let mut tracks: Vec<TrackMeta> =
+                        items.iter().map(TrackMeta::from_item).collect();
+                    album_order(&mut tracks);
+                    tracks
+                }));
             }
         }
         Task::none()
@@ -134,7 +137,7 @@ impl State {
         body = body.push(match &self.tracks {
             Load::Loading => widgets::loading(),
             Load::Failed(error) => widgets::failure(error),
-            Load::Ready(tracks) => widgets::track_list(
+            Load::Ready(tracks) => widgets::track_list_with_headings(
                 tracks,
                 view,
                 ListStyle {
@@ -142,8 +145,95 @@ impl State {
                     show_album: false,
                 },
                 PlaySource::Album,
+                &disc_headings(tracks),
             ),
         });
         widgets::page(body)
+    }
+}
+
+/// Disc, then track: the order an album plays in. The server is asked for it
+/// already; this keeps it whatever comes back. Ties keep the server's order.
+pub fn album_order(tracks: &mut [TrackMeta]) {
+    tracks.sort_by_key(|t| {
+        (
+            t.disc_number.unwrap_or(1),
+            t.track_number.unwrap_or(i32::MAX),
+        )
+    });
+}
+
+/// "Disc 1", "Disc 2"… before the first track of each disc, on an album with
+/// more than one; nothing on a single disc.
+pub fn disc_headings(tracks: &[TrackMeta]) -> Vec<(usize, String)> {
+    let mut headings = Vec::new();
+    let mut last = None;
+    for (index, track) in tracks.iter().enumerate() {
+        let disc = track.disc_number.unwrap_or(1);
+        if last != Some(disc) {
+            headings.push((index, format!("Disc {disc}")));
+            last = Some(disc);
+        }
+    }
+    if headings.len() < 2 {
+        headings.clear();
+    }
+    headings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn track(disc: Option<i32>, number: Option<i32>) -> TrackMeta {
+        TrackMeta::from_item(
+            &serde_json::from_value(serde_json::json!({
+                "Id": format!("{disc:?}-{number:?}"), "Name": "t", "Type": "Audio",
+                "ParentIndexNumber": disc, "IndexNumber": number,
+            }))
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn tracks_play_disc_by_disc_in_track_order() {
+        let mut tracks = vec![
+            track(Some(2), Some(1)),
+            track(Some(1), Some(2)),
+            track(None, None),
+            track(Some(1), Some(1)),
+            track(Some(2), Some(2)),
+        ];
+        album_order(&mut tracks);
+        let order: Vec<_> = tracks
+            .iter()
+            .map(|t| (t.disc_number, t.track_number))
+            .collect();
+        assert_eq!(
+            order,
+            [
+                (Some(1), Some(1)),
+                (Some(1), Some(2)),
+                (None, None),
+                (Some(2), Some(1)),
+                (Some(2), Some(2)),
+            ]
+        );
+    }
+
+    #[test]
+    fn only_a_multi_disc_album_gets_disc_headings() {
+        let mut tracks = vec![
+            track(Some(1), Some(1)),
+            track(Some(1), Some(2)),
+            track(Some(2), Some(1)),
+        ];
+        assert_eq!(
+            disc_headings(&tracks),
+            [(0, "Disc 1".to_owned()), (2, "Disc 2".to_owned())]
+        );
+        tracks.truncate(2);
+        assert!(disc_headings(&tracks).is_empty());
+        assert!(disc_headings(&[track(None, Some(1))]).is_empty());
     }
 }

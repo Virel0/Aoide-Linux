@@ -194,6 +194,24 @@ fn sound_bounds(bounds: &aoide_sidecar::SoundBounds) -> Option<SoundBounds> {
     (end > start).then(|| SoundBounds::new(start, end))
 }
 
+/// The sound bounds and loudness gain a track plays with: what the sidecar
+/// measured, as far as the settings ask for it.
+pub fn applied(
+    id: &str,
+    measures: &Measures,
+    settings: &Settings,
+) -> (Option<SoundBounds>, Option<f64>) {
+    let sound = settings.skip_silence.then(|| measures.bounds(id)).flatten();
+    let gain_db = if settings.level_volume {
+        measures
+            .analysis(id)
+            .and_then(|a| loudness::gain_db(a.loudness_lufs, a.true_peak_dbfs))
+    } else {
+        None
+    };
+    (sound, gain_db)
+}
+
 /// One playable track and the URL it streams from (kept for tests: the
 /// player's source does not give it back).
 #[derive(Debug, Clone)]
@@ -214,15 +232,7 @@ pub fn build(
 ) -> Result<BuiltTrack, aoide_jellyfin::Error> {
     let url = client.stream_url(&meta.id, StreamQuality::Lossless)?;
     let analysis = measures.analysis(&meta.id);
-    let sound = settings
-        .skip_silence
-        .then(|| measures.bounds(&meta.id))
-        .flatten();
-    let gain_db = if settings.level_volume {
-        analysis.and_then(|a| loudness::gain_db(a.loudness_lufs, a.true_peak_dbfs))
-    } else {
-        None
-    };
+    let (sound, gain_db) = applied(&meta.id, measures, settings);
     let mix = MixTrack {
         album: meta.album.clone(),
         track_number: meta.track_number.map(i64::from),
@@ -234,6 +244,8 @@ pub fn build(
     Ok(BuiltTrack {
         meta: meta.clone(),
         track: PlayerTrack {
+            // Made unique when the track is queued.
+            key: meta.id.clone(),
             source: MediaSource::http(url.as_str()),
             mix,
             gain_db,

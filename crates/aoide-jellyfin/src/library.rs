@@ -71,6 +71,9 @@ pub struct ListQuery {
     pub parent_id: Option<String>,
     /// Matches names only; blank is ignored.
     pub search_term: Option<String>,
+    /// Only items in any of these genres (Jellyfin's `genreIds`, by genre
+    /// item id); empty is every genre.
+    pub genre_ids: Vec<String>,
     pub sort: Sort,
     pub order: SortOrder,
     pub start_index: u32,
@@ -335,6 +338,9 @@ impl JellyfinClient {
             && !term.is_empty()
         {
             query.push(("searchTerm", term.to_owned()));
+        }
+        if !list.genre_ids.is_empty() {
+            query.push(("genreIds", list.genre_ids.join(",")));
         }
         if let Some(limit) = list.limit {
             query.push(("limit", limit.to_string()));

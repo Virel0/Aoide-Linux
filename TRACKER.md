@@ -23,11 +23,11 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Feature | Round | Status | Notes |
 |---|---|---|---|
 | Home: resume grid (last 6 contexts, "Pick up from {device}") | 2 | ⬜ | |
-| Home: shelves (most played, recently added/played/released, random albums, genres) | 1 | 🟨 | Recently added, recently played and most played (the last two as the albums of the tracks). Recently released, random albums and genres not yet |
+| Home: shelves (most played, recently added/played/released, random albums, genres) | 1 | ✅ | Recently added, recently played and most played (the last two as the albums of the tracks), recently released, random albums, and a random dozen genres as chips. A shelf with nothing on it is left out. Seen in the app against the stand-in server |
 | Home: Discover tile (`/aoide/discover`) | 2 | ⬜ | New: the Electron app has no Discover |
-| Albums list and album detail (with finish rate) | 1 | 🟨 | Grid loaded a page at a time, sortable (title, artist, recently added, release date); detail with cover, artist, year, Play, Shuffle, tracks. Finish rate not yet |
+| Albums list and album detail (with finish rate) | 1 | 🟨 | Grid loaded a page at a time, sortable (title, artist, recently added, release date); detail with cover, artist, year, Play, Shuffle, tracks in disc and track order with "Disc 1", "Disc 2" headings on a multi-disc album (seen against the stand-in server). Finish rate not yet |
 | Album artists, artists, artist detail (discography, top songs, finish rate) | 1 | 🟨 | Album artists as a grid; an artist's albums. Top songs and finish rate not yet |
-| Genres list and detail | 1 | ✅ | A genre's albums need a `genreIds` filter aoide-jellyfin lacks; the app makes that request itself for now (`library.rs`) |
+| Genres list and detail | 1 | ✅ | A genre's albums through `ListQuery::genre_ids` (Jellyfin `genreIds`). Seen in the app against the stand-in server |
 | Songs list | 1 | ✅ | |
 | Favourites | 2 | ⬜ | |
 | Collections (saved filters) | 3 | ⬜ | |
@@ -38,7 +38,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Full-screen player | 2 | ⬜ | |
 | Player bar: transport, seek, shuffle, repeat, volume, output device | 1 | 🟨 | Transport, seek, shuffle, repeat, volume, Crossfade and Infinity switches. Output device picker is Round 2. Shuffle and repeat buttons not yet clicked through in the app |
 | Sleep timer (end of song, end of album, timed) | 2 | ⬜ | |
-| Context menus on songs, albums, artists, playlists, queue rows | 1 | 🟨 | An action strip under song rows and album/playlist headers: Play Next, Play Last, Add to Playlist, Not Interested, Don't Count Plays, Favourite, Go to Album/Artist. Not yet on album tiles, artists or playlists; queue rows have their own buttons |
+| Context menus on songs, albums, artists, playlists, queue rows | 1 | ✅ | An action strip under song rows and album/playlist headers: Play Next, Play Last, Add to Playlist, Not Interested, Don't Count Plays, Favourite, Go to Album/Artist. Album and artist tiles (their `…`, or a right click) and Aoide playlist rows open the same actions with Play and Shuffle over the window, fetching the songs first. Queue rows have their own buttons. Clicked through against the stand-in server (the right click not tried) |
 | Get info | 3 | ⬜ | |
 | Settings | 1 | ✅ | Exactly the Round 1 rows below, saved in the config file |
 
@@ -52,9 +52,9 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Gapless joins, sample-exact | 1 | 🟨 | What Electron called "Exact joins (experimental)", here always on. Sample-exact for WAV, AIFF, FLAC, ALAC; MP3 (LAME tag) and Vorbis join with no gap. AAC does not: symphonia keeps the priming and padding, 64 ms between Apple-encoded M4A tracks, 21 ms between Jellyfin's AAC transcodes |
 | Crossfade (per-pair plan, 8 s / 4 s by tempo, parity table) | 1 | 🟨 | Setting wired to the player; not yet heard across a real pair |
 | Keep albums whole | 1 | 🟨 | Setting wired to the player; not yet heard across a real pair |
-| Level volume: −18 LUFS, only turn down, peak ≤ 0 dBFS | 1 | 🟨 | From `/aoide/audio-analysis`, fetched (two-second wait at most, 200 ahead) before tracks are queued; not yet run against a real sidecar |
+| Level volume: −18 LUFS, only turn down, peak ≤ 0 dBFS | 1 | 🟨 | From `/aoide/audio-analysis`, fetched (two-second wait at most, 200 ahead) before tracks are queued; the rest of the queue is measured afterwards in batches of 200 as it grows and applied to the queued tracks. Not yet run against a real sidecar |
 | ReplayGain tags (album preferred) | 2 | ⬜ | |
-| Skip silence (`/aoide/sound-bounds`, ignore < 300 ms) | 1 | 🟨 | From `/aoide/sound-bounds`, fetched with the loudness; not yet run against a real sidecar |
+| Skip silence (`/aoide/sound-bounds`, ignore < 300 ms) | 1 | 🟨 | From `/aoide/sound-bounds`, fetched with the loudness, late batches included; not yet run against a real sidecar |
 | Output device picker | 2 | ⬜ | Following the default device is done: a failed stream reopens on the (new) default and plays on from the heard position, queue intact |
 | Equalizer (parametric, presets, preamp) | 3 | ⬜ | |
 | Compressor (threshold, ratio, attack, release, makeup, knee) | 3 | ⬜ | |
@@ -76,12 +76,12 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 
 | Feature | Round | Status | Notes |
 |---|---|---|---|
-| MPRIS (bus name `aoide`): play, pause, next, previous, stop, volume, shuffle, loop, position, metadata | 1 | ⬜ | The app has a marked place for it (`integration.rs`): a command subscription and a now-playing hook |
+| MPRIS (bus name `aoide`): play, pause, next, previous, stop, volume, shuffle, loop, position, metadata | 1 | 🟨 | Wired (`integration.rs`): aoide-mpris on its own small tokio runtime, commands as a subscription, what plays published on every change with the cached cover as a `file://` URL (never the server's). The mapping is unit-tested and the Linux code cross-checked with clippy; not yet run on a Linux desktop. On macOS it reports itself unavailable and the app runs on |
 | Global media hotkeys outside MPRIS | 3 | ⬜ | |
 | Tray: play/pause, next, previous, stop, open, quit; minimise/exit to tray, start minimised | 2 | ⬜ | |
-| Prevent sleep / suspend while playing | 2 | ⬜ | |
+| Prevent sleep / suspend while playing | 2 | 🟨 | Came with MPRIS: aoide-mpris's inhibitor is set whenever playing starts or stops. Not yet run on a Linux desktop |
 | Discord Rich Presence (Aoide's application id, options as in Electron) | 2 | ⬜ | |
-| Single instance (second launch focuses the window) | 1 | ⬜ | Marked in `main.rs`; comes with the MPRIS crate |
+| Single instance (second launch focuses the window) | 1 | 🟨 | Decided in `main.rs` before any window: a second launch calls Raise on the first (un-minimise and focus) and exits 0. Not yet run on a Linux desktop; macOS has no D-Bus, so every launch is first there |
 | Window size and position remembered | 1 | ✅ | |
 | Track info in the window title | 2 | ⬜ | |
 | Accent colour and light/dark/system appearance | 2 | ⬜ | |
@@ -115,7 +115,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 |---|---|---|---|
 | Jellyfin playlists: create, edit, delete, reorder, add/remove songs | 2 | ⬜ | |
 | Jellyfin playlist cover upload | 3 | ⬜ | |
-| Aoide playlists: create, rename, notes, delete, add, remove, move (fractional index) | 1 | 🟨 | In the app: create, rename, delete, add songs. Notes are shown, not edited; removing and moving entries not yet in the UI |
+| Aoide playlists: create, rename, notes, delete, add, remove, move (fractional index) | 1 | ✅ | In the app: create, rename, delete, add songs; Edit shows the notes editor and each entry's Up, Down and Remove. A move is the store's `move_item`, one row written, measured past entries the server no longer has. Clicked through against the stand-in server; syncing the edits to a real sidecar not yet seen |
 | Add to Aoide playlist (with search past 8, "New playlist…") | 1 | ✅ | |
 | Built-in Rediscover Mix and Heavy Rotation | 2 | 🟨 | |
 | Smart playlists **evaluated** on open | 2 | 🟨 | The Electron app syncs the rules but does not evaluate them on the detail screen; do it right here |
@@ -134,7 +134,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Quarantine of unreadable or refused ops | 1 | 🟨 | |
 | Covers uploaded before the op naming them | 2 | 🟨 | |
 | Share-revoked edits held back, shares re-read every 5 min | 3 | ⬜ | |
-| Triggers: launch, focus, at most once a minute; "Sync now" | 1 | 🟨 | Launch and window focus, at most once a minute. "Sync now" not yet; not yet run against a real sidecar |
+| Triggers: launch, focus, at most once a minute; "Sync now" | 1 | 🟨 | Launch and window focus, at most once a minute; Sync Now in Settings starts one at once unless one is running, and Settings says the last outcome in words ("Synced: sent 34 changes."). Seen against the stand-in server's empty sync log; not yet run against a real sidecar |
 | Sync status panel | 2 | ⬜ | |
 | Handoff: publish this device's queue; pick up another's | 2 | ⬜ | Electron only published while one page was open; publish always |
 
@@ -158,7 +158,7 @@ else in the Electron settings arrives with its feature above.
 
 | Feature | Round | Status | Notes |
 |---|---|---|---|
-| pacman repository from GitHub releases (`[aoide]`) | 1 | ⬜ | Replaces the Electron package under the same app id `io.github.Virel0.Aoide` when ready |
+| pacman repository from GitHub releases (`[aoide]`) | 1 | 🟨 | `packaging/arch/PKGBUILD` (package `aoide-linux`) and `.github/workflows/release-arch.yml`: a `v*` tag builds it in an Arch container into the repository `[aoide-linux]` on the release. Installs beside the Electron `aoide`, so its names differ for now (`/usr/bin/aoide-linux`, desktop id `io.github.Virel0.Aoide.Linux`); what taking over the app id `io.github.Virel0.Aoide` takes is at the top of the PKGBUILD. Not yet tagged or built in CI; only the package step was dry-run (on macOS) |
 | Flatpak | 2 | ⬜ | |
 | AppImage / deb | 3 | ⬜ | |
 | In-app "update available" notice | 3 | ⬜ | pacman and Flatpak update the app themselves |

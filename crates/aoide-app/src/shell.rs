@@ -1,9 +1,13 @@
 //! The signed-in window: the sidebar, the content area with its back stack,
 //! the Now Playing panel on the right, and the player bar along the bottom.
 
-use iced::widget::{Column, button, column, container, row, rule, scrollable, space, text};
-use iced::{Center, Element, Fill, Length};
+use iced::widget::{
+    Column, button, center, column, container, mouse_area, opaque, row, rule, scrollable, space,
+    stack, text,
+};
+use iced::{Center, Color, Element, Fill, Length};
 
+use crate::actions::{Menu, RowAction};
 use crate::app::{App, Message, Signed};
 use crate::icons::{Icon, Tone, icon};
 use crate::screens::{Page, Section, View};
@@ -19,7 +23,33 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             .push(now_playing::view(app, signed, panel)),
         None => main,
     };
-    column![main, player_bar::view(app, signed)].into()
+    let window = column![main, player_bar::view(app, signed)];
+    match signed.menu.as_ref().filter(|m| m.collection.is_some()) {
+        Some(menu) => stack![window, collection_menu(app, signed, menu)].into(),
+        None => window.into(),
+    }
+}
+
+/// An album's, artist's or playlist's actions, over everything: a tile in a
+/// grid or a shelf has no row below it to open under. A click outside closes.
+fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Element<'a, Message> {
+    let view = View {
+        key: 0,
+        artwork: &app.artwork,
+        playing: None,
+        menu: Some(menu),
+        playlists: &signed.playlists,
+        favourites: &signed.favourites,
+        can_go_back: false,
+    };
+    let card = container(widgets::menu_strip(menu, &view)).max_width(560);
+    opaque(
+        mouse_area(center(opaque(card)).style(|_| container::Style {
+            background: Some(Color::BLACK.scale_alpha(0.45).into()),
+            ..container::Style::default()
+        }))
+        .on_press(Message::Row(RowAction::Close)),
+    )
 }
 
 fn sidebar(signed: &Signed) -> Element<'_, Message> {
@@ -93,7 +123,7 @@ fn sidebar(signed: &Signed) -> Element<'_, Message> {
         body = body.push(heading("Aoide Playlists")).push(lists);
     }
     let mut footer = column![item("Settings".into(), Icon::Settings, Section::Settings)].spacing(4);
-    if let Some(status) = &signed.sync_status {
+    if let Some(Err(status)) = &signed.sync_status {
         footer =
             footer.push(container(widgets::secondary(status.as_str()).size(11)).padding([0, 10]));
     }
@@ -149,6 +179,11 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             state,
             &app.config.settings,
             app.config.account.as_ref(),
+            crate::sync::Status {
+                available: signed.sync.is_some(),
+                running: signed.throttle.is_running(),
+                last: signed.sync_status.as_ref(),
+            },
             &view,
         ),
         page => page.view(&view),

@@ -5,8 +5,8 @@ mod common;
 use std::sync::mpsc::Receiver;
 
 use aoide_audio::{
-    Engine, EngineEvent, MediaSource, MixTrack, MixTransition, Player, PlayerSettings, PlayerTrack,
-    Transport,
+    Engine, EngineEvent, EntryId, MediaSource, MixTrack, MixTransition, Player, PlayerSettings,
+    PlayerTrack, SoundBounds, Transport,
 };
 use common::*;
 
@@ -28,6 +28,7 @@ impl Rig {
             let path = dir.path(&format!("{n}.wav"));
             write_wav(&path, RATE, 2, &ramp((n * frames) as u64, frames, 2));
             tracks.push(PlayerTrack {
+                key: format!("track-{n}"),
                 source: MediaSource::file(path),
                 mix: MixTrack {
                     album: if album {
@@ -149,6 +150,7 @@ fn previous_restarts_after_three_seconds_and_goes_back_before() {
         let path = dir.path(&format!("{n}.wav"));
         write_wav(&path, RATE, 2, &ramp(0, 5 * RATE as usize, 2));
         tracks.push(PlayerTrack {
+            key: format!("track-{n}"),
             source: MediaSource::file(path),
             mix: MixTrack::default(),
             gain_db: None,
@@ -207,4 +209,125 @@ fn a_track_that_fails_is_skipped() {
     rig.run(4_800);
     assert_eq!(rig.current(), 1, "moved past the broken track");
     assert_eq!(rig.engine.transport(), Transport::Playing);
+}
+
+#[test]
+fn keys_follow_their_tracks_through_every_edit() {
+    let (mut rig, tracks) = Rig::new(true);
+    let by_key = |key: &str| tracks.iter().find(|t| t.key == key).unwrap().source.clone();
+    rig.player.play_tracks(tracks.clone(), 0, false).unwrap();
+    let mut extra = tracks[2].clone();
+    extra.key = "extra".into();
+    rig.player
+        .edit_queue(|q| {
+            q.play_next(vec![extra]);
+            q.set_shuffled(true);
+            q.move_entries(&[3], 1);
+        })
+        .unwrap();
+    rig.run(RATE as usize + 960);
+
+    let keys: Vec<String> = rig
+        .player
+        .queue()
+        .entries()
+        .iter()
+        .map(|e| e.track.key.clone())
+        .collect();
+    let mut sorted = keys.clone();
+    sorted.sort();
+    assert_eq!(sorted, ["extra", "track-0", "track-1", "track-2"]);
+    for entry in rig.player.queue().entries() {
+        if entry.track.key != "extra" {
+            assert_eq!(
+                format!("{:?}", entry.track.source),
+                format!("{:?}", by_key(&entry.track.key))
+            );
+        }
+        assert_eq!(
+            rig.player.entry_by_key(&entry.track.key).map(|e| e.id),
+            Some(entry.id)
+        );
+    }
+    // What the engine reports as playing is found by its key too.
+    let playing = rig.player.engine().current().unwrap();
+    let key = &rig.player.queue().current().unwrap().track.key;
+    assert_eq!(rig.player.entry_by_key(key).unwrap().id, playing);
+    assert!(rig.player.entry_by_key("nothing").is_none());
+}
+
+#[test]
+fn a_queue_loads_held_at_a_position_and_plays_on_from_there() {
+    let (mut rig, tracks) = Rig::new(true);
+    rig.player.load_tracks(tracks, 1, false, 500).unwrap();
+    let held = rig.run(4_800);
+    assert_eq!(rig.engine.transport(), Transport::Paused);
+    assert!(held.iter().all(|s| *s == 0.0), "nothing sounds while held");
+    assert_eq!(rig.current(), 1);
+    assert_eq!(
+        rig.player.planned().map(|(_, t)| t),
+        Some(MixTransition::Gapless),
+        "what follows is planned"
+    );
+
+    rig.player.play().unwrap();
+    // Faded in for 10 ms, then the ramp from half a second into track 2.
+    let out = rig.run(RATE as usize / 10);
+    let from = RATE as u64 + 500 * 48;
+    let want = to_f32(&ramp(from, RATE as usize / 10, 2));
+    assert_eq!(&out[960..], &want[960..out.len()]);
+    assert_eq!(rig.engine.transport(), Transport::Playing);
+    assert!(
+        (590..=610).contains(&rig.player.position_ms()),
+        "at {} ms",
+        rig.player.position_ms()
+    );
+}
+
+#[test]
+fn measurements_that_arrive_late_reach_the_next_track() {
+    let (mut rig, tracks) = Rig::new(true);
+    rig.player.play_tracks(tracks, 0, false).unwrap();
+    rig.run(4_800);
+    let entries: Vec<EntryId> = rig.player.queue().entries().iter().map(|e| e.id).collect();
+
+    // The second track turns out to have half a second of silence at the
+    // top and to need turning down.
+    let bounds = Some(SoundBounds::new(500, 1_000));
+    assert!(
+        rig.player
+            .set_measurements(entries[1], bounds, Some(-6.0))
+            .unwrap()
+    );
+    let second = &rig.player.queue().entries()[1].track;
+    assert_eq!(second.mix.sound, bounds);
+    assert_eq!(second.gain_db, Some(-6.0));
+    assert_eq!(rig.player.planned().map(|(id, _)| id), Some(entries[1]));
+
+    // Through to the join: the second track is heard from 0.5 s, quieter.
+    let rest = RATE as usize - 4_800;
+    let out = rig.run(rest + RATE as usize / 4);
+    let first = to_f32(&ramp(4_800, rest, 2));
+    assert_eq!(
+        &out[..first.len()],
+        &first[..],
+        "the current track is untouched"
+    );
+    let gain = 10f32.powf(-6.0 / 20.0);
+    let joined = &out[first.len()..first.len() + 200];
+    let want = to_f32(&ramp(RATE as u64 + 500 * 48, 100, 2));
+    for (heard, plain) in joined.iter().zip(&want) {
+        assert!(
+            (heard - plain * gain).abs() < 1e-4,
+            "{heard} vs {}",
+            plain * gain
+        );
+    }
+    assert_eq!(rig.current(), 1);
+
+    assert!(
+        !rig.player
+            .set_measurements(EntryId(u64::MAX), None, None)
+            .unwrap()
+    );
 }

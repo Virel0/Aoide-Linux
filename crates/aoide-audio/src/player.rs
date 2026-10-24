@@ -9,7 +9,7 @@
 use crate::decode::MediaSource;
 use crate::engine::{EngineEvent, EngineHandle, Transport};
 use crate::error::Result;
-use crate::mix::{MixTrack, MixTransition, plan_transition};
+use crate::mix::{MixTrack, MixTransition, SoundBounds, plan_transition};
 use crate::pipeline::TrackSpec;
 use crate::queue::{AdvanceOutcome, EntryId, PlayQueue, QueueEntry};
 
@@ -20,6 +20,12 @@ pub const RESTART_THRESHOLD_MS: u64 = 3_000;
 /// One playable track and what the planner knows about it.
 #[derive(Clone, Debug)]
 pub struct PlayerTrack {
+    /// The caller's own name for this track, opaque to the player: the
+    /// Jellyfin id and a per-entry counter, say. It goes wherever the track
+    /// goes (shuffle, moves, Play Next, a replaced queue keeping its lane), so
+    /// the caller finds what it knows about an entry from `entry.track.key`
+    /// rather than by working out which entries an edit created.
+    pub key: String,
     pub source: MediaSource,
     /// Album, track number, length, sound bounds and tempo, for the planner;
     /// its `sound` is also what the engine plays.
@@ -105,6 +111,21 @@ impl Player {
         self.start_current(true)
     }
 
+    /// Replaces the queue with `tracks` and holds at `index`, `start_ms` into
+    /// it, paused: nothing sounds until [`Player::play`]. What follows is
+    /// planned as usual. For putting back a queue saved at the last quit.
+    pub fn load_tracks(
+        &mut self,
+        tracks: Vec<PlayerTrack>,
+        index: usize,
+        shuffled: bool,
+        start_ms: u64,
+    ) -> Result<()> {
+        self.queue.load(tracks, index, shuffled);
+        self.failures = 0;
+        self.load_current(start_ms, false)
+    }
+
     pub fn play(&mut self) -> Result<()> {
         match self.engine.transport() {
             Transport::Stopped if self.queue.current().is_some() => self.start_current(true),
@@ -160,6 +181,42 @@ impl Player {
         }
     }
 
+    /// Sets an entry's sound bounds (Skip silence) and loudness gain after it
+    /// was queued, for measurements that arrive late. If it is the track
+    /// planned next, or the current one (whose end decides the handover),
+    /// what follows is planned again. The current track itself keeps what it
+    /// was loaded with until it is loaded again, by a seek or a repeat, so
+    /// nothing audible jumps. Returns whether the entry is queued.
+    pub fn set_measurements(
+        &mut self,
+        entry: EntryId,
+        sound: Option<SoundBounds>,
+        gain_db: Option<f64>,
+    ) -> Result<bool> {
+        let found = self.queue.edit_track(entry, |track| {
+            track.mix.sound = sound;
+            track.gain_db = gain_db;
+        });
+        if !found {
+            return Ok(false);
+        }
+        let current = self.queue.current().map(|entry| entry.id);
+        let planned = self.planned.map(|(id, _)| id);
+        if current == Some(entry) || planned == Some(entry) {
+            self.planned = None;
+            self.replan()?;
+        }
+        Ok(true)
+    }
+
+    /// The entry holding the track with this key.
+    pub fn entry_by_key(&self, key: &str) -> Option<&QueueEntry<PlayerTrack>> {
+        self.queue
+            .entries()
+            .iter()
+            .find(|entry| entry.track.key == key)
+    }
+
     pub fn jump(&mut self, entry: EntryId) -> Result<()> {
         if self.queue.jump(entry) {
             self.start_current(true)
@@ -208,11 +265,15 @@ impl Player {
     }
 
     fn start_current(&mut self, play: bool) -> Result<()> {
+        self.load_current(0, play)
+    }
+
+    fn load_current(&mut self, start_ms: u64, play: bool) -> Result<()> {
         self.planned = None;
         let Some(entry) = self.queue.current().cloned() else {
             return self.engine.stop();
         };
-        self.engine.load(spec(&entry), 0, play)?;
+        self.engine.load(spec(&entry), start_ms, play)?;
         self.replan()
     }
 

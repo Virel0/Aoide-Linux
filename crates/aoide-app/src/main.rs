@@ -29,6 +29,20 @@ use crate::app::App;
 use crate::config::{Config, Paths, WindowGeometry};
 
 fn main() -> iced::Result {
+    // Single instance, before anything else: a second launch asks the running
+    // Aoide to come forward and leaves, touching neither the config nor a
+    // window. The integration lives until `main` returns.
+    let desktop = match integration::start(&aoide_mpris::Bus::Session) {
+        integration::Start::First(desktop) => desktop,
+        integration::Start::Other { raised } => {
+            if !raised {
+                eprintln!("Aoide is already running, but didn't answer.");
+            }
+            return Ok(());
+        }
+    };
+    let link = desktop.link.clone();
+
     let paths = Paths::system();
     let config = paths
         .as_ref()
@@ -39,10 +53,6 @@ fn main() -> iced::Result {
         // even if the app is killed before it next saves.
         let _ = config.save(&paths.config_file);
     }
-
-    // MPRIS: single instance goes here. With aoide-mpris, a launch that finds
-    // the bus name taken asks the running one to raise its window and returns
-    // before opening a second (see `integration.rs`).
 
     let geometry = config.window;
     let settings = window::Settings {
@@ -58,15 +68,20 @@ fn main() -> iced::Result {
         ..window::Settings::default()
     };
 
-    iced::application(
-        move || App::boot(paths.clone(), config.clone()),
+    let result = iced::application(
+        move || App::boot(paths.clone(), config.clone(), link.clone()),
         App::update,
         App::view,
     )
+    .font(widgets::FONTS[0])
+    .font(widgets::FONTS[1])
+    .default_font(widgets::REGULAR)
     .title(App::title)
     .theme(App::theme)
     .subscription(App::subscription)
     .window(settings)
     .exit_on_close_request(false)
-    .run()
+    .run();
+    drop(desktop);
+    result
 }

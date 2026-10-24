@@ -456,6 +456,22 @@ impl<T: Clone> PlayQueue<T> {
         }
     }
 
+    /// Changes the track in one slot, wherever it sits, the order kept for
+    /// turning shuffle off included. Returns whether the slot was found.
+    pub fn edit_track(&mut self, entry_id: EntryId, mut edit: impl FnMut(&mut T)) -> bool {
+        let mut found = false;
+        for entry in self.entries.iter_mut().filter(|entry| entry.id == entry_id) {
+            edit(&mut entry.track);
+            found = true;
+        }
+        if let Some(saved) = self.unshuffled.as_mut() {
+            for entry in saved.iter_mut().filter(|entry| entry.id == entry_id) {
+                edit(&mut entry.track);
+            }
+        }
+        found
+    }
+
     /// Removing the current entry leaves the position on whatever slid into
     /// its place, so playback continues rather than stopping.
     pub fn remove(&mut self, entry_id: EntryId) {

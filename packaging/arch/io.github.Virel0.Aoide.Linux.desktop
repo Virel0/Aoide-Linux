@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Aoide for Linux
+GenericName=Music player
+Comment=Jellyfin music, with local playlists and history that sync with the phone
+Exec=aoide-linux
+TryExec=aoide-linux
+Icon=io.github.Virel0.Aoide.Linux
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=Jellyfin;Aoide;Music;
+StartupWMClass=aoide-linux
+SingleMainWindow=true
