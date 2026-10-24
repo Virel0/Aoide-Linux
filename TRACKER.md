@@ -76,12 +76,12 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 
 | Feature | Round | Status | Notes |
 |---|---|---|---|
-| MPRIS (bus name `aoide`): play, pause, next, previous, stop, volume, shuffle, loop, position, metadata | 1 | ⬜ | The app has a marked place for it (`integration.rs`): a command subscription and a now-playing hook |
+| MPRIS (bus name `aoide`): play, pause, next, previous, stop, volume, shuffle, loop, position, metadata | 1 | 🟨 | Wired (`integration.rs`): aoide-mpris on its own small tokio runtime, commands as a subscription, what plays published on every change with the cached cover as a `file://` URL (never the server's). The mapping is unit-tested and the Linux code cross-checked with clippy; not yet run on a Linux desktop. On macOS it reports itself unavailable and the app runs on |
 | Global media hotkeys outside MPRIS | 3 | ⬜ | |
 | Tray: play/pause, next, previous, stop, open, quit; minimise/exit to tray, start minimised | 2 | ⬜ | |
-| Prevent sleep / suspend while playing | 2 | ⬜ | |
+| Prevent sleep / suspend while playing | 2 | 🟨 | Came with MPRIS: aoide-mpris's inhibitor is set whenever playing starts or stops. Not yet run on a Linux desktop |
 | Discord Rich Presence (Aoide's application id, options as in Electron) | 2 | ⬜ | |
-| Single instance (second launch focuses the window) | 1 | ⬜ | Marked in `main.rs`; comes with the MPRIS crate |
+| Single instance (second launch focuses the window) | 1 | 🟨 | Decided in `main.rs` before any window: a second launch calls Raise on the first (un-minimise and focus) and exits 0. Not yet run on a Linux desktop; macOS has no D-Bus, so every launch is first there |
 | Window size and position remembered | 1 | ✅ | |
 | Track info in the window title | 2 | ⬜ | |
 | Accent colour and light/dark/system appearance | 2 | ⬜ | |

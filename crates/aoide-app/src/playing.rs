@@ -340,7 +340,6 @@ impl App {
             }
             EngineEvent::DeviceError { .. } | EngineEvent::DeviceRestored => {}
         }
-        self.publish();
         Task::batch(tasks)
     }
 
@@ -352,7 +351,6 @@ impl App {
             .session
             .as_mut()
             .and_then(|s| s.reporter.paused(paused, now));
-        self.publish();
         self.send_reports(report.into_iter().collect())
     }
 
@@ -447,33 +445,41 @@ impl App {
         self.session.as_mut().and_then(|s| s.reporter.stopped())
     }
 
-    /// Hands what is playing to the desktop (MPRIS, when it is wired).
+    /// Hands what is playing to the desktop. The cover goes as the cached
+    /// file, never as a server URL: that one carries the token.
     pub(crate) fn publish(&self) {
         let current = self.playback.current().map(|(_, q)| &q.meta);
-        let art_url = self.session.as_ref().and_then(|s| {
-            let (id, tag) = current?.artwork.as_ref()?;
-            Some(
-                s.connection
-                    .client
-                    .artwork_url(id, Some(tag), crate::artwork::WIDTH)
-                    .to_string(),
-            )
-        });
-        crate::integration::publish(&crate::integration::NowPlaying {
-            track_id: current.map(|m| m.id.clone()),
-            title: current.map(|m| m.title.clone()).unwrap_or_default(),
-            artist: current.map(|m| m.artist.clone()).unwrap_or_default(),
-            album: current.map(|m| m.album.clone()).unwrap_or_default(),
-            art_url,
-            length_ms: current
-                .and_then(|m| m.duration_ms)
-                .map(|ms| ms.max(0) as u64),
-            position_ms: self.playback.position_ms(),
-            playing: self.playback.is_playing(),
-            shuffle: self.playback.is_shuffled(),
-            repeat: self.playback.repeat(),
-            volume: self.playback.volume(),
-        });
+        let art_url = current
+            .and_then(|m| m.artwork.as_ref())
+            .zip(self.artwork.dir())
+            .and_then(|((id, tag), dir)| {
+                crate::integration::art_url(
+                    &dir.join(crate::artwork::ArtKey::new(id, tag).file_name()),
+                )
+            });
+        crate::integration::publish(
+            &self.desktop,
+            &crate::integration::NowPlaying {
+                track_id: current.map(|m| m.id.clone()),
+                title: current.map(|m| m.title.clone()).unwrap_or_default(),
+                artist: current.map(|m| m.artist.clone()).unwrap_or_default(),
+                album_artist: current.and_then(|m| m.album_artist.clone()),
+                album: current.map(|m| m.album.clone()).unwrap_or_default(),
+                track_number: current
+                    .and_then(|m| m.track_number)
+                    .and_then(|n| u32::try_from(n).ok()),
+                art_url,
+                length_ms: current
+                    .and_then(|m| m.duration_ms)
+                    .map(|ms| ms.max(0) as u64),
+                position_ms: self.playback.position_ms(),
+                playing: self.playback.is_playing(),
+                has_next: self.playback.ahead() > 0,
+                shuffle: self.playback.is_shuffled(),
+                repeat: self.playback.repeat(),
+                volume: self.playback.volume(),
+            },
+        );
     }
 }
 

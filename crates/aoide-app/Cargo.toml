@@ -15,6 +15,9 @@ workspace = true
 [dependencies]
 aoide-audio = { path = "../aoide-audio" }
 aoide-jellyfin = { path = "../aoide-jellyfin" }
+# MPRIS, single instance and sleep inhibit; on macOS it builds and reports
+# itself unavailable.
+aoide-mpris = { path = "../aoide-mpris" }
 aoide-sidecar = { path = "../aoide-sidecar" }
 aoide-store = { path = "../aoide-store" }
 # Per-user config, data and cache directories (XDG on Linux).

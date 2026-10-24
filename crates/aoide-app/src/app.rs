@@ -45,6 +45,8 @@ pub struct App {
     pub(crate) playback: Playback,
     mode: Mode,
     window: Option<window::Id>,
+    /// MPRIS, single instance and sleep inhibit.
+    pub(crate) desktop: integration::Link,
     /// The app's own monotonic clock, for the reporter's and the sync's timing.
     clock: Instant,
     phase: Phase,
@@ -162,7 +164,11 @@ pub enum Transport {
 }
 
 impl App {
-    pub fn boot(paths: Option<Paths>, config: Config) -> (Self, Task<Message>) {
+    pub fn boot(
+        paths: Option<Paths>,
+        config: Config,
+        desktop: integration::Link,
+    ) -> (Self, Task<Message>) {
         let mut notice = None;
         let store = match paths
             .as_ref()
@@ -216,6 +222,7 @@ impl App {
             playback,
             mode: Mode::None,
             window: None,
+            desktop,
             clock: Instant::now(),
             phase,
             session: None,
@@ -237,7 +244,7 @@ impl App {
             self.playback.subscription().map(Message::Engine),
             iced::system::theme_changes().map(Message::ThemeChanged),
             window::events().map(|(id, event)| Message::Window(id, event)),
-            integration::commands().map(Message::Desktop),
+            integration::commands(&self.desktop).map(Message::Desktop),
         ])
     }
 
@@ -249,6 +256,8 @@ impl App {
         // Position ticks arrive four times a second and change no artwork.
         let quiet = matches!(message, Message::Engine(EngineEvent::Position { .. }));
         let task = self.handle(message);
+        // The desktop hears only what changed.
+        self.publish();
         if quiet {
             return task;
         }
@@ -1110,6 +1119,15 @@ impl App {
             C::Previous => return self.transport(Transport::Previous),
             C::SeekBy(ms) => {
                 let at = (self.playback.position_ms() as i64 + ms).max(0) as u64;
+                let length = self
+                    .playback
+                    .current()
+                    .and_then(|(_, q)| q.meta.duration_ms)
+                    .map(|ms| ms.max(0) as u64);
+                // MPRIS: a seek past the end acts as Next.
+                if length.is_some_and(|length| at >= length) {
+                    return self.transport(Transport::Next);
+                }
                 self.playback.seek(at)
             }
             C::SetPosition(ms) => self.playback.seek(ms),
@@ -1127,8 +1145,11 @@ impl App {
                 result
             }
             C::Raise => {
-                return self.window.map_or_else(Task::none, window::gain_focus);
+                return self.window.map_or_else(Task::none, |id| {
+                    window::minimize(id, false).chain(window::gain_focus(id))
+                });
             }
+            C::Quit => return self.quit(),
         };
         self.result(result)
     }
