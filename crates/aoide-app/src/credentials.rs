@@ -82,6 +82,7 @@ pub struct MemoryStore {
 }
 
 impl MemoryStore {
+    #[cfg(test)]
     pub fn failing() -> Self {
         Self {
             failing: true,

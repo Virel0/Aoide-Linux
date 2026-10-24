@@ -142,7 +142,7 @@ impl State {
                 label("Server"),
                 server,
                 text(
-                    "Home addresses like 192.168.1.10:8096 connect over plain HTTP; \
+                    "Home addresses (jellyfin.local, or a local network IP) connect over plain HTTP; \
                      anything else uses HTTPS. Type a full address to choose."
                 )
                 .size(12)

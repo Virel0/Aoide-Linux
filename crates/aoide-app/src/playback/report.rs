@@ -103,6 +103,7 @@ impl Reporter {
         })
     }
 
+    #[cfg(test)]
     pub fn current_item(&self) -> Option<&str> {
         self.current.as_ref().map(|c| c.item.as_str())
     }

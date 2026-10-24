@@ -123,6 +123,7 @@ impl PlayRecorder {
         self.close(store, now)
     }
 
+    #[cfg(test)]
     pub fn is_open(&self) -> bool {
         self.open.is_some()
     }

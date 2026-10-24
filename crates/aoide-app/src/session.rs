@@ -229,12 +229,6 @@ pub async fn forget(account: Account, keyring: Arc<dyn CredentialStore>) -> Resu
         .map_err(|e| e.to_string())
 }
 
-/// Tells the server the session is over, giving it [`SIGN_OUT_GRACE`] to answer.
-/// Best-effort: the local sign-out has already happened.
-pub async fn notify_server(client: JellyfinClient) {
-    let _ = tokio::time::timeout(SIGN_OUT_GRACE, client.sign_out()).await;
-}
-
 /// Runs keyring work off the async threads: D-Bus calls and Keychain prompts block.
 async fn blocking<T: Send + 'static>(
     job: impl FnOnce() -> Result<T, crate::credentials::CredentialError> + Send + 'static,
@@ -312,11 +306,11 @@ mod tests {
             form.validate().unwrap_err(),
             "\"ftp://example.com\" isn't a valid server address."
         );
-        form.server = "192.168.1.10:8096".into();
+        form.server = "jellyfin.local:8096".into();
         assert_eq!(form.validate().unwrap_err(), "Enter your username.");
         form.username = "  alice ".into();
         let (address, username) = form.validate().unwrap();
-        assert_eq!(address.to_string(), "http://192.168.1.10:8096");
+        assert_eq!(address.to_string(), "http://jellyfin.local:8096");
         assert_eq!(username, "alice");
         assert!(form.can_submit());
     }
@@ -493,7 +487,7 @@ mod tests {
                 username: "alice".into(),
             });
         let started = std::time::Instant::now();
-        notify_server(client).await;
+        crate::playing::leave_server(client, None).await;
         assert!(started.elapsed() < SIGN_OUT_GRACE + Duration::from_secs(2));
     }
 }

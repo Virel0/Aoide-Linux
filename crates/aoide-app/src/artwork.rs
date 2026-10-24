@@ -138,12 +138,9 @@ impl Artwork {
         self.seen.clear();
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.handles.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.handles.is_empty()
     }
 }
 

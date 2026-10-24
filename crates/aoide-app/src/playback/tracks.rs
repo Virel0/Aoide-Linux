@@ -166,8 +166,8 @@ impl Measures {
         }
     }
 
-    /// Records a measurement directly, for tests and for a server without the
-    /// endpoint (measured as "nothing to report").
+    /// Records a measurement directly.
+    #[cfg(test)]
     pub fn insert(
         &mut self,
         id: &str,
@@ -199,6 +199,7 @@ fn sound_bounds(bounds: &aoide_sidecar::SoundBounds) -> Option<SoundBounds> {
 #[derive(Debug, Clone)]
 pub struct BuiltTrack {
     pub meta: TrackMeta,
+    #[allow(dead_code)]
     pub url: Url,
     pub track: PlayerTrack,
 }
@@ -242,6 +243,7 @@ pub fn build(
 }
 
 /// The engine's view of a built track, as the player hands it over.
+#[cfg(test)]
 pub fn spec(id: aoide_audio::EntryId, built: &BuiltTrack) -> aoide_audio::TrackSpec {
     aoide_audio::TrackSpec::new(id, built.track.source.clone())
         .with_bounds(built.track.mix.sound)

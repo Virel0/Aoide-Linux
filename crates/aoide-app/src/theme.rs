@@ -47,10 +47,6 @@ pub fn secondary(theme: &Theme) -> Color {
     theme.palette().text.scale_alpha(0.6)
 }
 
-pub fn faint(theme: &Theme) -> Color {
-    theme.palette().text.scale_alpha(0.35)
-}
-
 /// The sidebar and the side panel: a shade off the page.
 pub fn side(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();

@@ -1,8 +1,5 @@
 //! Aoide for Linux: the window, the screens, and the wiring between them.
 
-// Services built ahead of the screens that use them; removed once they are wired.
-#![allow(dead_code)]
-
 mod actions;
 mod app;
 mod artwork;

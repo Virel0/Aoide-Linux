@@ -23,12 +23,14 @@ impl<T> BackStack<T> {
         self.entries.last().expect("a back stack is never empty")
     }
 
+    #[cfg(test)]
     pub fn current_mut(&mut self) -> &mut T {
         self.entries
             .last_mut()
             .expect("a back stack is never empty")
     }
 
+    #[cfg(test)]
     pub fn root(&self) -> &T {
         &self.entries[0]
     }
@@ -57,16 +59,13 @@ impl<T> BackStack<T> {
         self.entries.push(root);
     }
 
+    #[cfg(test)]
     pub fn depth(&self) -> usize {
         self.entries.len()
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.entries.iter_mut()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.entries.iter()
     }
 }
 

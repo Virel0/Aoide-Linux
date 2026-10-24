@@ -37,15 +37,6 @@ impl SyncThrottle {
     pub fn finished(&mut self) {
         self.running = false;
     }
-
-    /// Signed out: the next session syncs as soon as it starts.
-    pub fn reset(&mut self) {
-        *self = Self::default();
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.running
-    }
 }
 
 pub type Engine = Arc<SyncEngine<SidecarClient>>;
@@ -84,14 +75,5 @@ mod tests {
         assert!(!throttle.request(120_000));
         throttle.finished();
         assert!(throttle.request(120_000));
-    }
-
-    #[test]
-    fn signing_out_forgets_the_last_sync() {
-        let mut throttle = SyncThrottle::default();
-        assert!(throttle.request(0));
-        throttle.reset();
-        assert!(!throttle.is_running());
-        assert!(throttle.request(1_000));
     }
 }

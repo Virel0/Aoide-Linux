@@ -17,6 +17,8 @@ use aoide_audio::RepeatMode;
 use iced::Subscription;
 
 /// What a desktop controller can ask for.
+// Constructed by aoide-mpris once it is wired in; the app handles every one.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     Play,

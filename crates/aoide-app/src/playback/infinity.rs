@@ -68,10 +68,6 @@ impl InfinityTrigger {
     pub fn reset(&mut self) {
         self.fired_for = None;
     }
-
-    pub fn is_fetching(&self) -> bool {
-        self.in_flight
-    }
 }
 
 /// What a top-up found, in the order to queue it.
