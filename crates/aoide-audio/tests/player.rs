@@ -1,0 +1,210 @@
+//! The player: queue, planner and transport rules on a rendered engine.
+
+mod common;
+
+use std::sync::mpsc::Receiver;
+
+use aoide_audio::{
+    Engine, EngineEvent, MediaSource, MixTrack, MixTransition, Player, PlayerSettings, PlayerTrack,
+    Transport,
+};
+use common::*;
+
+struct Rig {
+    engine: Engine,
+    events: Receiver<EngineEvent>,
+    player: Player,
+    _dir: Dir,
+}
+
+impl Rig {
+    /// Three one-second ramp files that continue each other; `album` gives
+    /// them one album and consecutive numbers.
+    fn new(album: bool) -> (Rig, Vec<PlayerTrack>) {
+        let dir = Dir::new();
+        let frames = RATE as usize;
+        let mut tracks = Vec::new();
+        for n in 0..3 {
+            let path = dir.path(&format!("{n}.wav"));
+            write_wav(&path, RATE, 2, &ramp((n * frames) as u64, frames, 2));
+            tracks.push(PlayerTrack {
+                source: MediaSource::file(path),
+                mix: MixTrack {
+                    album: if album {
+                        "Record".into()
+                    } else {
+                        format!("Single {n}")
+                    },
+                    track_number: Some(n as i64 + 1),
+                    duration_seconds: Some(1.0),
+                    ..MixTrack::default()
+                },
+                gain_db: None,
+            });
+        }
+        let (engine, handle, events) = inline_engine(2);
+        (
+            Rig {
+                engine,
+                events,
+                player: Player::new(handle),
+                _dir: dir,
+            },
+            tracks,
+        )
+    }
+
+    /// Renders, forwarding every engine event to the player as an app would.
+    fn run(&mut self, frames: usize) -> Vec<f32> {
+        let mut out = Vec::with_capacity(frames * 2);
+        for _ in 0..frames.div_ceil(480) {
+            out.extend(render(&mut self.engine, 480, 480));
+            for event in self.events.try_iter().collect::<Vec<_>>() {
+                self.player.handle(&event).unwrap();
+            }
+        }
+        out.truncate(frames * 2);
+        out
+    }
+
+    fn current(&self) -> usize {
+        let id = self.player.queue().current().unwrap().id;
+        self.player
+            .queue()
+            .entries()
+            .iter()
+            .position(|e| e.id == id)
+            .unwrap()
+    }
+}
+
+#[test]
+fn a_queue_plays_through_gaplessly_and_follows_the_boundaries() {
+    let (mut rig, tracks) = Rig::new(true);
+    rig.player.play_tracks(tracks, 0, false).unwrap();
+    assert_eq!(
+        rig.player.planned().map(|(_, t)| t),
+        Some(MixTransition::Gapless),
+        "an album run"
+    );
+    let out = rig.run(3 * RATE as usize + 960);
+    let want = to_f32(&ramp(0, 3 * RATE as usize, 2));
+    assert_eq!(
+        &out[..want.len()],
+        &want[..],
+        "three files, one unbroken ramp"
+    );
+    assert_eq!(rig.current(), 2, "the queue followed both boundaries");
+    assert_eq!(rig.engine.transport(), Transport::Stopped);
+}
+
+#[test]
+fn crossfade_on_blends_between_albums_and_album_lock_keeps_runs_gapless() {
+    let (mut rig, tracks) = Rig::new(false);
+    // One-second tracks allow a quarter second of overlap: below the floor.
+    rig.player
+        .set_settings(PlayerSettings {
+            crossfade: true,
+            album_lock: true,
+        })
+        .unwrap();
+    rig.player.play_tracks(tracks.clone(), 0, false).unwrap();
+    assert_eq!(
+        rig.player.planned().map(|(_, t)| t),
+        Some(MixTransition::Cut)
+    );
+
+    let long: Vec<PlayerTrack> = tracks
+        .into_iter()
+        .map(|mut t| {
+            t.mix.duration_seconds = Some(240.0);
+            t
+        })
+        .collect();
+    rig.player.play_tracks(long.clone(), 0, false).unwrap();
+    assert_eq!(
+        rig.player.planned().map(|(_, t)| t),
+        Some(MixTransition::Blend { seconds: 4.0 })
+    );
+
+    let album: Vec<PlayerTrack> = long
+        .into_iter()
+        .map(|mut t| {
+            t.mix.album = "Record".into();
+            t
+        })
+        .collect();
+    rig.player.play_tracks(album, 0, false).unwrap();
+    assert_eq!(
+        rig.player.planned().map(|(_, t)| t),
+        Some(MixTransition::Gapless)
+    );
+}
+
+#[test]
+fn previous_restarts_after_three_seconds_and_goes_back_before() {
+    let dir = Dir::new();
+    let mut tracks = Vec::new();
+    for n in 0..2 {
+        let path = dir.path(&format!("{n}.wav"));
+        write_wav(&path, RATE, 2, &ramp(0, 5 * RATE as usize, 2));
+        tracks.push(PlayerTrack {
+            source: MediaSource::file(path),
+            mix: MixTrack::default(),
+            gain_db: None,
+        });
+    }
+    let (engine, handle, events) = inline_engine(2);
+    let mut rig = Rig {
+        engine,
+        events,
+        player: Player::new(handle),
+        _dir: dir,
+    };
+    rig.player.play_tracks(tracks, 1, false).unwrap();
+
+    rig.run(4 * RATE as usize);
+    assert!(rig.player.position_ms() > 3_000);
+    rig.player.previous_track().unwrap();
+    rig.run(480);
+    assert_eq!(rig.current(), 1, "restarted, not moved");
+    assert!(
+        rig.player.position_ms() <= 10,
+        "at {} ms",
+        rig.player.position_ms()
+    );
+
+    rig.run(RATE as usize);
+    rig.player.previous_track().unwrap();
+    rig.run(480);
+    assert_eq!(rig.current(), 0, "within three seconds: the previous track");
+}
+
+#[test]
+fn next_moves_on_and_a_seek_keeps_the_next_track_chained() {
+    let (mut rig, tracks) = Rig::new(true);
+    rig.player.play_tracks(tracks, 0, false).unwrap();
+    rig.run(4_800);
+    rig.player.next_track().unwrap();
+    rig.run(480);
+    assert_eq!(rig.current(), 1);
+
+    rig.player.seek(900).unwrap();
+    // Faded in for 10 ms, then the ramp on from 0.9 s into track 2, straight
+    // into track 3.
+    let out = rig.run(RATE as usize / 10 + RATE as usize);
+    let from = RATE as usize + 900 * 48;
+    let want = to_f32(&ramp(from as u64, RATE as usize / 10 + RATE as usize, 2));
+    assert_eq!(&out[960..], &want[960..out.len()]);
+    assert_eq!(rig.current(), 2);
+}
+
+#[test]
+fn a_track_that_fails_is_skipped() {
+    let (mut rig, mut tracks) = Rig::new(false);
+    tracks[0].source = MediaSource::file("/nonexistent/aoide-test.flac");
+    rig.player.play_tracks(tracks, 0, false).unwrap();
+    rig.run(4_800);
+    assert_eq!(rig.current(), 1, "moved past the broken track");
+    assert_eq!(rig.engine.transport(), Transport::Playing);
+}

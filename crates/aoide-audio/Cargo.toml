@@ -9,3 +9,15 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+cpal = "0.18.2"
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "rustls-no-provider"] }
+rtrb = "0.4.0"
+rubato = "5.0.1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+symphonia = { version = "0.6.1", default-features = false, features = ["aac", "alac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav", "all-meta"] }
+tempfile = "3.27.0"
+
+[dev-dependencies]
+flacenc = { version = "0.5.1", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+wiremock = "0.6.5"
