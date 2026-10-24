@@ -24,7 +24,7 @@ pub use decode::MediaSource;
 pub use engine::{DecodeMode, Engine, EngineConfig, EngineEvent, EngineHandle, Transport};
 pub use error::{Error, Result};
 pub use mix::{MixTrack, MixTransition, SoundBounds};
-pub use output::Output;
+pub use output::{CpalOutput, DeviceFormat, OpenStream, Output, Render, StreamReport};
 pub use pipeline::TrackSpec;
 pub use player::{Player, PlayerSettings, PlayerTrack};
 pub use queue::{EntryId, PlayQueue, RepeatMode};

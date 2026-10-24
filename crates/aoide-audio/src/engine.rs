@@ -12,6 +12,7 @@
 //! lock-free rings (in [`DecodeMode::Threaded`]), and feeds that are done with
 //! are handed to a reaper thread rather than freed here.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
@@ -31,6 +32,9 @@ const DECLICK_SECONDS: f32 = 0.010;
 const POSITION_EVERY_MS: f64 = 250.0;
 const ANCHORS: usize = 32;
 const PENDING_EVENTS: usize = 64;
+/// Tracks the engine remembers, to open one again after the output lost
+/// what it had buffered: the loaded one and those chained since.
+const REMEMBERED: usize = 4;
 
 /// Where decoding happens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +78,9 @@ pub enum EngineEvent {
     DeviceError {
         message: String,
     },
+    /// The output stream failed and has been opened again; playback carries
+    /// on from what was last heard.
+    DeviceRestored,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,7 +91,11 @@ pub enum Transport {
 }
 
 enum Command {
-    Load { feed: Box<dyn Feed>, play: bool },
+    Load {
+        feed: Box<dyn Feed>,
+        spec: TrackSpec,
+        play: bool,
+    },
     SetNext(Option<NextPlan>),
     Play,
     Pause,
@@ -119,17 +130,7 @@ impl EngineHandle {
     }
 
     fn feed(&self, spec: TrackSpec, start_ms: u64) -> Result<Box<dyn Feed>> {
-        let EngineConfig {
-            sample_rate,
-            channels,
-            decode,
-        } = self.config;
-        Ok(match decode {
-            DecodeMode::Inline => Box::new(InlineFeed::new(sample_rate, channels, spec, start_ms)),
-            DecodeMode::Threaded => {
-                Box::new(ThreadFeed::spawn(sample_rate, channels, spec, start_ms)?)
-            }
-        })
+        make_feed(self.config, spec, start_ms)
     }
 
     fn send(&self, command: Command) -> Result<()> {
@@ -141,8 +142,8 @@ impl EngineHandle {
     /// Replaces whatever is playing with `spec`, from `start_ms` into the file
     /// (a seek is a load at the new position). Anything chained is dropped.
     pub fn load(&self, spec: TrackSpec, start_ms: u64, play: bool) -> Result<()> {
-        let feed = self.feed(spec, start_ms)?;
-        self.send(Command::Load { feed, play })
+        let feed = self.feed(spec.clone(), start_ms)?;
+        self.send(Command::Load { feed, spec, play })
     }
 
     /// What follows the current track, and how. `Gapless` and `Cut` join it to
@@ -201,6 +202,24 @@ impl EngineHandle {
             _ => Transport::Stopped,
         }
     }
+}
+
+fn make_feed(config: EngineConfig, spec: TrackSpec, start_ms: u64) -> Result<Box<dyn Feed>> {
+    let EngineConfig {
+        sample_rate,
+        channels,
+        decode,
+    } = config;
+    Ok(match decode {
+        DecodeMode::Inline => Box::new(InlineFeed::new(sample_rate, channels, spec, start_ms)),
+        DecodeMode::Threaded => Box::new(ThreadFeed::spawn(sample_rate, channels, spec, start_ms)?),
+    })
+}
+
+/// What the reaper thread frees, so the render never does.
+enum Garbage {
+    Feed(#[allow(dead_code)] Box<dyn Feed>),
+    Spec(#[allow(dead_code)] TrackSpec),
 }
 
 struct DeckTrack {
@@ -305,7 +324,7 @@ pub struct Engine {
     config: EngineConfig,
     commands: Receiver<Command>,
     events: SyncSender<EngineEvent>,
-    reaper: Option<SyncSender<Box<dyn Feed>>>,
+    reaper: Option<SyncSender<Garbage>>,
     shared: Arc<Shared>,
     transport: Transport,
     /// Pause and resume ramp, 0 to 1.
@@ -322,6 +341,10 @@ pub struct Engine {
     latency: u64,
     timeline: Timeline,
     scratch: Vec<f32>,
+    /// The loaded track and those chained since, newest last.
+    remembered: VecDeque<TrackSpec>,
+    /// What follows the current track, and the overlap when it blends in.
+    chained: Option<(TrackSpec, Option<u64>)>,
 }
 
 impl Engine {
@@ -342,7 +365,7 @@ impl Engine {
         let reaper = match config.decode {
             DecodeMode::Inline => None,
             DecodeMode::Threaded => {
-                let (tx, rx) = mpsc::sync_channel::<Box<dyn Feed>>(16);
+                let (tx, rx) = mpsc::sync_channel::<Garbage>(16);
                 thread::Builder::new()
                     .name("aoide-reaper".into())
                     .spawn(move || while rx.recv().is_ok() {})
@@ -368,6 +391,8 @@ impl Engine {
             latency: 0,
             timeline: Timeline::new(),
             scratch: vec![0.0; BLOCK * config.channels],
+            remembered: VecDeque::with_capacity(REMEMBERED),
+            chained: None,
         };
         let handle = EngineHandle {
             config,
@@ -410,10 +435,17 @@ impl Engine {
 
     fn apply(&mut self, command: Command) {
         match command {
-            Command::Load { feed, play } => {
+            Command::Load { feed, spec, play } => {
                 let audible = self.transport == Transport::Playing && self.primary.is_some();
                 self.drop_decks();
                 self.primary = Some(Deck::new(feed));
+                while let Some(old) = self.remembered.pop_front() {
+                    self.reap_spec(old);
+                }
+                self.remember(spec);
+                if let Some((old, _)) = self.chained.take() {
+                    self.reap_spec(old);
+                }
                 if play {
                     self.transport = Transport::Playing;
                     // Replacing something audible fades the new one in;
@@ -426,6 +458,16 @@ impl Engine {
                 }
             }
             Command::SetNext(plan) => {
+                let chained = plan.as_ref().map(|plan| {
+                    let overlap = plan.blend.as_ref().map(|(_, overlap)| (*overlap).max(1));
+                    (plan.spec.clone(), overlap)
+                });
+                if let Some((spec, _)) = &chained {
+                    self.remember(spec.clone());
+                }
+                if let Some((old, _)) = std::mem::replace(&mut self.chained, chained) {
+                    self.reap_spec(old);
+                }
                 // A blend not yet started is replaced; one under way plays
                 // out, and what follows is chained to its incoming track.
                 if let Some(blend) = self.blend.take_if(|blend| blend.progress.is_none()) {
@@ -518,12 +560,106 @@ impl Engine {
     }
 
     fn reap(&mut self, feed: Box<dyn Feed>) {
+        self.discard(Garbage::Feed(feed));
+    }
+
+    fn reap_spec(&mut self, spec: TrackSpec) {
+        self.discard(Garbage::Spec(spec));
+    }
+
+    fn discard(&mut self, garbage: Garbage) {
         if let Some(reaper) = &self.reaper {
-            match reaper.try_send(feed) {
+            match reaper.try_send(garbage) {
                 Ok(()) => {}
-                Err(TrySendError::Full(feed)) | Err(TrySendError::Disconnected(feed)) => drop(feed),
+                Err(TrySendError::Full(garbage)) | Err(TrySendError::Disconnected(garbage)) => {
+                    drop(garbage)
+                }
             }
         }
+    }
+
+    /// Keeps `spec` among the last few tracks, without allocating.
+    fn remember(&mut self, spec: TrackSpec) {
+        if self.remembered.len() == REMEMBERED
+            && let Some(old) = self.remembered.pop_front()
+        {
+            self.reap_spec(old);
+        }
+        self.remembered.push_back(spec);
+    }
+
+    /// Plays on from what was last heard rather than from what was last
+    /// rendered, after the output lost what it had buffered (its stream
+    /// failed): the current track is opened again at the heard position, and
+    /// what was chained after it is chained again, so the queue carries on.
+    /// Then the output latency is zero until the next stream reports its own.
+    ///
+    /// Only for a track playing on its own: during a blend, or when a track
+    /// boundary had been rendered but not yet heard, the engine simply plays
+    /// on from what it rendered, losing at most one buffer of sound.
+    ///
+    /// Not for the device callback: it opens the track again.
+    pub fn resume_from_heard(&mut self) {
+        let unheard = self.latency.min(self.clock);
+        self.latency = 0;
+        if unheard == 0
+            || self.transport != Transport::Playing
+            || self
+                .blend
+                .as_ref()
+                .is_some_and(|blend| blend.progress.is_some())
+        {
+            return;
+        }
+        let heard = self.clock - unheard;
+        let Some(Anchor {
+            id: Some(id),
+            ms,
+            playing: true,
+            clock,
+        }) = self.timeline.at(heard)
+        else {
+            return;
+        };
+        let current = self
+            .primary
+            .as_ref()
+            .and_then(|deck| deck.track.as_ref())
+            .map(|track| track.id);
+        if current != Some(id) {
+            return;
+        }
+        let Some(spec) = self.remembered.iter().rev().find(|spec| spec.id == id) else {
+            return;
+        };
+        let rate = f64::from(self.config.sample_rate);
+        let heard_ms = ms + (heard - clock) as f64 * 1000.0 / rate;
+        let Ok(mut feed) = make_feed(self.config, spec.clone(), heard_ms.round() as u64) else {
+            return;
+        };
+
+        // Chained again, unless it is the track being resumed (the join to it
+        // has been heard and nothing follows it yet).
+        let mut blend = None;
+        match self.chained.clone() {
+            Some((next, _)) if next.id == id => {}
+            Some((next, None)) => feed.chain(Some(next)),
+            Some((next, Some(overlap))) => {
+                if let Ok(next_feed) = make_feed(self.config, next, 0) {
+                    blend = Some(Blend {
+                        deck: Deck::new(next_feed),
+                        overlap,
+                        progress: None,
+                    });
+                }
+            }
+            None => {}
+        }
+        self.drop_decks();
+        self.primary = Some(Deck::new(feed));
+        self.blend = blend;
+        // What had been rendered after the heard frame is rendered again.
+        self.timeline.events.retain(|(at, _)| *at <= heard);
     }
 
     /// Records the foreground track's position at the current clock.
