@@ -234,6 +234,8 @@ pub fn build(
     Ok(BuiltTrack {
         meta: meta.clone(),
         track: PlayerTrack {
+            // Made unique when the track is queued.
+            key: meta.id.clone(),
             source: MediaSource::http(url.as_str()),
             mix,
             gain_db,

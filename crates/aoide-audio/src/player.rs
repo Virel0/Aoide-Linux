@@ -20,6 +20,12 @@ pub const RESTART_THRESHOLD_MS: u64 = 3_000;
 /// One playable track and what the planner knows about it.
 #[derive(Clone, Debug)]
 pub struct PlayerTrack {
+    /// The caller's own name for this track, opaque to the player: the
+    /// Jellyfin id and a per-entry counter, say. It goes wherever the track
+    /// goes (shuffle, moves, Play Next, a replaced queue keeping its lane), so
+    /// the caller finds what it knows about an entry from `entry.track.key`
+    /// rather than by working out which entries an edit created.
+    pub key: String,
     pub source: MediaSource,
     /// Album, track number, length, sound bounds and tempo, for the planner;
     /// its `sound` is also what the engine plays.
@@ -158,6 +164,14 @@ impl Player {
             AdvanceOutcome::Ended => self.seek(0),
             _ => self.start_current(true),
         }
+    }
+
+    /// The entry holding the track with this key.
+    pub fn entry_by_key(&self, key: &str) -> Option<&QueueEntry<PlayerTrack>> {
+        self.queue
+            .entries()
+            .iter()
+            .find(|entry| entry.track.key == key)
     }
 
     pub fn jump(&mut self, entry: EntryId) -> Result<()> {

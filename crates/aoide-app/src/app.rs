@@ -1232,15 +1232,11 @@ impl App {
         }
         if let Some(queue) = self.playback.queue() {
             let position = queue.position().unwrap_or(0);
-            for entry in queue
-                .entries()
-                .iter()
-                .skip(position.saturating_sub(5))
-                .take(60)
-            {
+            let first = position.saturating_sub(5);
+            for index in first..(first + 60).min(queue.entries().len()) {
                 if let Some((id, tag)) = self
                     .playback
-                    .queued(entry.id)
+                    .queued_at(index)
                     .and_then(|q| q.meta.artwork.as_ref())
                 {
                     wanted.push(ArtKey::new(id, tag));

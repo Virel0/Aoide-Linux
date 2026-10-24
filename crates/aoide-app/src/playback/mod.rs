@@ -71,7 +71,10 @@ pub struct Playback {
     events: Option<EventSource>,
     /// Why there is no sound, when there is none.
     unavailable: Option<String>,
-    meta: HashMap<EntryId, Queued>,
+    /// What each queued track is, by the key it was queued with.
+    meta: HashMap<String, Queued>,
+    /// Makes every queued track's key unique, the same song twice included.
+    next_key: u64,
     position_ms: u64,
     volume: f32,
 }
@@ -93,6 +96,7 @@ impl Playback {
                     }),
                     unavailable: None,
                     meta: HashMap::new(),
+                    next_key: 0,
                     position_ms: 0,
                     volume,
                 }
@@ -109,6 +113,7 @@ impl Playback {
             events: None,
             unavailable: Some(reason),
             meta: HashMap::new(),
+            next_key: 0,
             position_ms: 0,
             volume,
         }
@@ -140,14 +145,22 @@ impl Playback {
         self.player.as_ref().map(Player::queue)
     }
 
+    /// What the entry with this id is.
     pub fn queued(&self, entry: EntryId) -> Option<&Queued> {
-        self.meta.get(&entry)
+        let entry = self.queue()?.entries().iter().find(|e| e.id == entry)?;
+        self.meta.get(&entry.track.key)
+    }
+
+    /// What the entry at this place in the queue is.
+    pub fn queued_at(&self, index: usize) -> Option<&Queued> {
+        let entry = self.queue()?.entries().get(index)?;
+        self.meta.get(&entry.track.key)
     }
 
     /// The current entry and what it is.
     pub fn current(&self) -> Option<(EntryId, &Queued)> {
-        let entry = self.queue()?.current()?.id;
-        Some((entry, self.meta.get(&entry)?))
+        let entry = self.queue()?.current()?;
+        Some((entry.id, self.meta.get(&entry.track.key)?))
     }
 
     pub fn transport(&self) -> Transport {
@@ -189,7 +202,7 @@ impl Playback {
         let ids = queue
             .entries()
             .iter()
-            .filter_map(|e| self.meta.get(&e.id).map(|q| q.meta.id.clone()))
+            .filter_map(|e| self.meta.get(&e.track.key).map(|q| q.meta.id.clone()))
             .collect();
         (ids, queue.position().map_or(0, |p| p as i64))
     }
@@ -205,7 +218,7 @@ impl Playback {
             .map(|q| {
                 q.up_next()
                     .iter()
-                    .filter_map(|e| self.meta.get(&e.id).map(|m| m.meta.id.clone()))
+                    .filter_map(|e| self.meta.get(&e.track.key).map(|m| m.meta.id.clone()))
                     .collect()
             })
             .unwrap_or_default()
@@ -222,56 +235,19 @@ impl Playback {
         if built.is_empty() {
             return Ok(());
         }
-        let added: Vec<Queued> = built
-            .iter()
-            .map(|b| Queued {
-                meta: b.meta.clone(),
-                reason: reasons.get(&b.meta.id).cloned(),
-                source,
-            })
-            .collect();
-        let tracks: Vec<PlayerTrack> = built.into_iter().map(|b| b.track).collect();
-        let unavailable = self.player.is_none();
-        if unavailable {
-            self.player_mut()?;
-        }
+        self.player_mut()?;
+        let tracks = keyed(&mut self.next_key, &mut self.meta, built, source, reasons);
         let Some(player) = self.player.as_mut() else {
             return Ok(());
         };
-        let before: HashSet<EntryId> = player.queue().entries().iter().map(|e| e.id).collect();
-        // Every edit inserts the new tracks in the order given and, shuffle
-        // aside, keeps them together: so the entries that were not there
-        // before are these tracks, in this order. Shuffling waits until they
-        // have been matched up.
         let result = match how {
             Enqueue::Replace { start, shuffle } => {
-                let result = player.play_tracks(tracks, start, false);
-                adopt(&mut self.meta, player.queue(), &before, added);
-                let result = result.and_then(|()| {
-                    player.edit_queue(|q| {
-                        if q.is_shuffled() != shuffle {
-                            q.set_shuffled(shuffle);
-                        }
-                    })
-                });
                 self.position_ms = 0;
-                result
+                player.play_tracks(tracks, start, shuffle)
             }
-            Enqueue::Next => {
-                let result = player.edit_queue(|q| q.play_next(tracks));
-                adopt(&mut self.meta, player.queue(), &before, added);
-                result
-            }
-            Enqueue::Last => {
-                let result = player.edit_queue(|q| q.append(tracks));
-                adopt(&mut self.meta, player.queue(), &before, added);
-                result
-            }
-            Enqueue::Extend => {
-                let result = player.edit_queue(|q| q.extend(tracks));
-                adopt(&mut self.meta, player.queue(), &before, added);
-                result
-            }
+            Enqueue::Next => player.edit_queue(|q| q.play_next(tracks)),
+            Enqueue::Last => player.edit_queue(|q| q.append(tracks)),
+            Enqueue::Extend => player.edit_queue(|q| q.extend(tracks)),
         };
         self.prune();
         result.map_err(|e| e.to_string())
@@ -431,26 +407,41 @@ impl Playback {
         let Some(queue) = self.player.as_ref().map(Player::queue) else {
             return;
         };
-        let live: HashSet<EntryId> = queue.entries().iter().map(|e| e.id).collect();
-        self.meta.retain(|id, _| live.contains(id));
+        let live: HashSet<&str> = queue
+            .entries()
+            .iter()
+            .map(|e| e.track.key.as_str())
+            .collect();
+        self.meta.retain(|key, _| live.contains(key.as_str()));
     }
 }
 
-/// Matches the entries a queue edit created with the tracks it was given.
-fn adopt<T: Clone>(
-    meta: &mut HashMap<EntryId, Queued>,
-    queue: &PlayQueue<T>,
-    before: &HashSet<EntryId>,
-    added: Vec<Queued>,
-) {
-    let fresh = queue
-        .entries()
-        .iter()
-        .map(|e| e.id)
-        .filter(|id| !before.contains(id));
-    for (id, queued) in fresh.zip(added) {
-        meta.insert(id, queued);
-    }
+/// Gives each built track a key no other queued track has, and records what
+/// it is under that key.
+fn keyed(
+    next_key: &mut u64,
+    meta: &mut HashMap<String, Queued>,
+    built: Vec<BuiltTrack>,
+    source: PlaySource,
+    reasons: &HashMap<String, String>,
+) -> Vec<PlayerTrack> {
+    built
+        .into_iter()
+        .map(|b| {
+            *next_key += 1;
+            let mut track = b.track;
+            track.key = format!("{}#{next_key}", b.meta.id);
+            meta.insert(
+                track.key.clone(),
+                Queued {
+                    reason: reasons.get(&b.meta.id).cloned(),
+                    meta: b.meta,
+                    source,
+                },
+            );
+            track
+        })
+        .collect()
 }
 
 /// The engine's blocking channel as a stream: a thread waits on it and
@@ -490,8 +481,10 @@ pub fn random_index(len: usize) -> usize {
 mod tests {
     use super::*;
 
-    fn meta(id: &str) -> Queued {
-        Queued {
+    fn built(id: &str) -> BuiltTrack {
+        let url =
+            aoide_jellyfin::Url::parse(&format!("https://music.example.net/Audio/{id}")).unwrap();
+        BuiltTrack {
             meta: TrackMeta {
                 id: id.into(),
                 title: id.into(),
@@ -508,82 +501,92 @@ mod tests {
                 genres: Vec::new(),
                 favourite: false,
             },
-            reason: None,
-            source: PlaySource::Album,
+            track: PlayerTrack {
+                key: id.into(),
+                source: aoide_audio::MediaSource::http(url.as_str()),
+                mix: aoide_audio::MixTrack::default(),
+                gain_db: None,
+            },
+            url,
         }
-    }
-
-    fn ids(
-        queue: &PlayQueue<&'static str>,
-        meta: &HashMap<EntryId, Queued>,
-    ) -> Vec<(String, String)> {
-        queue
-            .entries()
-            .iter()
-            .map(|e| (e.track.to_owned(), meta[&e.id].meta.id.clone()))
-            .collect()
     }
 
     #[test]
-    fn new_entries_are_matched_to_their_tracks_after_every_kind_of_edit() {
-        let mut queue: PlayQueue<&'static str> = PlayQueue::new();
-        let mut map = HashMap::new();
-
-        let before = HashSet::new();
-        queue.load(vec!["a", "b", "c"], 1, false);
-        adopt(
-            &mut map,
-            &queue,
-            &before,
-            vec![meta("a"), meta("b"), meta("c")],
+    fn every_queued_track_gets_its_own_key_even_the_same_song_twice() {
+        let mut next = 0;
+        let mut meta = HashMap::new();
+        let reasons = HashMap::from([("b".to_owned(), "Like what you played".to_owned())]);
+        let tracks = keyed(
+            &mut next,
+            &mut meta,
+            vec![built("a"), built("b"), built("a")],
+            PlaySource::Album,
+            &reasons,
         );
-
-        let before: HashSet<EntryId> = queue.entries().iter().map(|e| e.id).collect();
-        queue.play_next(vec!["x", "y"]);
-        adopt(&mut map, &queue, &before, vec![meta("x"), meta("y")]);
-
-        let before: HashSet<EntryId> = queue.entries().iter().map(|e| e.id).collect();
-        queue.append(vec!["z"]);
-        adopt(&mut map, &queue, &before, vec![meta("z")]);
-
-        let before: HashSet<EntryId> = queue.entries().iter().map(|e| e.id).collect();
-        queue.extend(vec!["w"]);
-        adopt(&mut map, &queue, &before, vec![meta("w")]);
-
-        // Shuffling afterwards moves entries, never their identity.
-        queue.set_shuffled(true);
-        for (track, id) in ids(&queue, &map) {
-            assert_eq!(track, id);
+        let keys: HashSet<&str> = tracks.iter().map(|t| t.key.as_str()).collect();
+        assert_eq!(keys.len(), 3);
+        assert_eq!(meta.len(), 3);
+        for track in &tracks {
+            let id = &meta[&track.key].meta.id;
+            assert!(track.key.starts_with(&format!("{id}#")), "{}", track.key);
         }
-        assert_eq!(map.len(), 7);
+        assert_eq!(
+            meta[&tracks[1].key].reason.as_deref(),
+            Some("Like what you played")
+        );
+        assert_eq!(meta[&tracks[0].key].reason, None);
+        let more = keyed(
+            &mut next,
+            &mut meta,
+            vec![built("a")],
+            PlaySource::Album,
+            &reasons,
+        );
+        assert!(!keys.contains(more[0].key.as_str()));
     }
 
     #[test]
-    fn replacing_keeps_hand_queued_tracks_and_matches_the_new_ones() {
-        let mut queue: PlayQueue<&'static str> = PlayQueue::new();
-        let mut map = HashMap::new();
-        queue.load(vec!["a", "b"], 0, false);
-        adopt(
-            &mut map,
-            &queue,
-            &HashSet::new(),
-            vec![meta("a"), meta("b")],
+    fn keys_find_their_tracks_after_any_edit() {
+        let mut next = 0;
+        let mut meta = HashMap::new();
+        let mut queue: PlayQueue<PlayerTrack> = PlayQueue::new();
+        let none = HashMap::new();
+        let album = keyed(
+            &mut next,
+            &mut meta,
+            ["a", "b", "c", "d"].map(built).to_vec(),
+            PlaySource::Album,
+            &none,
         );
-        let before: HashSet<EntryId> = queue.entries().iter().map(|e| e.id).collect();
-        queue.play_next(vec!["x"]);
-        adopt(&mut map, &queue, &before, vec![meta("x")]);
-
-        let before: HashSet<EntryId> = queue.entries().iter().map(|e| e.id).collect();
-        queue.load(vec!["p", "q", "r"], 1, false);
-        adopt(
-            &mut map,
-            &queue,
-            &before,
-            vec![meta("p"), meta("q"), meta("r")],
-        );
-        for (track, id) in ids(&queue, &map) {
-            assert_eq!(track, id);
+        queue.load(album, 1, true);
+        queue.play_next(keyed(
+            &mut next,
+            &mut meta,
+            vec![built("x")],
+            PlaySource::Unknown,
+            &none,
+        ));
+        queue.append(keyed(
+            &mut next,
+            &mut meta,
+            vec![built("y")],
+            PlaySource::Unknown,
+            &none,
+        ));
+        queue.extend(keyed(
+            &mut next,
+            &mut meta,
+            vec![built("z")],
+            PlaySource::Unknown,
+            &none,
+        ));
+        queue.set_shuffled(false);
+        queue.move_entries(&[0], 3);
+        for entry in queue.entries() {
+            let queued = &meta[&entry.track.key];
+            assert!(entry.track.key.starts_with(&format!("{}#", queued.meta.id)));
         }
+        assert_eq!(queue.entries().len(), 7);
     }
 
     #[test]

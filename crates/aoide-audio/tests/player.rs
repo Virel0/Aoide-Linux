@@ -28,6 +28,7 @@ impl Rig {
             let path = dir.path(&format!("{n}.wav"));
             write_wav(&path, RATE, 2, &ramp((n * frames) as u64, frames, 2));
             tracks.push(PlayerTrack {
+                key: format!("track-{n}"),
                 source: MediaSource::file(path),
                 mix: MixTrack {
                     album: if album {
@@ -149,6 +150,7 @@ fn previous_restarts_after_three_seconds_and_goes_back_before() {
         let path = dir.path(&format!("{n}.wav"));
         write_wav(&path, RATE, 2, &ramp(0, 5 * RATE as usize, 2));
         tracks.push(PlayerTrack {
+            key: format!("track-{n}"),
             source: MediaSource::file(path),
             mix: MixTrack::default(),
             gain_db: None,
@@ -207,4 +209,49 @@ fn a_track_that_fails_is_skipped() {
     rig.run(4_800);
     assert_eq!(rig.current(), 1, "moved past the broken track");
     assert_eq!(rig.engine.transport(), Transport::Playing);
+}
+
+#[test]
+fn keys_follow_their_tracks_through_every_edit() {
+    let (mut rig, tracks) = Rig::new(true);
+    let by_key = |key: &str| tracks.iter().find(|t| t.key == key).unwrap().source.clone();
+    rig.player.play_tracks(tracks.clone(), 0, false).unwrap();
+    let mut extra = tracks[2].clone();
+    extra.key = "extra".into();
+    rig.player
+        .edit_queue(|q| {
+            q.play_next(vec![extra]);
+            q.set_shuffled(true);
+            q.move_entries(&[3], 1);
+        })
+        .unwrap();
+    rig.run(RATE as usize + 960);
+
+    let keys: Vec<String> = rig
+        .player
+        .queue()
+        .entries()
+        .iter()
+        .map(|e| e.track.key.clone())
+        .collect();
+    let mut sorted = keys.clone();
+    sorted.sort();
+    assert_eq!(sorted, ["extra", "track-0", "track-1", "track-2"]);
+    for entry in rig.player.queue().entries() {
+        if entry.track.key != "extra" {
+            assert_eq!(
+                format!("{:?}", entry.track.source),
+                format!("{:?}", by_key(&entry.track.key))
+            );
+        }
+        assert_eq!(
+            rig.player.entry_by_key(&entry.track.key).map(|e| e.id),
+            Some(entry.id)
+        );
+    }
+    // What the engine reports as playing is found by its key too.
+    let playing = rig.player.engine().current().unwrap();
+    let key = &rig.player.queue().current().unwrap().track.key;
+    assert_eq!(rig.player.entry_by_key(key).unwrap().id, playing);
+    assert!(rig.player.entry_by_key("nothing").is_none());
 }
