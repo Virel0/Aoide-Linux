@@ -1,0 +1,21 @@
+{
+  "Metadata": {
+    "Artist": "The Quiet Engines",
+    "Album": "Low Tide Radio",
+    "Title": "Harbour Lights",
+    "Length": 2435000000,
+    "IsSynced": null
+  },
+  "Lyrics": [
+    {
+      "Text": "Hello big world",
+      "Start": 10000000,
+      "Cues": [
+        { "Position": 0, "EndPosition": 6, "Start": 10000000, "End": null },
+        { "Position": 6, "EndPosition": 10, "Start": 15000000 },
+        { "Position": 10, "EndPosition": 15, "Start": 18000000, "End": 20000000 }
+      ]
+    },
+    { "Text": "and the tide goes out", "Start": 42000000, "Cues": [] }
+  ]
+}
