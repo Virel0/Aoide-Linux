@@ -243,8 +243,31 @@ pub fn track_list<'a>(
     style: ListStyle,
     source: PlaySource,
 ) -> Element<'a, Message> {
+    track_list_with_headings(tracks, view, style, source, &[])
+}
+
+/// A track list with a heading before some rows: `(index, heading)`, in
+/// order, such as "Disc 2" before the first track of the second disc.
+pub fn track_list_with_headings<'a>(
+    tracks: &'a [TrackMeta],
+    view: &View<'a>,
+    style: ListStyle,
+    source: PlaySource,
+    headings: &[(usize, String)],
+) -> Element<'a, Message> {
     let mut list = Column::with_capacity(tracks.len()).spacing(2);
+    let mut headings = headings.iter().peekable();
     for (index, track) in tracks.iter().enumerate() {
+        while let Some((_, heading)) = headings.next_if(|(at, _)| *at <= index) {
+            list = list.push(
+                container(text(heading.clone()).size(15).font(SEMIBOLD)).padding(
+                    iced::Padding::new(0.0)
+                        .top(if index == 0 { 0.0 } else { 14.0 })
+                        .bottom(4.0)
+                        .left(8.0),
+                ),
+            );
+        }
         let anchor = format!("{}:{index}", view.key);
         list = list.push(track_row(track, &anchor, view, style, move || {
             Message::Play(PlayRequest::from(tracks, index, source))

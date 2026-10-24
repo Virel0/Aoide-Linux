@@ -25,7 +25,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Home: resume grid (last 6 contexts, "Pick up from {device}") | 2 | ⬜ | |
 | Home: shelves (most played, recently added/played/released, random albums, genres) | 1 | ✅ | Recently added, recently played and most played (the last two as the albums of the tracks), recently released, random albums, and a random dozen genres as chips. A shelf with nothing on it is left out. Seen in the app against the stand-in server |
 | Home: Discover tile (`/aoide/discover`) | 2 | ⬜ | New: the Electron app has no Discover |
-| Albums list and album detail (with finish rate) | 1 | 🟨 | Grid loaded a page at a time, sortable (title, artist, recently added, release date); detail with cover, artist, year, Play, Shuffle, tracks. Finish rate not yet |
+| Albums list and album detail (with finish rate) | 1 | 🟨 | Grid loaded a page at a time, sortable (title, artist, recently added, release date); detail with cover, artist, year, Play, Shuffle, tracks in disc and track order with "Disc 1", "Disc 2" headings on a multi-disc album (seen against the stand-in server). Finish rate not yet |
 | Album artists, artists, artist detail (discography, top songs, finish rate) | 1 | 🟨 | Album artists as a grid; an artist's albums. Top songs and finish rate not yet |
 | Genres list and detail | 1 | ✅ | A genre's albums through `ListQuery::genre_ids` (Jellyfin `genreIds`). Seen in the app against the stand-in server |
 | Songs list | 1 | ✅ | |
