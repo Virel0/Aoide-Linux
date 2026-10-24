@@ -1,0 +1,257 @@
+//! The queue, the crossfade planner and the transport rules, on top of the
+//! engine.
+//!
+//! The player has no thread of its own. The application forwards every
+//! [`EngineEvent`] it receives to [`Player::handle`], which is how the queue
+//! learns that a track boundary has been heard and the next track gets
+//! chained. Everything else returns at once.
+
+use crate::decode::MediaSource;
+use crate::engine::{EngineEvent, EngineHandle, Transport};
+use crate::error::Result;
+use crate::mix::{MixTrack, MixTransition, plan_transition};
+use crate::pipeline::TrackSpec;
+use crate::queue::{AdvanceOutcome, EntryId, PlayQueue, QueueEntry};
+
+/// Pressing previous within this much of the start goes to the previous
+/// track; later, it restarts the current one. Matches the iOS app.
+pub const RESTART_THRESHOLD_MS: u64 = 3_000;
+
+/// One playable track and what the planner knows about it.
+#[derive(Clone, Debug)]
+pub struct PlayerTrack {
+    pub source: MediaSource,
+    /// Album, track number, length, sound bounds and tempo, for the planner;
+    /// its `sound` is also what the engine plays.
+    pub mix: MixTrack,
+    /// Loudness levelling, from [`crate::loudness::gain_db`].
+    pub gain_db: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PlayerSettings {
+    /// The Crossfade toggle, off by default.
+    pub crossfade: bool,
+    /// Keep album runs gapless whatever Crossfade says.
+    pub album_lock: bool,
+}
+
+impl Default for PlayerSettings {
+    fn default() -> Self {
+        Self {
+            crossfade: false,
+            album_lock: true,
+        }
+    }
+}
+
+pub struct Player {
+    engine: EngineHandle,
+    queue: PlayQueue<PlayerTrack>,
+    settings: PlayerSettings,
+    /// What has been handed to the engine to follow the current track.
+    planned: Option<(EntryId, MixTransition)>,
+    failures: usize,
+}
+
+impl Player {
+    pub fn new(engine: EngineHandle) -> Self {
+        Self {
+            engine,
+            queue: PlayQueue::new(),
+            settings: PlayerSettings::default(),
+            planned: None,
+            failures: 0,
+        }
+    }
+
+    pub fn engine(&self) -> &EngineHandle {
+        &self.engine
+    }
+
+    pub fn queue(&self) -> &PlayQueue<PlayerTrack> {
+        &self.queue
+    }
+
+    /// Edits the queue (play next, play last, shuffle, remove, reorder...),
+    /// then re-plans what follows the current track.
+    pub fn edit_queue(&mut self, edit: impl FnOnce(&mut PlayQueue<PlayerTrack>)) -> Result<()> {
+        let before = self.queue.current().map(|entry| entry.id);
+        edit(&mut self.queue);
+        if self.queue.current().map(|entry| entry.id) != before {
+            return self.start_current(true);
+        }
+        self.replan()
+    }
+
+    pub fn settings(&self) -> PlayerSettings {
+        self.settings
+    }
+
+    pub fn set_settings(&mut self, settings: PlayerSettings) -> Result<()> {
+        self.settings = settings;
+        self.replan()
+    }
+
+    /// Replaces the queue with `tracks` and plays from `index`.
+    pub fn play_tracks(
+        &mut self,
+        tracks: Vec<PlayerTrack>,
+        index: usize,
+        shuffled: bool,
+    ) -> Result<()> {
+        self.queue.load(tracks, index, shuffled);
+        self.failures = 0;
+        self.start_current(true)
+    }
+
+    pub fn play(&mut self) -> Result<()> {
+        match self.engine.transport() {
+            Transport::Stopped if self.queue.current().is_some() => self.start_current(true),
+            _ => self.engine.play(),
+        }
+    }
+
+    pub fn pause(&mut self) -> Result<()> {
+        self.engine.pause()
+    }
+
+    pub fn stop(&mut self) -> Result<()> {
+        self.planned = None;
+        self.engine.stop()
+    }
+
+    pub fn set_volume(&mut self, volume: f32) -> Result<()> {
+        self.engine.set_volume(volume)
+    }
+
+    /// The heard position in the current track, in milliseconds into the file.
+    pub fn position_ms(&self) -> u64 {
+        self.engine.position_ms()
+    }
+
+    pub fn seek(&mut self, ms: u64) -> Result<()> {
+        let Some(entry) = self.queue.current().cloned() else {
+            return Ok(());
+        };
+        let playing = self.engine.transport() == Transport::Playing;
+        self.engine.load(spec(&entry), ms, playing)?;
+        self.planned = None;
+        self.replan()
+    }
+
+    pub fn next_track(&mut self) -> Result<()> {
+        match self.queue.skip_to_next() {
+            AdvanceOutcome::Ended => Ok(()),
+            _ => self.start_current(true),
+        }
+    }
+
+    /// Restarts the current track when more than a few seconds in, and goes
+    /// back one otherwise (restarting the first track, which has nothing
+    /// before it).
+    pub fn previous_track(&mut self) -> Result<()> {
+        if self.position_ms() > RESTART_THRESHOLD_MS {
+            return self.seek(0);
+        }
+        match self.queue.skip_to_previous() {
+            AdvanceOutcome::Ended => self.seek(0),
+            _ => self.start_current(true),
+        }
+    }
+
+    pub fn jump(&mut self, entry: EntryId) -> Result<()> {
+        if self.queue.jump(entry) {
+            self.start_current(true)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Feeds an engine event to the queue. Call it for every event.
+    pub fn handle(&mut self, event: &EngineEvent) -> Result<()> {
+        match event {
+            EngineEvent::TrackStarted { id } => {
+                if self.queue.current().is_some_and(|entry| entry.id == *id)
+                    && self.planned.is_none_or(|(planned, _)| planned != *id)
+                {
+                    return Ok(());
+                }
+                if self.planned.is_some_and(|(planned, _)| planned == *id) {
+                    self.queue.advance_automatically();
+                } else if !self.queue.jump(*id) {
+                    return Ok(());
+                }
+                self.failures = 0;
+                self.planned = None;
+                self.replan()
+            }
+            EngineEvent::Error { .. } => {
+                self.failures += 1;
+                Ok(())
+            }
+            EngineEvent::Finished => {
+                // The chain did not carry on: the next track was not ready in
+                // time, or the current one failed. Move on, but not round and
+                // round a queue where nothing plays.
+                self.planned = None;
+                if self.failures > self.queue.entries().len() {
+                    return Ok(());
+                }
+                match self.queue.advance_automatically() {
+                    AdvanceOutcome::Ended => Ok(()),
+                    _ => self.start_current(true),
+                }
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn start_current(&mut self, play: bool) -> Result<()> {
+        self.planned = None;
+        let Some(entry) = self.queue.current().cloned() else {
+            return self.engine.stop();
+        };
+        self.engine.load(spec(&entry), 0, play)?;
+        self.replan()
+    }
+
+    /// Tells the engine what follows the current track, and how.
+    fn replan(&mut self) -> Result<()> {
+        let window = self.queue.render_window(2);
+        let (Some(current), Some(next)) = (window.first(), window.get(1)) else {
+            if self.planned.take().is_some() {
+                self.engine.set_next(None)?;
+            }
+            return Ok(());
+        };
+        let transition = plan_transition(
+            &current.track.mix,
+            &next.track.mix,
+            self.settings.crossfade,
+            self.settings.album_lock,
+        );
+        if self.planned == Some((next.entry_id, transition)) {
+            return Ok(());
+        }
+        let entry = QueueEntry {
+            id: next.entry_id,
+            track: next.track.clone(),
+            is_manual: false,
+        };
+        self.engine.set_next(Some((spec(&entry), transition)))?;
+        self.planned = Some((next.entry_id, transition));
+        Ok(())
+    }
+
+    /// What has been planned after the current track.
+    pub fn planned(&self) -> Option<(EntryId, MixTransition)> {
+        self.planned
+    }
+}
+
+fn spec(entry: &QueueEntry<PlayerTrack>) -> TrackSpec {
+    TrackSpec::new(entry.id, entry.track.source.clone())
+        .with_bounds(entry.track.mix.sound)
+        .with_gain_db(entry.track.gain_db)
+}
