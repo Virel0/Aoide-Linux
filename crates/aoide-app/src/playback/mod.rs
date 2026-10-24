@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 
 use aoide_audio::{
     EngineEvent, EntryId, Output, PlayQueue, Player, PlayerSettings, PlayerTrack, RepeatMode,
-    Transport,
+    SoundBounds, Transport,
 };
 use aoide_store::PlaySource;
 use iced::Subscription;
@@ -116,6 +116,21 @@ impl Playback {
             next_key: 0,
             position_ms: 0,
             volume,
+        }
+    }
+
+    /// A player on an engine the caller renders, for tests.
+    #[cfg(test)]
+    pub fn on_engine(handle: aoide_audio::EngineHandle) -> Self {
+        Self {
+            _output: None,
+            player: Some(Player::new(handle)),
+            events: None,
+            unavailable: None,
+            meta: HashMap::new(),
+            next_key: 0,
+            position_ms: 0,
+            volume: 1.0,
         }
     }
 
@@ -222,6 +237,53 @@ impl Playback {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Every queued Jellyfin id, in queue order, each once.
+    pub fn queued_ids(&self) -> Vec<String> {
+        let mut seen = HashSet::new();
+        self.queue()
+            .map(|q| {
+                q.entries()
+                    .iter()
+                    .filter_map(|e| self.meta.get(&e.track.key))
+                    .map(|m| m.meta.id.clone())
+                    .filter(|id| seen.insert(id.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Hands late measurements to the queued entries of these tracks:
+    /// `measured` says what a track should now play with.
+    pub fn apply_measurements(
+        &mut self,
+        ids: &HashSet<String>,
+        measured: impl Fn(&str) -> (Option<SoundBounds>, Option<f64>),
+    ) -> Result<(), String> {
+        let Some(player) = self.player.as_mut() else {
+            return Ok(());
+        };
+        let changes: Vec<(EntryId, Option<SoundBounds>, Option<f64>)> = player
+            .queue()
+            .entries()
+            .iter()
+            .filter_map(|e| {
+                let id = &self.meta.get(&e.track.key)?.meta.id;
+                if !ids.contains(id) {
+                    return None;
+                }
+                let (sound, gain) = measured(id);
+                let unchanged = e.track.mix.sound == sound && e.track.gain_db == gain;
+                (!unchanged).then_some((e.id, sound, gain))
+            })
+            .collect();
+        for (entry, sound, gain) in changes {
+            player
+                .set_measurements(entry, sound, gain)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// Puts built tracks in the queue.
@@ -585,6 +647,61 @@ mod tests {
             assert!(entry.track.key.starts_with(&format!("{}#", queued.meta.id)));
         }
         assert_eq!(queue.entries().len(), 7);
+    }
+
+    #[test]
+    fn late_measurements_reach_every_queued_copy_of_their_tracks_only() {
+        let (_engine, handle, _events) = aoide_audio::Engine::new(aoide_audio::EngineConfig {
+            sample_rate: 48_000,
+            channels: 2,
+            decode: aoide_audio::DecodeMode::Inline,
+        });
+        let mut playback = Playback::on_engine(handle);
+        playback
+            .enqueue(
+                ["a", "b", "a", "c"].map(built).to_vec(),
+                Enqueue::Replace {
+                    start: 0,
+                    shuffle: false,
+                },
+                PlaySource::Album,
+                &HashMap::new(),
+            )
+            .unwrap();
+        assert_eq!(playback.queued_ids(), ["a", "b", "c"]);
+        let bounds = Some(SoundBounds::new(300, 9_000));
+        let ids = HashSet::from(["a".to_owned(), "c".to_owned()]);
+        playback
+            .apply_measurements(&ids, |id| {
+                if id == "a" {
+                    (bounds, Some(-3.0))
+                } else {
+                    (None, None)
+                }
+            })
+            .unwrap();
+        let heard: Vec<(String, Option<SoundBounds>, Option<f64>)> = playback
+            .queue()
+            .unwrap()
+            .entries()
+            .iter()
+            .map(|e| {
+                (
+                    playback.queued(e.id).unwrap().meta.id.clone(),
+                    e.track.mix.sound,
+                    e.track.gain_db,
+                )
+            })
+            .collect();
+        assert_eq!(
+            heard,
+            [
+                ("a".into(), bounds, Some(-3.0)),
+                ("b".into(), None, None),
+                ("a".into(), bounds, Some(-3.0)),
+                ("c".into(), None, None),
+            ]
+        );
     }
 
     #[test]

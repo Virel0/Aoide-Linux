@@ -9,7 +9,7 @@
 use crate::decode::MediaSource;
 use crate::engine::{EngineEvent, EngineHandle, Transport};
 use crate::error::Result;
-use crate::mix::{MixTrack, MixTransition, plan_transition};
+use crate::mix::{MixTrack, MixTransition, SoundBounds, plan_transition};
 use crate::pipeline::TrackSpec;
 use crate::queue::{AdvanceOutcome, EntryId, PlayQueue, QueueEntry};
 
@@ -179,6 +179,34 @@ impl Player {
             AdvanceOutcome::Ended => self.seek(0),
             _ => self.start_current(true),
         }
+    }
+
+    /// Sets an entry's sound bounds (Skip silence) and loudness gain after it
+    /// was queued, for measurements that arrive late. If it is the track
+    /// planned next, or the current one (whose end decides the handover),
+    /// what follows is planned again. The current track itself keeps what it
+    /// was loaded with until it is loaded again, by a seek or a repeat, so
+    /// nothing audible jumps. Returns whether the entry is queued.
+    pub fn set_measurements(
+        &mut self,
+        entry: EntryId,
+        sound: Option<SoundBounds>,
+        gain_db: Option<f64>,
+    ) -> Result<bool> {
+        let found = self.queue.edit_track(entry, |track| {
+            track.mix.sound = sound;
+            track.gain_db = gain_db;
+        });
+        if !found {
+            return Ok(false);
+        }
+        let current = self.queue.current().map(|entry| entry.id);
+        let planned = self.planned.map(|(id, _)| id);
+        if current == Some(entry) || planned == Some(entry) {
+            self.planned = None;
+            self.replan()?;
+        }
+        Ok(true)
     }
 
     /// The entry holding the track with this key.

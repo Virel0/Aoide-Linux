@@ -2,7 +2,7 @@
 //! it owns — the audio output and player, the store thread, the artwork
 //! cache and the sync loop.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -100,6 +100,10 @@ pub(crate) struct Signed {
     pub play_generation: u64,
     /// The sidecar measures tracks (false after a 404 on both endpoints).
     pub measures_available: bool,
+    /// A batch of the queue is being measured.
+    pub measuring: bool,
+    /// Tracks already asked about for the queue this session.
+    pub measure_asked: HashSet<String>,
     /// The sidecar answers `/aoide/next` (false after a 404).
     pub next_available: bool,
     pub reporter: Reporter,
@@ -120,7 +124,9 @@ pub enum Message {
     Restored(Result<Option<Connection>, String>),
     SignedIn(Result<Connection, String>),
     Claimed(Result<AccountClaim, String>),
-    ResolveOwner { keep: bool },
+    ResolveOwner {
+        keep: bool,
+    },
     SignOut,
     TokenRejected,
     Synced(Result<SyncReport, String>),
@@ -135,6 +141,8 @@ pub enum Message {
     Favourited(String, Result<bool, String>),
     Play(PlayRequest),
     Measured(Box<(Pending, Measured)>),
+    /// A batch of the queue, measured after it was queued.
+    QueueMeasured(Box<Measured>),
     Restore(Box<Pending>),
     ToppedUp(Box<TopUp>),
     Player(Transport),
@@ -411,6 +419,7 @@ impl App {
                 let (pending, measured) = *measured;
                 self.measured(pending, measured)
             }
+            Message::QueueMeasured(measured) => self.queue_measured(*measured),
             Message::Restore(pending) => self.measure_then_queue(*pending),
             Message::ToppedUp(found) => self.topped_up(*found),
             Message::Player(control) => self.transport(control),
@@ -473,6 +482,8 @@ impl App {
             scrub: None,
             play_generation: 0,
             measures_available: true,
+            measuring: false,
+            measure_asked: HashSet::new(),
             next_available: true,
             reporter: Reporter::default(),
             infinity: InfinityTrigger::default(),

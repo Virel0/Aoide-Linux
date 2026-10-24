@@ -52,9 +52,9 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Gapless joins, sample-exact | 1 | 🟨 | What Electron called "Exact joins (experimental)", here always on. Sample-exact for WAV, AIFF, FLAC, ALAC; MP3 (LAME tag) and Vorbis join with no gap. AAC does not: symphonia keeps the priming and padding, 64 ms between Apple-encoded M4A tracks, 21 ms between Jellyfin's AAC transcodes |
 | Crossfade (per-pair plan, 8 s / 4 s by tempo, parity table) | 1 | 🟨 | Setting wired to the player; not yet heard across a real pair |
 | Keep albums whole | 1 | 🟨 | Setting wired to the player; not yet heard across a real pair |
-| Level volume: −18 LUFS, only turn down, peak ≤ 0 dBFS | 1 | 🟨 | From `/aoide/audio-analysis`, fetched (two-second wait at most, 200 ahead) before tracks are queued; not yet run against a real sidecar |
+| Level volume: −18 LUFS, only turn down, peak ≤ 0 dBFS | 1 | 🟨 | From `/aoide/audio-analysis`, fetched (two-second wait at most, 200 ahead) before tracks are queued; the rest of the queue is measured afterwards in batches of 200 as it grows and applied to the queued tracks. Not yet run against a real sidecar |
 | ReplayGain tags (album preferred) | 2 | ⬜ | |
-| Skip silence (`/aoide/sound-bounds`, ignore < 300 ms) | 1 | 🟨 | From `/aoide/sound-bounds`, fetched with the loudness; not yet run against a real sidecar |
+| Skip silence (`/aoide/sound-bounds`, ignore < 300 ms) | 1 | 🟨 | From `/aoide/sound-bounds`, fetched with the loudness, late batches included; not yet run against a real sidecar |
 | Output device picker | 2 | ⬜ | Following the default device is done: a failed stream reopens on the (new) default and plays on from the heard position, queue intact |
 | Equalizer (parametric, presets, preamp) | 3 | ⬜ | |
 | Compressor (threshold, ratio, attack, release, makeup, knee) | 3 | ⬜ | |

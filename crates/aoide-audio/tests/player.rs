@@ -5,8 +5,8 @@ mod common;
 use std::sync::mpsc::Receiver;
 
 use aoide_audio::{
-    Engine, EngineEvent, MediaSource, MixTrack, MixTransition, Player, PlayerSettings, PlayerTrack,
-    Transport,
+    Engine, EngineEvent, EntryId, MediaSource, MixTrack, MixTransition, Player, PlayerSettings,
+    PlayerTrack, SoundBounds, Transport,
 };
 use common::*;
 
@@ -281,5 +281,53 @@ fn a_queue_loads_held_at_a_position_and_plays_on_from_there() {
         (590..=610).contains(&rig.player.position_ms()),
         "at {} ms",
         rig.player.position_ms()
+    );
+}
+
+#[test]
+fn measurements_that_arrive_late_reach_the_next_track() {
+    let (mut rig, tracks) = Rig::new(true);
+    rig.player.play_tracks(tracks, 0, false).unwrap();
+    rig.run(4_800);
+    let entries: Vec<EntryId> = rig.player.queue().entries().iter().map(|e| e.id).collect();
+
+    // The second track turns out to have half a second of silence at the
+    // top and to need turning down.
+    let bounds = Some(SoundBounds::new(500, 1_000));
+    assert!(
+        rig.player
+            .set_measurements(entries[1], bounds, Some(-6.0))
+            .unwrap()
+    );
+    let second = &rig.player.queue().entries()[1].track;
+    assert_eq!(second.mix.sound, bounds);
+    assert_eq!(second.gain_db, Some(-6.0));
+    assert_eq!(rig.player.planned().map(|(id, _)| id), Some(entries[1]));
+
+    // Through to the join: the second track is heard from 0.5 s, quieter.
+    let rest = RATE as usize - 4_800;
+    let out = rig.run(rest + RATE as usize / 4);
+    let first = to_f32(&ramp(4_800, rest, 2));
+    assert_eq!(
+        &out[..first.len()],
+        &first[..],
+        "the current track is untouched"
+    );
+    let gain = 10f32.powf(-6.0 / 20.0);
+    let joined = &out[first.len()..first.len() + 200];
+    let want = to_f32(&ramp(RATE as u64 + 500 * 48, 100, 2));
+    for (heard, plain) in joined.iter().zip(&want) {
+        assert!(
+            (heard - plain * gain).abs() < 1e-4,
+            "{heard} vs {}",
+            plain * gain
+        );
+    }
+    assert_eq!(rig.current(), 1);
+
+    assert!(
+        !rig.player
+            .set_measurements(EntryId(u64::MAX), None, None)
+            .unwrap()
     );
 }
