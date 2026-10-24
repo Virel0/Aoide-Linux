@@ -1,3 +1,4 @@
+use std::sync::Once;
 use std::time::Duration;
 
 use reqwest::Method;
@@ -12,6 +13,16 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// How long a response may go silent. An idle timeout rather than a total one, so a
 /// slow server sending a big page isn't cut off mid-way.
 const READ_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// rustls with the ring provider: reqwest is built without one, so a client
+/// can't be made until one is installed. An application that installed its own
+/// first keeps it.
+fn install_crypto() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
 
 /// One Jellyfin server, optionally signed in.
 ///
@@ -29,6 +40,7 @@ pub struct JellyfinClient {
 impl JellyfinClient {
     /// A signed-out client. Fails only if the TLS backend can't initialise.
     pub fn new(address: ServerAddress, device: Device) -> Result<Self> {
+        install_crypto();
         let http = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .read_timeout(READ_TIMEOUT)
