@@ -12,6 +12,7 @@ mod integration;
 mod library;
 mod nav;
 mod playback;
+mod screens;
 mod session;
 mod store_worker;
 mod sync;
