@@ -111,6 +111,21 @@ impl Player {
         self.start_current(true)
     }
 
+    /// Replaces the queue with `tracks` and holds at `index`, `start_ms` into
+    /// it, paused: nothing sounds until [`Player::play`]. What follows is
+    /// planned as usual. For putting back a queue saved at the last quit.
+    pub fn load_tracks(
+        &mut self,
+        tracks: Vec<PlayerTrack>,
+        index: usize,
+        shuffled: bool,
+        start_ms: u64,
+    ) -> Result<()> {
+        self.queue.load(tracks, index, shuffled);
+        self.failures = 0;
+        self.load_current(start_ms, false)
+    }
+
     pub fn play(&mut self) -> Result<()> {
         match self.engine.transport() {
             Transport::Stopped if self.queue.current().is_some() => self.start_current(true),
@@ -222,11 +237,15 @@ impl Player {
     }
 
     fn start_current(&mut self, play: bool) -> Result<()> {
+        self.load_current(0, play)
+    }
+
+    fn load_current(&mut self, start_ms: u64, play: bool) -> Result<()> {
         self.planned = None;
         let Some(entry) = self.queue.current().cloned() else {
             return self.engine.stop();
         };
-        self.engine.load(spec(&entry), 0, play)?;
+        self.engine.load(spec(&entry), start_ms, play)?;
         self.replan()
     }
 

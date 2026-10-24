@@ -263,23 +263,21 @@ impl Playback {
         if built.is_empty() {
             return Ok(());
         }
-        self.enqueue(
+        self.player_mut()?;
+        let tracks = keyed(
+            &mut self.next_key,
+            &mut self.meta,
             built,
-            Enqueue::Replace {
-                start: position,
-                shuffle: false,
-            },
             PlaySource::Unknown,
             &HashMap::new(),
-        )?;
-        let player = self.player_mut()?;
-        // `play_tracks` starts at once; the seek reloads held, at the saved
-        // position, and the pause makes sure of it. The engine applies the
-        // three together at its next render, so nothing is heard.
-        player.seek(elapsed_ms).map_err(|e| e.to_string())?;
-        player.pause().map_err(|e| e.to_string())?;
+        );
+        let Some(player) = self.player.as_mut() else {
+            return Ok(());
+        };
+        let result = player.load_tracks(tracks, position, false, elapsed_ms);
         self.position_ms = elapsed_ms;
-        Ok(())
+        self.prune();
+        result.map_err(|e| e.to_string())
     }
 
     /// Feeds an engine event to the player. Call it for every event.

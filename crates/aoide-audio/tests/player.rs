@@ -255,3 +255,31 @@ fn keys_follow_their_tracks_through_every_edit() {
     assert_eq!(rig.player.entry_by_key(key).unwrap().id, playing);
     assert!(rig.player.entry_by_key("nothing").is_none());
 }
+
+#[test]
+fn a_queue_loads_held_at_a_position_and_plays_on_from_there() {
+    let (mut rig, tracks) = Rig::new(true);
+    rig.player.load_tracks(tracks, 1, false, 500).unwrap();
+    let held = rig.run(4_800);
+    assert_eq!(rig.engine.transport(), Transport::Paused);
+    assert!(held.iter().all(|s| *s == 0.0), "nothing sounds while held");
+    assert_eq!(rig.current(), 1);
+    assert_eq!(
+        rig.player.planned().map(|(_, t)| t),
+        Some(MixTransition::Gapless),
+        "what follows is planned"
+    );
+
+    rig.player.play().unwrap();
+    // Faded in for 10 ms, then the ramp from half a second into track 2.
+    let out = rig.run(RATE as usize / 10);
+    let from = RATE as u64 + 500 * 48;
+    let want = to_f32(&ramp(from, RATE as usize / 10, 2));
+    assert_eq!(&out[960..], &want[960..out.len()]);
+    assert_eq!(rig.engine.transport(), Transport::Playing);
+    assert!(
+        (590..=610).contains(&rig.player.position_ms()),
+        "at {} ms",
+        rig.player.position_ms()
+    );
+}
