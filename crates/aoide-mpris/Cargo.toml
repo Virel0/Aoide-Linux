@@ -1,0 +1,26 @@
+[package]
+name = "aoide-mpris"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", default-features = false, features = ["sync"] }
+
+# D-Bus exists only on Linux. zbus is pure Rust (no libdbus), and its `tokio`
+# feature makes it run on the app's tokio runtime instead of its own executor.
+[target.'cfg(target_os = "linux")'.dependencies]
+tokio = { version = "1.54.1", default-features = false, features = ["sync", "time"] }
+zbus = { version = "5.19", default-features = false, features = ["tokio"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+futures-util = { version = "0.3.34", default-features = false }
+serde = "1.0.229"
