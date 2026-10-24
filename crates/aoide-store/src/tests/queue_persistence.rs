@@ -47,11 +47,17 @@ fn device_ids(queues: &[QueueState]) -> Vec<&str> {
 fn a_saved_queue_comes_back_whole() {
     let store = store();
     store
-        .save_queue("Alex's iPhone", &tracks(&["a", "b", "c"]), 1, 42_000, 1_000)
+        .save_queue(
+            "Someone's iPhone",
+            &tracks(&["a", "b", "c"]),
+            1,
+            42_000,
+            1_000,
+        )
         .unwrap();
     let restored = local(&store);
     assert_eq!(restored.device_id, "phone");
-    assert_eq!(restored.device_name, "Alex's iPhone");
+    assert_eq!(restored.device_name, "Someone's iPhone");
     assert_eq!(restored.track_id_list(), ["a", "b", "c"]);
     assert_eq!(restored.position, 1);
     assert_eq!(restored.elapsed_ms, 42_000);
