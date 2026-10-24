@@ -334,6 +334,51 @@ async fn album_pages_carry_paging_sorting_and_scope() {
 }
 
 #[tokio::test]
+async fn albums_can_be_filtered_by_genre() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("includeItemTypes", "MusicAlbum"))
+        .and(query_param("genreIds", "g1,g2"))
+        .and(query_param("parentId", "lib1"))
+        .and(query_param("sortBy", "AlbumArtist,SortName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![item(
+            "al1",
+            "Blue",
+            "MusicAlbum",
+        )])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // Without genres the filter is not sent at all.
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(|request: &Request| query_value(request, "genreIds").is_none())
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![])))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    let query = ListQuery {
+        parent_id: Some("lib1".into()),
+        genre_ids: vec!["g1".into(), "g2".into()],
+        sort: Sort::Artist,
+        ..ListQuery::default()
+    };
+    let albums = client.albums(&query).await.unwrap();
+    assert_eq!(albums.items[0].name, "Blue");
+    assert!(
+        client
+            .albums(&ListQuery::default())
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn each_list_goes_to_its_own_endpoint() {
     let server = MockServer::start().await;
     for (route, kind) in [

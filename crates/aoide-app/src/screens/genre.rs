@@ -1,12 +1,12 @@
 //! A genre: its albums.
 
-use aoide_jellyfin::Item;
+use aoide_jellyfin::{Item, ListQuery, Sort};
 use iced::widget::column;
 use iced::{Element, Task};
 
 use super::{Ctx, Load, PageMsg, View, fetch};
 use crate::app::Message as App;
-use crate::library::{self, Tile};
+use crate::library::Tile;
 use crate::widgets;
 
 #[derive(Debug)]
@@ -22,11 +22,15 @@ pub enum Message {
 
 pub fn open(ctx: &Ctx<'_>, id: &str, name: &str) -> (State, Task<App>) {
     let client = ctx.client.clone();
-    let id = id.to_owned();
-    let library = ctx.library.map(str::to_owned);
+    let query = ListQuery {
+        parent_id: ctx.library.map(str::to_owned),
+        genre_ids: vec![id.to_owned()],
+        sort: Sort::Artist,
+        ..ListQuery::default()
+    };
     let task = fetch(
         ctx.key,
-        async move { library::genre_albums(&client, &id, library.as_deref()).await },
+        async move { client.albums(&query).await.map(|page| page.items) },
         |r| PageMsg::Genre(Message::Albums(r)),
     );
     (

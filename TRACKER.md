@@ -27,7 +27,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Home: Discover tile (`/aoide/discover`) | 2 | ⬜ | New: the Electron app has no Discover |
 | Albums list and album detail (with finish rate) | 1 | 🟨 | Grid loaded a page at a time, sortable (title, artist, recently added, release date); detail with cover, artist, year, Play, Shuffle, tracks. Finish rate not yet |
 | Album artists, artists, artist detail (discography, top songs, finish rate) | 1 | 🟨 | Album artists as a grid; an artist's albums. Top songs and finish rate not yet |
-| Genres list and detail | 1 | ✅ | A genre's albums need a `genreIds` filter aoide-jellyfin lacks; the app makes that request itself for now (`library.rs`) |
+| Genres list and detail | 1 | ✅ | A genre's albums through `ListQuery::genre_ids` (Jellyfin `genreIds`). Seen in the app against the stand-in server |
 | Songs list | 1 | ✅ | |
 | Favourites | 2 | ⬜ | |
 | Collections (saved filters) | 3 | ⬜ | |
