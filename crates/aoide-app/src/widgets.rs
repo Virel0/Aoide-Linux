@@ -17,15 +17,30 @@ use crate::playback::tracks::TrackMeta;
 use crate::screens::{Route, View};
 use crate::theme;
 
+/// Inter, bundled (`fonts/`, under the SIL Open Font License), so text looks
+/// the same on every desktop rather than whatever the system's sans-serif
+/// fallback is: on macOS that left bold headings in a monospace face.
+pub const FAMILY: &str = "Inter";
+
+/// Every text not given another font.
+pub const REGULAR: Font = Font::with_name(FAMILY);
+
 pub const BOLD: Font = Font {
     weight: font::Weight::Bold,
-    ..Font::DEFAULT
+    ..REGULAR
 };
 
+/// Inter is bundled in Regular and Bold only; this one is drawn in Bold.
 pub const SEMIBOLD: Font = Font {
     weight: font::Weight::Semibold,
-    ..Font::DEFAULT
+    ..REGULAR
 };
+
+/// The font files, loaded before the window opens.
+pub const FONTS: [&[u8]; 2] = [
+    include_bytes!("../fonts/Inter-Regular.ttf"),
+    include_bytes!("../fonts/Inter-Bold.ttf"),
+];
 
 /// `3:05`, or `1:02:03` past an hour.
 pub fn duration(ms: u64) -> String {

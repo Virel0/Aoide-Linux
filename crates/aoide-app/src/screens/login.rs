@@ -1,7 +1,7 @@
 //! The sign-in screen: server address, username, password, Connect.
 
 use iced::widget::{button, column, container, text, text_input};
-use iced::{Center, Element, Fill, Font, Length, font};
+use iced::{Center, Element, Fill, Length};
 
 use crate::session::SignInForm;
 use crate::theme;
@@ -88,10 +88,7 @@ impl State {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let bold = Font {
-            weight: font::Weight::Bold,
-            ..Font::DEFAULT
-        };
+        let bold = crate::widgets::BOLD;
         let label = |s: &'static str| {
             text(s).size(13).style(|t| text::Style {
                 color: Some(theme::secondary(t)),

@@ -73,6 +73,9 @@ fn main() -> iced::Result {
         App::update,
         App::view,
     )
+    .font(widgets::FONTS[0])
+    .font(widgets::FONTS[1])
+    .default_font(widgets::REGULAR)
     .title(App::title)
     .theme(App::theme)
     .subscription(App::subscription)

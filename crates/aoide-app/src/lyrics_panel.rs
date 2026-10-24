@@ -48,7 +48,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             .font(if is_lit {
                 widgets::BOLD
             } else {
-                iced::Font::DEFAULT
+                widgets::REGULAR
             })
             .style(move |t| text::Style {
                 color: Some(if is_lit {
