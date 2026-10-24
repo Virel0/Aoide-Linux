@@ -5,6 +5,7 @@ use iced::widget::{button, column, row, text, text_input};
 use iced::{Center, Element, Fill, Task};
 
 use super::{Ctx, PageMsg, Route, View};
+use crate::actions::{Collection, RowAction};
 use crate::app::Message as App;
 use crate::icons::{Icon, Tone, icon};
 use crate::theme;
@@ -101,12 +102,21 @@ impl State {
                 1 => "1 song".to_owned(),
                 n => format!("{n} songs"),
             };
+            let more = button(icon(Icon::More, 18.0, Tone::Secondary))
+                .style(theme::row)
+                .padding(6)
+                .on_press(App::Row(RowAction::OpenCollection {
+                    anchor: format!("playlist:{}", playlist.id),
+                    collection: Collection::Playlist(playlist.id.clone()),
+                    title: playlist.name.clone(),
+                }));
             list = list.push(
                 button(
                     row![
                         icon(Icon::Playlist, 22.0, Tone::Accent),
                         text(playlist.name.as_str()).size(15).width(Fill),
                         widgets::secondary(count).size(13),
+                        more,
                     ]
                     .spacing(12)
                     .align_y(Center),

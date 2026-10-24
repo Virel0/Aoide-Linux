@@ -24,7 +24,7 @@ use crate::lyrics_panel::LyricsState;
 use crate::nav::BackStack;
 use crate::playback::infinity::{InfinityTrigger, TopUp};
 use crate::playback::report::Reporter;
-use crate::playback::tracks::Measures;
+use crate::playback::tracks::{Measures, TrackMeta};
 use crate::playback::{Enqueue, Playback};
 use crate::playing::{Measured, Pending};
 use crate::queue_panel::QueueAction;
@@ -808,6 +808,66 @@ impl App {
                     |(id, flags)| Message::Row(RowAction::FlagsLoaded(id, flags)),
                 )
             }
+            RowAction::OpenCollection {
+                anchor,
+                collection,
+                title,
+            } => {
+                if signed.menu.as_ref().is_some_and(|m| m.anchor == anchor) {
+                    signed.menu = None;
+                    return Task::none();
+                }
+                signed.menu = Some(Menu::for_collection(
+                    anchor.clone(),
+                    collection.clone(),
+                    title,
+                ));
+                let client = signed.connection.client.clone();
+                Task::perform(
+                    crate::actions::collection_tracks(client, store, collection),
+                    move |result| match result {
+                        Err(crate::actions::Failure::Server(
+                            aoide_jellyfin::Error::Unauthorized,
+                        )) => Message::TokenRejected,
+                        result => Message::Row(RowAction::CollectionTracks(
+                            anchor.clone(),
+                            result
+                                .map(|items| items.iter().map(TrackMeta::from_item).collect())
+                                .map_err(|failure| match failure {
+                                    crate::actions::Failure::Server(e) => session::describe(&e),
+                                    crate::actions::Failure::Store(e) => e,
+                                }),
+                        )),
+                    },
+                )
+            }
+            RowAction::CollectionTracks(anchor, result) => {
+                if let Some(menu) = signed.menu.as_mut().filter(|m| m.anchor == anchor) {
+                    menu.loading = false;
+                    match result {
+                        Ok(tracks) if tracks.is_empty() => {
+                            menu.error = Some("There are no songs here.".to_owned());
+                        }
+                        Ok(tracks) => menu.tracks = tracks,
+                        Err(error) => menu.error = Some(error),
+                    }
+                }
+                Task::none()
+            }
+            RowAction::Play | RowAction::Shuffle => {
+                let Some(menu) = signed.menu.take() else {
+                    return Task::none();
+                };
+                if menu.tracks.is_empty() {
+                    return Task::none();
+                }
+                let request = if matches!(action, RowAction::Play) {
+                    PlayRequest::from(&menu.tracks, 0, menu.source())
+                } else {
+                    PlayRequest::shuffled(&menu.tracks, aoide_store::PlaySource::Shuffle)
+                };
+                self.play(request)
+            }
             RowAction::FlagsLoaded(id, flags) => {
                 if let Some(menu) = signed.menu.as_mut()
                     && menu.single().is_some_and(|t| t.id == id)
@@ -829,10 +889,11 @@ impl App {
                 } else {
                     Enqueue::Last
                 };
+                let source = menu.source();
                 self.play(PlayRequest {
                     tracks: menu.tracks,
                     how,
-                    source: aoide_store::PlaySource::Unknown,
+                    source,
                 })
             }
             RowAction::ShowPlaylists => {

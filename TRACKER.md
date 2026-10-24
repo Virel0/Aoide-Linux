@@ -38,7 +38,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Full-screen player | 2 | ⬜ | |
 | Player bar: transport, seek, shuffle, repeat, volume, output device | 1 | 🟨 | Transport, seek, shuffle, repeat, volume, Crossfade and Infinity switches. Output device picker is Round 2. Shuffle and repeat buttons not yet clicked through in the app |
 | Sleep timer (end of song, end of album, timed) | 2 | ⬜ | |
-| Context menus on songs, albums, artists, playlists, queue rows | 1 | 🟨 | An action strip under song rows and album/playlist headers: Play Next, Play Last, Add to Playlist, Not Interested, Don't Count Plays, Favourite, Go to Album/Artist. Not yet on album tiles, artists or playlists; queue rows have their own buttons |
+| Context menus on songs, albums, artists, playlists, queue rows | 1 | ✅ | An action strip under song rows and album/playlist headers: Play Next, Play Last, Add to Playlist, Not Interested, Don't Count Plays, Favourite, Go to Album/Artist. Album and artist tiles (their `…`, or a right click) and Aoide playlist rows open the same actions with Play and Shuffle over the window, fetching the songs first. Queue rows have their own buttons. Clicked through against the stand-in server (the right click not tried) |
 | Get info | 3 | ⬜ | |
 | Settings | 1 | ✅ | Exactly the Round 1 rows below, saved in the config file |
 
