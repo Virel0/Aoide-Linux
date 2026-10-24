@@ -110,14 +110,9 @@ pub fn flac_bytes(rate: u32, channels: usize, samples: &[i32]) -> Vec<u8> {
         .expect("flac encode");
     let mut sink = flacenc::bitsink::ByteSink::new();
     stream.write(&mut sink).expect("flac write");
-    let mut bytes = sink.as_slice().to_vec();
-    // flacenc records the short last block as STREAMINFO's minimum block size;
-    // libFLAC records the fixed block size, and symphonia 0.6.1 refuses the
-    // former with an unexpected end of file. Write what libFLAC writes.
-    assert_eq!(&bytes[..4], b"fLaC");
-    let max = [bytes[10], bytes[11]];
-    bytes[8..10].copy_from_slice(&max);
-    bytes
+    // As flacenc writes it: STREAMINFO's minimum block size is the short last
+    // block, which the decoder has to tolerate (see tests/flac.rs).
+    sink.as_slice().to_vec()
 }
 
 pub fn write_flac(path: &Path, rate: u32, channels: usize, samples: &[i32]) {
