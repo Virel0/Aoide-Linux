@@ -1,7 +1,7 @@
 //! The tables the iOS and desktop apps answer, answered here with the same
 //! numbers: `MixTransitionParityTests.swift` / `mix-transition-parity.test.ts`
 //! (31 pairs) and `LoudnessNormalisationTests` / `loudness-parity.test.ts`
-//! (9 inputs), copied row for row. Then the unit tests around them.
+//! (10 inputs), copied row for row. Then the unit tests around them.
 
 use aoide_audio::loudness::{REFERENCE_LUFS, gain_db, linear_gain};
 use aoide_audio::mix::{
@@ -457,7 +457,7 @@ fn plans_the_shared_table_identically() {
 
 #[test]
 fn answers_the_shared_loudness_table_identically() {
-    let table: [(f64, Option<f64>, Option<f64>); 9] = [
+    let table: [(f64, Option<f64>, Option<f64>); 10] = [
         (-9.0, None, Some(-9.0)),
         (-14.0, None, Some(-4.0)),
         (-24.0, None, None),
@@ -467,6 +467,8 @@ fn answers_the_shared_loudness_table_identically() {
         (-6.0, Some(2.0), Some(-12.0)),
         (-30.0, Some(0.5), None),
         (-8.333, None, Some(-9.67)),
+        // -0.125 dB exactly: an exact half, which rounds away from zero.
+        (-17.875, None, Some(-0.13)),
     ];
     for (lufs, peak, expected) in table {
         // Exact, as the desktop's `toBe` is.
