@@ -314,3 +314,27 @@ fn bytes_not_yet_arrived_are_waited_for_briefly() {
     assert_eq!(&piece[..], &body[near as usize..near as usize + 1024]);
     assert_eq!(*seen.lock().unwrap(), vec![None], "one request, no range");
 }
+
+#[test]
+fn the_last_reader_closing_ends_the_download_at_once() {
+    // A body the trickling server takes seconds to send, so the download
+    // thread is certainly still running when the reader goes. The source
+    // must count as closed the moment the reader is dropped, not when the
+    // thread next notices.
+    let body = Arc::new(
+        (0..2 * 1024 * 1024)
+            .map(|i| (i % 251) as u8)
+            .collect::<Vec<u8>>(),
+    );
+    let (url, _) = trickling_server(Arc::clone(&body));
+    let source = HttpSource::new(url);
+    let mut reader = source.open().unwrap();
+    let mut head = [0u8; 16];
+    reader.read_exact(&mut head).unwrap();
+    assert!(source.is_active());
+    assert!(source.downloaded().iter().map(|(a, b)| b - a).sum::<u64>() < body.len() as u64);
+
+    drop(reader);
+    assert!(!source.is_active());
+    assert!(source.downloaded().is_empty());
+}

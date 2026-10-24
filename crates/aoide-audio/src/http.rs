@@ -36,7 +36,15 @@ const CHUNK: usize = 64 * 1024;
 #[derive(Clone)]
 pub struct HttpSource {
     url: Arc<str>,
-    live: Arc<Mutex<Weak<Shared>>>,
+    live: Arc<Mutex<Weak<Lease>>>,
+}
+
+/// What the open readers hold. The download thread holds the shared state
+/// too, but not this, so the download counts as open exactly while a reader
+/// is: the last reader dropping its lease ends it at once, rather than when
+/// the thread next looks up.
+struct Lease {
+    shared: Arc<Shared>,
 }
 
 impl std::fmt::Debug for HttpSource {
@@ -139,34 +147,39 @@ impl HttpSource {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .upgrade()
+            .map(|lease| Arc::clone(&lease.shared))
     }
 
     /// A reader positioned at the start. Starts a download unless one is
     /// running for another open reader, and waits for the response headers.
     pub fn open(&self) -> io::Result<HttpReader> {
-        let shared = {
+        let lease = {
             let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
             match live.upgrade() {
-                Some(shared) => shared,
+                Some(lease) => lease,
                 None => {
-                    let shared = Arc::new(Shared {
-                        url: self.url.to_string(),
-                        state: Mutex::new(State::default()),
-                        changed: Condvar::new(),
+                    let lease = Arc::new(Lease {
+                        shared: Arc::new(Shared {
+                            url: self.url.to_string(),
+                            state: Mutex::new(State::default()),
+                            changed: Condvar::new(),
+                        }),
                     });
-                    *live = Arc::downgrade(&shared);
-                    shared
+                    *live = Arc::downgrade(&lease);
+                    lease
                 }
             }
         };
+        let shared = &lease.shared;
         let mut state = shared.lock();
         if !state.started {
             state.started = true;
             state.file = Some(Arc::new(tempfile::tempfile()?));
-            let shared = Arc::clone(&shared);
+            let shared = Arc::clone(shared);
+            let readers = Arc::downgrade(&lease);
             thread::Builder::new()
                 .name("aoide-http".into())
-                .spawn(move || download(shared))?;
+                .spawn(move || download(shared, readers))?;
         }
 
         let deadline = Instant::now() + READ_TIMEOUT;
@@ -196,7 +209,7 @@ impl HttpSource {
             .ok_or_else(|| io::Error::other("download not started"))?;
         drop(state);
         Ok(HttpReader {
-            shared: Arc::clone(&shared),
+            lease: Arc::clone(&lease),
             file,
             pos: 0,
         })
@@ -238,7 +251,7 @@ impl HttpSource {
 
 /// A `Read + Seek` view of an [`HttpSource`].
 pub struct HttpReader {
-    shared: Arc<Shared>,
+    lease: Arc<Lease>,
     file: Arc<File>,
     pos: u64,
 }
@@ -249,7 +262,7 @@ impl Read for HttpReader {
             return Ok(0);
         }
         let deadline = Instant::now() + READ_TIMEOUT;
-        let mut state = self.shared.lock();
+        let mut state = self.lease.shared.lock();
         let end = loop {
             if let Some(end) = state.available_at(self.pos) {
                 if state.wanted == Some(self.pos) {
@@ -268,7 +281,7 @@ impl Read for HttpReader {
                 return Err(io::Error::other(error.clone()));
             }
             state.wanted = Some(self.pos);
-            self.shared.changed.notify_all();
+            self.lease.shared.changed.notify_all();
             let now = Instant::now();
             if now >= deadline {
                 return Err(io::Error::new(
@@ -277,6 +290,7 @@ impl Read for HttpReader {
                 ));
             }
             state = self
+                .lease
                 .shared
                 .changed
                 .wait_timeout(state, deadline - now)
@@ -296,7 +310,7 @@ impl Seek for HttpReader {
         let target = match to {
             SeekFrom::Start(offset) => Some(offset),
             SeekFrom::Current(delta) => self.pos.checked_add_signed(delta),
-            SeekFrom::End(delta) => match self.shared.lock().total {
+            SeekFrom::End(delta) => match self.lease.shared.lock().total {
                 Some(total) => total.checked_add_signed(delta),
                 None => {
                     return Err(io::Error::new(
@@ -314,11 +328,11 @@ impl Seek for HttpReader {
 
 impl symphonia::core::io::MediaSource for HttpReader {
     fn is_seekable(&self) -> bool {
-        self.shared.lock().total.is_some()
+        self.lease.shared.lock().total.is_some()
     }
 
     fn byte_len(&self) -> Option<u64> {
-        self.shared.lock().total
+        self.lease.shared.lock().total
     }
 }
 
@@ -336,7 +350,7 @@ fn describe(error: reqwest::Error) -> String {
     error.without_url().to_string()
 }
 
-fn download(shared: Arc<Shared>) {
+fn download(shared: Arc<Shared>, readers: Weak<Lease>) {
     install_crypto();
     let client = match reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(15))
@@ -349,10 +363,10 @@ fn download(shared: Arc<Shared>) {
 
     let mut from: u64 = 0;
     loop {
-        if abandoned(&shared) {
+        if abandoned(&readers) {
             return;
         }
-        match run(&shared, &client, from) {
+        match run(&shared, &readers, &client, from) {
             Ok(Next::Restart(at)) => from = at,
             Ok(Next::ReachedEnd) => {
                 let state = shared.lock();
@@ -372,9 +386,9 @@ fn download(shared: Arc<Shared>) {
     }
 }
 
-/// Nobody but the downloader holds the source any more.
-fn abandoned(shared: &Arc<Shared>) -> bool {
-    Arc::strong_count(shared) == 1
+/// No reader holds the source any more.
+fn abandoned(readers: &Weak<Lease>) -> bool {
+    readers.strong_count() == 0
 }
 
 fn fail(shared: &Shared, message: String) {
@@ -392,6 +406,7 @@ enum Next {
 /// from the download to wait for.
 fn run(
     shared: &Arc<Shared>,
+    readers: &Weak<Lease>,
     client: &reqwest::blocking::Client,
     from: u64,
 ) -> Result<Next, String> {
@@ -466,7 +481,7 @@ fn run(
         });
         drop(state);
         shared.changed.notify_all();
-        if abandoned(shared) {
+        if abandoned(readers) {
             return Ok(Next::Abandoned);
         }
         if let Some(wanted) = restart {
