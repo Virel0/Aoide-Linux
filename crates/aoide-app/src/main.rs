@@ -3,6 +3,7 @@
 // Services built ahead of the screens that use them; removed once they are wired.
 #![allow(dead_code)]
 
+mod actions;
 mod app;
 mod artwork;
 mod config;
@@ -10,13 +11,19 @@ mod credentials;
 mod icons;
 mod integration;
 mod library;
+mod lyrics_panel;
 mod nav;
+mod now_playing;
 mod playback;
+mod player_bar;
+mod queue_panel;
 mod screens;
 mod session;
+mod shell;
 mod store_worker;
 mod sync;
 mod theme;
+mod widgets;
 
 use iced::window;
 

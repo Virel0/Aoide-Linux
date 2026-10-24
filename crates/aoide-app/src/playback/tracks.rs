@@ -26,6 +26,8 @@ pub struct TrackMeta {
     pub album_artist: Option<String>,
     pub album: String,
     pub album_id: Option<String>,
+    /// The album artist's id (else the first credited artist's), for Go to Artist.
+    pub artist_id: Option<String>,
     /// The item and tag of the cover to draw.
     pub artwork: Option<(String, String)>,
     pub duration_ms: Option<i64>,
@@ -50,6 +52,11 @@ impl TrackMeta {
             album_artist: item.album_artist.clone().filter(|a| !a.is_empty()),
             album: item.album.clone().unwrap_or_default(),
             album_id: item.album_id.clone(),
+            artist_id: item
+                .album_artists
+                .first()
+                .or_else(|| item.artist_items.first())
+                .map(|a| a.id.clone()),
             artwork: item
                 .artwork_source()
                 .map(|(id, tag)| (id.to_owned(), tag.to_owned())),

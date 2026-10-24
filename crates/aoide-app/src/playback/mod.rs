@@ -499,6 +499,7 @@ mod tests {
                 album_artist: None,
                 album: String::new(),
                 album_id: None,
+                artist_id: None,
                 artwork: None,
                 duration_ms: None,
                 track_number: None,
