@@ -115,7 +115,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 |---|---|---|---|
 | Jellyfin playlists: create, edit, delete, reorder, add/remove songs | 2 | ⬜ | |
 | Jellyfin playlist cover upload | 3 | ⬜ | |
-| Aoide playlists: create, rename, notes, delete, add, remove, move (fractional index) | 1 | 🟨 | In the app: create, rename, delete, add songs. Notes are shown, not edited; removing and moving entries not yet in the UI |
+| Aoide playlists: create, rename, notes, delete, add, remove, move (fractional index) | 1 | ✅ | In the app: create, rename, delete, add songs; Edit shows the notes editor and each entry's Up, Down and Remove. A move is the store's `move_item`, one row written, measured past entries the server no longer has. Clicked through against the stand-in server; syncing the edits to a real sidecar not yet seen |
 | Add to Aoide playlist (with search past 8, "New playlist…") | 1 | ✅ | |
 | Built-in Rediscover Mix and Heavy Rotation | 2 | 🟨 | |
 | Smart playlists **evaluated** on open | 2 | 🟨 | The Electron app syncs the rules but does not evaluate them on the detail screen; do it right here |
