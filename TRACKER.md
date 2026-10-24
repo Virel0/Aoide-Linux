@@ -47,15 +47,15 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Feature | Round | Status | Notes |
 |---|---|---|---|
 | Streaming via `/Audio/{id}/universal`, token as `ApiKey` | 1 | 🟨 | |
-| Native decoding (FLAC, ALAC, MP3, AAC, Opus, Vorbis, WAV) | 1 | 🟨 | symphonia: no transcode needed for ALAC, unlike Electron |
+| Native decoding (FLAC, ALAC, MP3, AAC, Vorbis, WAV, AIFF) | 1 | 🟨 | symphonia: no transcode needed for ALAC, unlike Electron. Each format measured on fixtures (`tests/formats.rs`). FLAC whose STREAMINFO minimum is the short last block (flacenc) plays, by a workaround for symphonia 0.6.1. Opus: no decoder; the stream URL never offers it, so Jellyfin transcodes it to ADTS AAC, and a local Opus file fails as "unsupported format: Opus" |
 | Transcoding option (bitrate, format) | 2 | ⬜ | |
-| Gapless joins, sample-exact | 1 | 🟨 | What Electron called "Exact joins (experimental)", here always on |
+| Gapless joins, sample-exact | 1 | 🟨 | What Electron called "Exact joins (experimental)", here always on. Sample-exact for WAV, AIFF, FLAC, ALAC; MP3 (LAME tag) and Vorbis join with no gap. AAC does not: symphonia keeps the priming and padding, 64 ms between Apple-encoded M4A tracks, 21 ms between Jellyfin's AAC transcodes |
 | Crossfade (per-pair plan, 8 s / 4 s by tempo, parity table) | 1 | 🟨 | |
 | Keep albums whole | 1 | 🟨 | |
 | Level volume: −18 LUFS, only turn down, peak ≤ 0 dBFS | 1 | 🟨 | From `/aoide/audio-analysis`, 50 ahead |
 | ReplayGain tags (album preferred) | 2 | ⬜ | |
 | Skip silence (`/aoide/sound-bounds`, ignore < 300 ms) | 1 | 🟨 | |
-| Output device picker | 2 | ⬜ | |
+| Output device picker | 2 | ⬜ | Following the default device is done: a failed stream reopens on the (new) default and plays on from the heard position, queue intact |
 | Equalizer (parametric, presets, preamp) | 3 | ⬜ | |
 | Compressor (threshold, ratio, attack, release, makeup, knee) | 3 | ⬜ | |
 | Visualizer | 3 | ⬜ | Electron used audioMotion and Butterchurn; a native one is needed |
