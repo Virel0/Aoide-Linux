@@ -1,0 +1,65 @@
+# Maintainer: Virel0
+#
+# Aoide for Linux, the native Rust app, as a pacman package: built by CI from
+# the tag's source tarball (.github/workflows/release-arch.yml) and served
+# from the GitHub release as the pacman repository [aoide-linux].
+#
+# It installs beside the Electron app's package (`aoide`), which owns
+# /usr/bin/aoide and the io.github.Virel0.Aoide desktop entry and icons. Two
+# packages cannot own one file, so until this one replaces that one every
+# installed name here differs from its: the command is `aoide-linux` and the
+# desktop entry `io.github.Virel0.Aoide.Linux`. Replacing it means setting
+# _bin=aoide and _appid=io.github.Virel0.Aoide, renaming the desktop file to
+# match (with Exec=aoide, Icon and StartupWMClass to suit, Name=Aoide), and
+# adding conflicts/provides/replaces=('aoide').
+#
+# pkgver is set by CI from the tag (v1.2.3 -> 1.2.3) before makepkg runs.
+
+pkgname=aoide-linux
+pkgver=0
+pkgrel=1
+pkgdesc="Aoide for Linux: a native Jellyfin music client with local playlists, play history, and sync with the Aoide iOS app"
+arch=('x86_64')
+url="https://github.com/Virel0/aoide-linux"
+license=('GPL-3.0-or-later' 'OFL-1.1')
+# Linked: alsa-lib (sound), dbus (the keyring's Secret Service client).
+# Loaded at run time by the window toolkit: Wayland or X11, and xkbcommon.
+depends=('alsa-lib' 'dbus' 'gcc-libs' 'glibc'
+         'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxi' 'libxrandr')
+makedepends=('cargo' 'pkgconf')
+optdepends=('org.freedesktop.secrets: keeps the sign-in between launches (GNOME Keyring or KWallet)'
+            'vulkan-driver: draws the window on the GPU; without one it is drawn in software')
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+_bin=aoide-linux
+_appid=io.github.Virel0.Aoide.Linux
+
+prepare() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --locked --release -p aoide-app
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    install -Dm755 target/release/aoide "$pkgdir/usr/bin/$_bin"
+    install -Dm644 "packaging/arch/$_appid.desktop" \
+        "$pkgdir/usr/share/applications/$_appid.desktop"
+    local _size
+    for _size in 16 32 48 64 128 256 512; do
+        install -Dm644 "packaging/arch/icons/${_size}x${_size}.png" \
+            "$pkgdir/usr/share/icons/hicolor/${_size}x${_size}/apps/$_appid.png"
+    done
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 crates/aoide-app/fonts/Inter-LICENSE.txt \
+        "$pkgdir/usr/share/licenses/$pkgname/Inter-LICENSE.txt"
+}
