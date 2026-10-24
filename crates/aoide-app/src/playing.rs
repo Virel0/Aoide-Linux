@@ -314,6 +314,7 @@ impl App {
                     .session
                     .as_mut()
                     .and_then(|s| s.reporter.position(entry, ms, now));
+                tasks.push(self.follow_lyrics());
                 if let Some(report) = report {
                     tasks.push(self.send_reports(vec![report]));
                     // Every ten seconds, with the report: the store skips a

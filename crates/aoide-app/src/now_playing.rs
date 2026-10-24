@@ -40,7 +40,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, panel: Panel) -> Element<'a, M
                 .map(|(i, t)| ArtKey::new(i, t))
                 .as_ref(),
             &app.artwork,
-            Length::Fixed(WIDTH - 60.0),
+            Length::Fixed(220.0),
             10.0,
         ),
         text(current.map_or("Not Playing", |m| m.title.as_str()))

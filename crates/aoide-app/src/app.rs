@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use aoide_audio::EngineEvent;
-use aoide_jellyfin::{Device, Item};
+use aoide_jellyfin::{Device, Item, Lyrics};
 use aoide_sidecar::{SidecarClient, SyncEngine};
 use aoide_store::{AccountClaim, SyncReport};
 use iced::task::Handle;
@@ -20,13 +20,15 @@ use crate::artwork::{self, ArtKey, Artwork};
 use crate::config::{Config, Paths};
 use crate::credentials::{CredentialStore, KeyringStore};
 use crate::integration;
+use crate::lyrics_panel::LyricsState;
 use crate::nav::BackStack;
 use crate::playback::infinity::{InfinityTrigger, TopUp};
 use crate::playback::report::Reporter;
 use crate::playback::tracks::Measures;
 use crate::playback::{Enqueue, Playback};
 use crate::playing::{Measured, Pending};
-use crate::screens::{self, Ctx, Page, PageMsg, PlaylistSummary, Route, Section, login};
+use crate::queue_panel::QueueAction;
+use crate::screens::{self, Ctx, Load, Page, PageMsg, PlaylistSummary, Route, Section, login};
 use crate::session::{self, Connection, Effect, Event, Phase};
 use crate::store_worker::StoreHandle;
 use crate::sync::{self, SyncThrottle};
@@ -100,6 +102,9 @@ pub(crate) struct Signed {
     pub next_available: bool,
     pub reporter: Reporter,
     pub infinity: InfinityTrigger,
+    pub lyrics: Option<LyricsState>,
+    /// The lyric line last scrolled to.
+    pub lyric_line: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -131,6 +136,8 @@ pub enum Message {
     Restore(Box<Pending>),
     ToppedUp(Box<TopUp>),
     Player(Transport),
+    Queue(QueueAction),
+    Lyrics(String, Result<Option<Lyrics>, String>),
     Notice(String),
     Dismiss,
     Ignore,
@@ -144,6 +151,7 @@ pub enum Transport {
     Previous,
     Scrub(f32),
     ScrubEnd,
+    Seek(u64),
     Volume(f32),
     Shuffle,
     Repeat,
@@ -397,6 +405,17 @@ impl App {
             Message::Restore(pending) => self.measure_then_queue(*pending),
             Message::ToppedUp(found) => self.topped_up(*found),
             Message::Player(control) => self.transport(control),
+            Message::Queue(action) => self.queue_action(action),
+            Message::Lyrics(item, result) => {
+                if let Some(signed) = self.session.as_mut() {
+                    signed.lyrics = Some(LyricsState {
+                        item,
+                        lyrics: Load::from(result),
+                    });
+                    signed.lyric_line = None;
+                }
+                self.follow_lyrics()
+            }
             Message::Notice(notice) => {
                 self.notice = Some(notice);
                 Task::none()
@@ -448,6 +467,8 @@ impl App {
             next_available: true,
             reporter: Reporter::default(),
             infinity: InfinityTrigger::default(),
+            lyrics: None,
+            lyric_line: None,
         });
 
         let mut tasks = Vec::new();
@@ -943,6 +964,7 @@ impl App {
                 }
                 Ok(())
             }
+            Transport::Seek(ms) => self.playback.seek(ms),
             Transport::ScrubEnd => match self.session.as_mut().and_then(|s| s.scrub.take()) {
                 Some(ms) => self.playback.seek(ms),
                 None => Ok(()),
@@ -971,8 +993,9 @@ impl App {
                     } else {
                         Some(panel)
                     };
+                    signed.lyric_line = None;
                 }
-                Ok(())
+                return self.track_changed();
             }
             Transport::ClosePanel => {
                 if let Some(signed) = self.session.as_mut() {
@@ -993,9 +1016,88 @@ impl App {
         }
     }
 
-    /// What is playing changed: the panel follows it.
+    /// What is playing changed, or the lyrics panel opened: fetch the lyrics
+    /// if they are showing and not already here.
     pub(crate) fn track_changed(&mut self) -> Task<Message> {
-        Task::none()
+        let current = self.playback.current().map(|(_, q)| q.meta.id.clone());
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let (Some(Panel::Lyrics), Some(item)) = (signed.panel, current) else {
+            return Task::none();
+        };
+        if signed.lyrics.as_ref().is_some_and(|l| l.item == item) {
+            return self.follow_lyrics();
+        }
+        signed.lyrics = Some(LyricsState {
+            item: item.clone(),
+            lyrics: Load::Loading,
+        });
+        signed.lyric_line = None;
+        let client = signed.connection.client.clone();
+        Task::perform(
+            async move {
+                let result = client.lyrics(&item).await;
+                (item, result)
+            },
+            |(item, result)| match result {
+                Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
+                result => Message::Lyrics(item, result.map_err(|e| session::describe(&e))),
+            },
+        )
+    }
+
+    /// Keeps the lit lyric line in view as the song plays.
+    pub(crate) fn follow_lyrics(&mut self) -> Task<Message> {
+        let position = self.playback.position_ms();
+        let offset = self.config.settings.lyric_offset_ms;
+        let current = self.playback.current().map(|(_, q)| q.meta.id.clone());
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        if signed.panel != Some(Panel::Lyrics) {
+            return Task::none();
+        }
+        let Some(LyricsState {
+            item,
+            lyrics: Load::Ready(Some(lyrics)),
+        }) = &signed.lyrics
+        else {
+            return Task::none();
+        };
+        if current.as_deref() != Some(item.as_str()) {
+            return Task::none();
+        }
+        let line = crate::playback::lyrics::current_line(lyrics, position, offset);
+        if line == signed.lyric_line {
+            return Task::none();
+        }
+        signed.lyric_line = line;
+        let Some(line) = line else {
+            return Task::none();
+        };
+        // Lines wrap, so the place is a share of the whole rather than a
+        // measured offset; held a little above centre.
+        let share = (line as f32 / lyrics.lines.len().max(1) as f32 - 0.1).clamp(0.0, 1.0);
+        iced::widget::operation::snap_to(
+            crate::lyrics_panel::SCROLL,
+            iced::widget::scrollable::RelativeOffset { x: 0.0, y: share },
+        )
+    }
+
+    fn queue_action(&mut self, action: QueueAction) -> Task<Message> {
+        let result = match action {
+            QueueAction::Jump(entry) => self.playback.jump(entry),
+            QueueAction::Remove(entry) => self.playback.remove(entry),
+            QueueAction::Move { index, destination } => {
+                self.playback.move_entry(index, destination)
+            }
+            QueueAction::Clear => self.playback.clear_up_next(),
+        };
+        if let Err(error) = result {
+            self.notice = Some(error);
+        }
+        Task::batch([self.save_queue(), self.check_infinity()])
     }
 
     fn desktop(&mut self, command: integration::Command) -> Task<Message> {
