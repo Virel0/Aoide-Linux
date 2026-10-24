@@ -1,0 +1,21 @@
+{
+  "User": {
+    "Name": "alice",
+    "ServerId": "0f5d3a7c9b1e4d2f8a6c5b4e3d2c1b0a",
+    "Id": "5ca1ab1e5ca1ab1e5ca1ab1e5ca1ab1e",
+    "HasPassword": true,
+    "HasConfiguredPassword": true,
+    "EnableAutoLogin": false,
+    "LastLoginDate": "2026-10-20T18:00:00.0000000Z",
+    "Policy": { "IsAdministrator": false, "EnableAudioPlaybackTranscoding": true }
+  },
+  "SessionInfo": {
+    "Id": "0123456789abcdef0123456789abcdef",
+    "UserId": "5ca1ab1e5ca1ab1e5ca1ab1e5ca1ab1e",
+    "Client": "Aoide",
+    "DeviceName": "Test",
+    "DeviceId": "test-device"
+  },
+  "AccessToken": "fixture-token-not-a-secret",
+  "ServerId": "0f5d3a7c9b1e4d2f8a6c5b4e3d2c1b0a"
+}

@@ -1,0 +1,122 @@
+{
+  "Items": [
+    {
+      "Name": "Harbour Lights",
+      "ServerId": "0f5d3a7c9b1e4d2f8a6c5b4e3d2c1b0a",
+      "Id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "HasLyrics": true,
+      "Container": "flac",
+      "PremiereDate": "2021-01-01T00:00:00.0000000Z",
+      "ChannelId": null,
+      "RunTimeTicks": 2435000000,
+      "ProductionYear": 2021,
+      "IndexNumber": 1,
+      "ParentIndexNumber": 1,
+      "IsFolder": false,
+      "Type": "Audio",
+      "ParentId": "b0a1c2d3e4f5061728394a5b6c7d8e9f",
+      "Genres": ["Shoegaze", "Dream Pop", "Indie Rock"],
+      "GenreItems": [
+        { "Name": "Shoegaze", "Id": "11111111111111111111111111111111" },
+        { "Name": "Dream Pop", "Id": "22222222222222222222222222222222" },
+        { "Name": "Indie Rock", "Id": "33333333333333333333333333333333" }
+      ],
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 12,
+        "IsFavorite": true,
+        "LastPlayedDate": "2026-03-14T21:07:45.1234567Z",
+        "Played": true,
+        "Key": "The Quiet Engines-Low Tide Radio-0001-0001Harbour Lights",
+        "ItemId": "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+      },
+      "PrimaryImageAspectRatio": 1,
+      "Artists": ["The Quiet Engines", "Mara Vey"],
+      "ArtistItems": [
+        { "Name": "The Quiet Engines", "Id": "c0ffee00c0ffee00c0ffee00c0ffee00" },
+        { "Name": "Mara Vey", "Id": "decade00decade00decade00decade00" }
+      ],
+      "Album": "Low Tide Radio",
+      "AlbumId": "b0a1c2d3e4f5061728394a5b6c7d8e9f",
+      "AlbumPrimaryImageTag": "7d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a",
+      "AlbumArtist": "The Quiet Engines",
+      "AlbumArtists": [
+        { "Name": "The Quiet Engines", "Id": "c0ffee00c0ffee00c0ffee00c0ffee00" }
+      ],
+      "ImageTags": {},
+      "BackdropImageTags": [],
+      "ParentBackdropImageTags": [],
+      "ImageBlurHashes": {
+        "Primary": { "7d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a": "WHF5]+Yk^6#M@-5c,1J5@[or[Q6." }
+      },
+      "LocationType": "FileSystem",
+      "MediaType": "Audio",
+      "NormalizationGain": -9.2
+    },
+    {
+      "Name": "Salt in the Wiring",
+      "ServerId": "0f5d3a7c9b1e4d2f8a6c5b4e3d2c1b0a",
+      "Id": "a1b2c3d4e5f60718293a4b5c6d7e8f91",
+      "HasLyrics": false,
+      "Container": "flac",
+      "RunTimeTicks": 3127466666,
+      "ProductionYear": 2021,
+      "IndexNumber": 2,
+      "ParentIndexNumber": 1,
+      "IsFolder": false,
+      "Type": "Audio",
+      "ParentId": "b0a1c2d3e4f5061728394a5b6c7d8e9f",
+      "Genres": ["Dream Pop", "Shoegaze"],
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 3,
+        "IsFavorite": false,
+        "LastPlayedDate": "2026-02-01T08:00:00Z",
+        "Played": true
+      },
+      "Artists": ["The Quiet Engines"],
+      "ArtistItems": [
+        { "Name": "The Quiet Engines", "Id": "c0ffee00c0ffee00c0ffee00c0ffee00" }
+      ],
+      "Album": "Low Tide Radio",
+      "AlbumId": "b0a1c2d3e4f5061728394a5b6c7d8e9f",
+      "AlbumPrimaryImageTag": "7d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a",
+      "AlbumArtist": "The Quiet Engines",
+      "AlbumArtists": [
+        { "Name": "The Quiet Engines", "Id": "c0ffee00c0ffee00c0ffee00c0ffee00" }
+      ],
+      "ImageTags": {},
+      "LocationType": "FileSystem",
+      "MediaType": "Audio"
+    },
+    {
+      "Name": "Coda (Reprise)",
+      "ServerId": "0f5d3a7c9b1e4d2f8a6c5b4e3d2c1b0a",
+      "Id": "a1b2c3d4e5f60718293a4b5c6d7e8f92",
+      "RunTimeTicks": 905000000,
+      "ProductionYear": 2021,
+      "IndexNumber": 1,
+      "ParentIndexNumber": 2,
+      "IsFolder": false,
+      "Type": "Audio",
+      "Genres": [],
+      "UserData": {
+        "PlaybackPositionTicks": 0,
+        "PlayCount": 0,
+        "IsFavorite": false,
+        "Played": false
+      },
+      "Artists": ["The Quiet Engines"],
+      "ArtistItems": [
+        { "Name": "The Quiet Engines", "Id": "c0ffee00c0ffee00c0ffee00c0ffee00" }
+      ],
+      "Album": "Low Tide Radio",
+      "AlbumId": "b0a1c2d3e4f5061728394a5b6c7d8e9f",
+      "AlbumArtist": "The Quiet Engines",
+      "ImageTags": {},
+      "MediaType": "Audio"
+    }
+  ],
+  "TotalRecordCount": 3,
+  "StartIndex": 0
+}
