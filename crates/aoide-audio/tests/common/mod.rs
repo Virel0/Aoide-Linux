@@ -73,6 +73,32 @@ pub fn write_wav(path: &Path, rate: u32, channels: usize, samples: &[i32]) {
     std::fs::write(path, bytes).expect("write wav");
 }
 
+/// 16-bit PCM AIFF: big-endian samples, the rate as an 80-bit float.
+pub fn write_aiff(path: &Path, rate: u32, channels: usize, samples: &[i32]) {
+    let frames = (samples.len() / channels) as u32;
+    let data_len = (samples.len() * 2) as u32;
+    let mut bytes = Vec::with_capacity(54 + data_len as usize);
+    bytes.extend_from_slice(b"FORM");
+    bytes.extend_from_slice(&(46 + data_len).to_be_bytes());
+    bytes.extend_from_slice(b"AIFFCOMM");
+    bytes.extend_from_slice(&18u32.to_be_bytes());
+    bytes.extend_from_slice(&(channels as u16).to_be_bytes());
+    bytes.extend_from_slice(&frames.to_be_bytes());
+    bytes.extend_from_slice(&16u16.to_be_bytes());
+    // Extended precision: sign and exponent, then the mantissa with its
+    // leading one explicit.
+    let shift = rate.leading_zeros();
+    bytes.extend_from_slice(&((16_383 + 31 - shift) as u16).to_be_bytes());
+    bytes.extend_from_slice(&((u64::from(rate) << shift) << 32).to_be_bytes());
+    bytes.extend_from_slice(b"SSND");
+    bytes.extend_from_slice(&(8 + data_len).to_be_bytes());
+    bytes.extend_from_slice(&[0; 8]); // offset and block size
+    for &sample in samples {
+        bytes.extend_from_slice(&(sample as i16).to_be_bytes());
+    }
+    std::fs::write(path, bytes).expect("write aiff");
+}
+
 pub fn flac_bytes(rate: u32, channels: usize, samples: &[i32]) -> Vec<u8> {
     use flacenc::component::BitRepr;
     use flacenc::error::Verify;
@@ -84,14 +110,9 @@ pub fn flac_bytes(rate: u32, channels: usize, samples: &[i32]) -> Vec<u8> {
         .expect("flac encode");
     let mut sink = flacenc::bitsink::ByteSink::new();
     stream.write(&mut sink).expect("flac write");
-    let mut bytes = sink.as_slice().to_vec();
-    // flacenc records the short last block as STREAMINFO's minimum block size;
-    // libFLAC records the fixed block size, and symphonia 0.6.1 refuses the
-    // former with an unexpected end of file. Write what libFLAC writes.
-    assert_eq!(&bytes[..4], b"fLaC");
-    let max = [bytes[10], bytes[11]];
-    bytes[8..10].copy_from_slice(&max);
-    bytes
+    // As flacenc writes it: STREAMINFO's minimum block size is the short last
+    // block, which the decoder has to tolerate (see tests/flac.rs).
+    sink.as_slice().to_vec()
 }
 
 pub fn write_flac(path: &Path, rate: u32, channels: usize, samples: &[i32]) {

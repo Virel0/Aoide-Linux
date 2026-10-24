@@ -19,7 +19,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Open(m) => write!(f, "could not open the track: {m}"),
-            Error::Unsupported(m) => write!(f, "unsupported audio: {m}"),
+            Error::Unsupported(m) => write!(f, "unsupported format: {m}"),
             Error::Decode(m) => write!(f, "decoding failed: {m}"),
             Error::Seek(m) => write!(f, "seeking failed: {m}"),
             Error::Resample(m) => write!(f, "resampling failed: {m}"),

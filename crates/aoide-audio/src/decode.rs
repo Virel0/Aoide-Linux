@@ -1,8 +1,10 @@
 //! Decoding with symphonia, from a local file or an HTTP stream.
 
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
-use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
+use symphonia::core::codecs::audio::well_known::CODEC_ID_OPUS;
+use symphonia::core::codecs::audio::{AudioCodecId, AudioDecoder, AudioDecoderOptions};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, TrackType};
@@ -81,6 +83,7 @@ impl Decoder {
                 Box::new(reader)
             }
         };
+        let stream = tolerate_flac_block_sizes(stream).map_err(|e| Error::Open(e.to_string()))?;
         let mss = MediaSourceStream::new(stream, Default::default());
         let format = symphonia::default::get_probe()
             .probe(
@@ -104,7 +107,10 @@ impl Decoder {
             .ok_or_else(|| Error::Unsupported("no audio codec parameters".into()))?;
         let decoder = symphonia::default::get_codecs()
             .make_audio_decoder(params, &AudioDecoderOptions::default())
-            .map_err(|e| Error::Unsupported(e.to_string()))?;
+            .map_err(|e| match missing_codec(params.codec) {
+                Some(name) => Error::Unsupported(name.into()),
+                None => Error::Unsupported(e.to_string()),
+            })?;
         let sample_rate = params
             .sample_rate
             .ok_or_else(|| Error::Unsupported("unknown sample rate".into()))?;
@@ -227,5 +233,114 @@ impl Decoder {
             }
             None => ts,
         }
+    }
+}
+
+/// The name of a codec a music library can hold that this build has no
+/// decoder for. symphonia has no Opus decoder; Jellyfin transcodes Opus for
+/// us (the stream URL never offers it), so one only reaches here from a
+/// local file or a server that ignored the list.
+fn missing_codec(codec: AudioCodecId) -> Option<&'static str> {
+    (codec == CODEC_ID_OPUS).then_some("Opus")
+}
+
+/// symphonia 0.6.1 decides a FLAC stream's blocking strategy from STREAMINFO
+/// (fixed when the minimum and maximum block sizes are equal) instead of from
+/// the frames, whose headers say it in their sync code. A fixed-block-size
+/// stream whose minimum is its short last block (what flacenc writes; the
+/// spec says the minimum excludes the last block) then has every frame
+/// header refused as out of sequence and fails with an unexpected end of
+/// file; a last block under 16 frames fails STREAMINFO's own check. For
+/// exactly that case, a fixed-block-size stream with unequal sizes, this
+/// presents STREAMINFO's minimum as the maximum, which is what the spec has
+/// it mean. Anything else passes through untouched.
+fn tolerate_flac_block_sizes(
+    mut stream: Box<dyn symphonia::core::io::MediaSource>,
+) -> io::Result<Box<dyn symphonia::core::io::MediaSource>> {
+    let max = fixed_block_size_to_restore(&mut stream).unwrap_or(None);
+    stream.seek(SeekFrom::Start(0))?;
+    Ok(match max {
+        Some(max) => Box::new(PatchedFlacHead {
+            inner: stream,
+            pos: 0,
+            min: max.to_be_bytes(),
+        }),
+        None => stream,
+    })
+}
+
+/// Where STREAMINFO's minimum block size sits: after `fLaC` and the
+/// metadata block header.
+const FLAC_MIN_BLOCK_AT: u64 = 8;
+
+/// The maximum block size, when `stream` is a fixed-block-size FLAC stream
+/// whose STREAMINFO gives a different minimum.
+fn fixed_block_size_to_restore(stream: &mut (impl Read + Seek)) -> io::Result<Option<u16>> {
+    let mut head = [0u8; 12];
+    stream.read_exact(&mut head)?;
+    // STREAMINFO must be the first metadata block (type 0).
+    if &head[..4] != b"fLaC" || head[4] & 0x7f != 0 {
+        return Ok(None);
+    }
+    let (min, max) = (
+        u16::from_be_bytes([head[8], head[9]]),
+        u16::from_be_bytes([head[10], head[11]]),
+    );
+    if min == max || max < 16 {
+        return Ok(None);
+    }
+    // Past the metadata blocks to the first frame.
+    let mut at = 4u64;
+    loop {
+        stream.seek(SeekFrom::Start(at))?;
+        let mut header = [0u8; 4];
+        stream.read_exact(&mut header)?;
+        at += 4 + u64::from(u32::from_be_bytes([0, header[1], header[2], header[3]]));
+        if header[0] & 0x80 != 0 {
+            break;
+        }
+    }
+    stream.seek(SeekFrom::Start(at))?;
+    // The frame sync code: 0xFFF8 is a fixed block size, 0xFFF9 variable.
+    let mut sync = [0u8; 2];
+    stream.read_exact(&mut sync)?;
+    Ok((sync == [0xff, 0xf8]).then_some(max))
+}
+
+/// A FLAC stream with STREAMINFO's minimum block size replaced.
+struct PatchedFlacHead {
+    inner: Box<dyn symphonia::core::io::MediaSource>,
+    pos: u64,
+    min: [u8; 2],
+}
+
+impl Read for PatchedFlacHead {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        for (index, &byte) in self.min.iter().enumerate() {
+            let at = FLAC_MIN_BLOCK_AT + index as u64;
+            if (self.pos..self.pos + read as u64).contains(&at) {
+                buf[(at - self.pos) as usize] = byte;
+            }
+        }
+        self.pos += read as u64;
+        Ok(read)
+    }
+}
+
+impl Seek for PatchedFlacHead {
+    fn seek(&mut self, to: SeekFrom) -> io::Result<u64> {
+        self.pos = self.inner.seek(to)?;
+        Ok(self.pos)
+    }
+}
+
+impl symphonia::core::io::MediaSource for PatchedFlacHead {
+    fn is_seekable(&self) -> bool {
+        self.inner.is_seekable()
+    }
+
+    fn byte_len(&self) -> Option<u64> {
+        self.inner.byte_len()
     }
 }

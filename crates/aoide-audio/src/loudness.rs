@@ -13,9 +13,9 @@ pub const REFERENCE_LUFS: f64 = -18.0;
 /// peak and all. A master already over full scale is turned down until its
 /// peak sits on 0 dBFS, but only among tracks this is turning down anyway.
 ///
-/// Rounded to a hundredth of a decibel, half away from zero, as Swift's
-/// `rounded()` does. (The desktop's `Math.round` rounds an exact half towards
-/// positive infinity instead; no input in the parity table lands on a half.)
+/// Rounded to a hundredth of a decibel, an exact half away from zero, as
+/// Swift's `rounded()` does and the desktop now does too (the parity table's
+/// −17.875 LUFS row is −0.125 dB exactly, and −0.13 on all three).
 pub fn gain_db(loudness_lufs: Option<f64>, true_peak_dbfs: Option<f64>) -> Option<f64> {
     let loudness = loudness_lufs.filter(|value| value.is_finite())?;
 
