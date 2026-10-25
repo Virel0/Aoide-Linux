@@ -7,6 +7,7 @@
 //! - [`translate`]: lyric translation. Language detection always; with the
 //!   `local-translation` feature, translation on this machine with models
 //!   downloaded on first use.
+//! - [`update`]: whether a newer release is out on GitHub, at most daily.
 //!
 //! Nothing here knows about iced or the other Aoide crates. Async parts run
 //! on the caller's tokio runtime.
@@ -21,6 +22,7 @@ pub mod discord;
 mod links;
 pub mod openrouter;
 pub mod translate;
+pub mod update;
 
 /// rustls with the ring provider: reqwest is built without one. An app that
 /// installed its own first keeps it.

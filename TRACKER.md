@@ -161,7 +161,7 @@ else in the Electron settings arrives with its feature above.
 | pacman repository from GitHub releases (`[aoide]`) | 1 | 🟨 | `packaging/arch/PKGBUILD` (package `aoide-linux`) and `.github/workflows/release-arch.yml`: a `v*` tag builds it in an Arch container into the repository `[aoide-linux]` on the release. Installs beside the Electron `aoide`, so its names differ for now (`/usr/bin/aoide-linux`, desktop id `io.github.Virel0.Aoide.Linux`); what taking over the app id `io.github.Virel0.Aoide` takes is at the top of the PKGBUILD. Not yet tagged or built in CI; only the package step was dry-run (on macOS) |
 | Flatpak | 2 | ⬜ | |
 | AppImage / deb | 3 | ⬜ | |
-| In-app "update available" notice | 3 | ⬜ | pacman and Flatpak update the app themselves |
+| In-app "update available" notice | 3 | 🟨 | Library done; UI pending. `aoide_integrations::update::UpdateChecker`: GitHub's latest release of Virel0/aoide-linux against the running version (semver, drafts and pre-releases ignored), with the notes and the release page; at most one attempt a day through an `UpdateState` the app keeps; sends only a fixed `User-Agent: aoide-linux` and GitHub's API headers. The off switch is the app's. pacman and Flatpak update the app themselves. Tested against a local stand-in for GitHub |
 | Settings import/export, log level, clear cache | 3 | ⬜ | |
 
 ## Not porting
