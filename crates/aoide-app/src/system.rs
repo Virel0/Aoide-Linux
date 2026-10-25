@@ -16,11 +16,16 @@ use crate::tray::{Tray, TraySettings};
 #[serde(default, rename_all = "camelCase")]
 pub struct SystemSettings {
     pub tray: TraySettings,
+    /// Discord Rich Presence; off unless turned on.
+    pub discord: aoide_integrations::discord::PresenceOptions,
 }
 
 /// The desktop services, running beside MPRIS on the integration's runtime.
 pub struct State {
     pub tray: Tray,
+    /// `None` if the integration's runtime could not be built.
+    pub discord: Option<aoide_integrations::discord::Presence>,
+    pub discord_status: aoide_integrations::discord::PresenceStatus,
 }
 
 impl State {
@@ -28,6 +33,8 @@ impl State {
     pub fn new(desktop: &Link, config: &Config) -> Self {
         let runtime = desktop.runtime().cloned();
         Self {
+            discord: crate::discord::start(runtime.as_ref(), config.system.discord.clone()),
+            discord_status: aoide_integrations::discord::PresenceStatus::Off,
             tray: Tray::new(runtime, &config.system.tray),
         }
     }
@@ -38,6 +45,7 @@ impl App {
     /// change, so this is cheap after every message.
     pub(crate) fn publish_system(&self) {
         self.publish_tray();
+        self.publish_discord();
     }
 }
 
@@ -46,6 +54,7 @@ pub fn settings_sections(app: &App) -> Element<'_, Message> {
     column![
         text("System").size(20).font(crate::widgets::BOLD),
         crate::tray::settings_section(&app.config.system.tray, &app.system.tray.status),
+        crate::discord::settings_section(&app.config.system.discord, app.system.discord_status),
     ]
     .spacing(24)
     .into()

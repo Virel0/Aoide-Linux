@@ -14,6 +14,8 @@ workspace = true
 
 [dependencies]
 aoide-audio = { path = "../aoide-audio" }
+# Discord Rich Presence, OpenRouter (search by description, mixes), the update notice.
+aoide-integrations = { path = "../aoide-integrations" }
 aoide-jellyfin = { path = "../aoide-jellyfin" }
 # MPRIS, single instance and sleep inhibit; on macOS it builds and reports
 # itself unavailable.

@@ -5,6 +5,7 @@ mod app;
 mod artwork;
 mod config;
 mod credentials;
+mod discord;
 mod icons;
 mod integration;
 mod library;

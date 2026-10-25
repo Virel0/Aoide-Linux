@@ -139,6 +139,7 @@ name = "aoide-app"
 version = "0.1.0"
 dependencies = [
  "aoide-audio",
+ "aoide-integrations",
  "aoide-jellyfin",
  "aoide-mpris",
  "aoide-sidecar",

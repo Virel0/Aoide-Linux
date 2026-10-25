@@ -157,6 +157,7 @@ pub enum Message {
     Dismiss,
     Ignore,
     Tray(crate::tray::Message),
+    Discord(crate::discord::Message),
 }
 
 /// The player bar's controls.
@@ -262,6 +263,7 @@ impl App {
             window::events().map(|(id, event)| Message::Window(id, event)),
             integration::commands(&self.desktop).map(Message::Desktop),
             crate::tray::events(&self.system.tray).map(Message::Tray),
+            crate::discord::status(self.system.discord.as_ref()).map(Message::Discord),
         ])
     }
 
@@ -456,6 +458,7 @@ impl App {
             }
             Message::Ignore => Task::none(),
             Message::Tray(message) => self.tray_message(message),
+            Message::Discord(message) => self.discord_message(message),
         }
     }
 
