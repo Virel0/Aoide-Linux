@@ -12,7 +12,8 @@ use serde::de::DeserializeOwned;
 use crate::error::SidecarError;
 use crate::types::{
     AnalysisCoverage, AudioAnalysisResponse, DiscoverResponse, NextRequest, NextResponse,
-    SoundBounds, SoundBoundsResponse, SyncStatus,
+    PlaylistShare, QueueEntry, ShareRequest, SoundBounds, SoundBoundsResponse, SyncStatus,
+    list_from,
 };
 
 /// How many ids the measurement endpoints take per call.
@@ -170,6 +171,73 @@ impl SidecarClient {
         check(status, &body, &path)
     }
 
+    // MARK: - Handoff
+
+    /// `GET /aoide/queue`: one entry per device, most recently updated first by the
+    /// server's clock. Entries this build cannot read are skipped, not fatal.
+    pub async fn queues(&self) -> Result<Vec<QueueEntry>, SidecarError> {
+        let body: serde_json::Value = self.get_json("aoide/queue", &[]).await?;
+        Ok(list_from(&body, &["entries", "queues"])
+            .iter()
+            .filter_map(QueueEntry::from_json)
+            .collect())
+    }
+
+    // MARK: - Collaborative playlists
+
+    /// `GET /aoide/shares`: shares owned by, and granted to, the caller. Entries this
+    /// build cannot read are skipped.
+    pub async fn list_shares(&self) -> Result<Vec<PlaylistShare>, SidecarError> {
+        let body: serde_json::Value = self.get_json("aoide/shares", &[]).await?;
+        Ok(list_from(&body, &["shares"])
+            .iter()
+            .filter_map(|entry| serde_json::from_value(entry.clone()).ok())
+            .collect())
+    }
+
+    /// `POST /aoide/shares`: invites another Jellyfin user to a playlist this user
+    /// owns. Their edits and this user's then both travel through the ordinary pull.
+    pub async fn share_playlist(
+        &self,
+        playlist_id: &str,
+        grantee_user_id: &str,
+        can_edit: bool,
+    ) -> Result<(), SidecarError> {
+        let path = "aoide/shares";
+        let request = ShareRequest {
+            playlist_id: playlist_id.to_owned(),
+            grantee_user_id: grantee_user_id.to_owned(),
+            can_edit,
+        };
+        let body = serde_json::to_vec(&request).map_err(|error| decode_error(path, &error))?;
+        let request = self
+            .request(Method::POST, path, &[])
+            .header(CONTENT_TYPE, "application/json")
+            .body(body);
+        let (status, body) = self.execute(request, path).await?;
+        check(status, &body, path)
+    }
+
+    /// `DELETE /aoide/shares/{playlistId}/{granteeUserId}`. Either side may revoke.
+    /// Revoking stops future changes reaching the collaborator; it withdraws nothing
+    /// they already wrote.
+    pub async fn revoke_share(
+        &self,
+        playlist_id: &str,
+        grantee_user_id: &str,
+    ) -> Result<(), SidecarError> {
+        let path = "aoide/shares";
+        let mut url = self.url(path, &[]);
+        if let Ok(mut segments) = url.path_segments_mut() {
+            // Each id is one segment, escaped, whatever it contains.
+            segments.push(playlist_id).push(grantee_user_id);
+        }
+        let (status, body) = self
+            .execute(self.http.request(Method::DELETE, url), path)
+            .await?;
+        check(status, &body, path)
+    }
+
     // MARK: - Infinity and Discover
 
     /// `POST /aoide/next`. A 404 here is an older sidecar — or a seed this user cannot
@@ -263,7 +331,7 @@ impl SidecarClient {
 
     /// Compact JSON, which is load-bearing: the 256 KB payload ceiling is measured on
     /// compact text, and the store checked every op against it in that form.
-    async fn send_json<B: Serialize, T: DeserializeOwned>(
+    pub(crate) async fn send_json<B: Serialize, T: DeserializeOwned>(
         &self,
         method: Method,
         path: &str,

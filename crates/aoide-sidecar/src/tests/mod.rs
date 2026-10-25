@@ -3,10 +3,15 @@
 //! they apply, and of `NextChooserTests` / `DiscoverTests`, plus the HTTP client
 //! against a local mock server. Nothing here touches the network.
 
+mod covers;
 mod end_to_end;
+mod handoff;
 mod held_entities;
 mod http;
+mod import;
 mod next_discover;
+mod overview;
+mod shares;
 mod sidecar_stub;
 mod sync_engine;
 mod sync_integration;

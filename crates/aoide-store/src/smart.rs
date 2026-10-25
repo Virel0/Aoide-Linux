@@ -609,7 +609,7 @@ impl RelativeInterval {
 
 /// A local wall-clock time to an instant: the earlier reading of an ambiguous hour,
 /// and the first valid time after a skipped one.
-fn resolve_local(naive: NaiveDateTime) -> Option<DateTime<Local>> {
+pub(crate) fn resolve_local(naive: NaiveDateTime) -> Option<DateTime<Local>> {
     if let Some(resolved) = Local.from_local_datetime(&naive).earliest() {
         return Some(resolved);
     }

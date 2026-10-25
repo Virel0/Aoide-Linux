@@ -219,6 +219,9 @@ pub struct SyncReport {
     pub quarantined_outbound: usize,
     /// The subset of `quarantined_outbound` the server refused.
     pub rejected: usize,
+    /// Ours, refused because the playlist's share was revoked: held back, still in
+    /// the log, neither quarantined nor counted in `rejected`.
+    pub blocked_by_share: usize,
     /// Ops received, whatever became of them.
     pub pulled: usize,
     /// Ops that changed a local row.
@@ -258,6 +261,7 @@ impl SyncReport {
         self.pushed += other.pushed;
         self.quarantined_outbound += other.quarantined_outbound;
         self.rejected += other.rejected;
+        self.blocked_by_share += other.blocked_by_share;
         self.pulled += other.pulled;
         self.applied += other.applied;
         self.ignored_stale += other.ignored_stale;

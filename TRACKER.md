@@ -22,7 +22,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 
 | Feature | Round | Status | Notes |
 |---|---|---|---|
-| Home: resume grid (last 6 contexts, "Pick up from {device}") | 2 | ⬜ | |
+| Home: resume grid (last 6 contexts, "Pick up from {device}") | 2 | 🟨 | Library done; UI pending. `RecentContexts` (store) keeps 24 per server — album, Jellyfin playlist, Aoide playlist, mix, station — saved as JSON; `resume_tiles` gives six, led by "Pick up from {device}" only when that device played more recently than anything here (server age against this clock; a tie goes to this device) |
 | Home: shelves (most played, recently added/played/released, random albums, genres) | 1 | ✅ | Recently added, recently played and most played (the last two as the albums of the tracks), recently released, random albums, and a random dozen genres as chips. A shelf with nothing on it is left out. Seen in the app against the stand-in server |
 | Home: Discover tile (`/aoide/discover`) | 2 | ⬜ | New: the Electron app has no Discover |
 | Albums list and album detail (with finish rate) | 1 | 🟨 | Grid loaded a page at a time, sortable (title, artist, recently added, release date); detail with cover, artist, year, Play, Shuffle, tracks in disc and track order with "Disc 1", "Disc 2" headings on a multi-disc album (seen against the stand-in server). Finish rate not yet |
@@ -96,7 +96,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Local play history: events opened/closed, completed/skipped classification | 1 | ✅ | Opened at the heard start, closed with the furthest point reached, classified by the store; Don't Count Plays opens none |
 | Activity tag on plays (Gaming, Focus, Chores, Commute) | 3 | ⬜ | |
 | Finish rate on album and artist headers | 2 | ⬜ | |
-| Replay (month, year, all time; top songs, artists, albums) | 2 | ⬜ | |
+| Replay (month, year, all time; top songs, artists, albums) | 2 | 🟨 | Library done; UI pending. `Store::replay(period, now, calendar)`: plays, hours (one decimal), songs, artists and albums, busiest day as a date, top 10 songs, artists and albums, and the unattributed count; periods open at local midnight on the 1st and on 1 January |
 
 ## Discovery
 
@@ -117,13 +117,13 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Jellyfin playlist cover upload | 3 | 🟨 | library done; UI pending. `set_playlist_cover` / `delete_playlist_cover`; the server allows it for administrators only |
 | Aoide playlists: create, rename, notes, delete, add, remove, move (fractional index) | 1 | ✅ | In the app: create, rename, delete, add songs; Edit shows the notes editor and each entry's Up, Down and Remove. A move is the store's `move_item`, one row written, measured past entries the server no longer has. Clicked through against the stand-in server; syncing the edits to a real sidecar not yet seen |
 | Add to Aoide playlist (with search past 8, "New playlist…") | 1 | ✅ | |
-| Built-in Rediscover Mix and Heavy Rotation | 2 | 🟨 | |
-| Smart playlists **evaluated** on open | 2 | 🟨 | The Electron app syncs the rules but does not evaluate them on the detail screen; do it right here |
-| Covers: image hash → sidecar → artwork item → first track | 2 | ⬜ | |
-| Repair covers | 3 | ⬜ | |
-| Playlist import (Spotify link, CSV, Exportify; `/aoide/match`) | 3 | ⬜ | |
+| Built-in Rediscover Mix and Heavy Rotation | 2 | 🟨 | Library done; UI pending. `Store::ensure_built_in_playlists` creates each under its fixed id only where no row has ever existed, so a deleted built-in stays deleted; the rules are pinned to the other clients' JSON |
+| Smart playlists **evaluated** on open | 2 | 🟨 | Library done; UI pending. `Store::resolve_smart` evaluates in SQL; every field/operator pair is tested accepted-and-evaluated or refused by name, as iOS `SmartRule.check` has it. The Electron app syncs the rules but does not evaluate them on the detail screen; do it right here |
+| Covers: image hash → sidecar → artwork item → first track | 2 | 🟨 | Library done; UI pending. `Store::playlist_covers` picks image hash → `artworkItemId` → `sourceJellyfinId` → first track's album; `cover_bytes` (sidecar) draws a hash from the `BlobDirectory` or fetches `GET /aoide/images/{sha}` only when asked at draw time, checks the hash and keeps it. `set_cover_from_file` takes a JPEG, PNG or WebP up to 5 MB (not resized); the engine uploads it before the op naming it. Not yet run against a real sidecar |
+| Repair covers | 3 | 🟨 | Library done; UI pending. `Store::repair_covers`: a coverless playlist whose name matches exactly one Jellyfin playlist gets that `artworkItemId`, never `sourceJellyfinId` |
+| Playlist import (Spotify link, CSV, Exportify; `/aoide/match`) | 3 | 🟨 | Library done; UI pending. `fetch_spotify_playlist` reads the embed page (first 100 tracks, no account), `parse_playlist_csv` Exportify's headers and the other tools' aliases; `match_playlist` asks `POST /aoide/match` first, else the shared rules over Jellyfin search through the `JellyfinSearch` trait the app implements. Held to the 16-row shared match table. Not yet run against a real sidecar or Spotify |
 | Folders screen | 3 | ⬜ | Folders sync but the Electron app never had a screen |
-| Sharing a playlist with another user | 3 | ⬜ | Client methods exist in Electron but no UI |
+| Sharing a playlist with another user | 3 | 🟨 | Library done; UI pending. `SidecarClient::list_shares`, `share_playlist`, `revoke_share`; `SyncEngine::lost_shares` names playlists shared to this user that a re-read no longer lists, and `Store::drop_playlist_locally` drops one without an op. Not yet run against a real sidecar |
 
 ## Sync with the sidecar
 
@@ -132,11 +132,11 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Push / pull, cursors, acceptedEntities gating | 1 | 🟨 | |
 | Per-field merge for playlists, folders, track flags; row merge elsewhere | 1 | 🟨 | |
 | Quarantine of unreadable or refused ops | 1 | 🟨 | |
-| Covers uploaded before the op naming them | 2 | 🟨 | |
-| Share-revoked edits held back, shares re-read every 5 min | 3 | ⬜ | |
+| Covers uploaded before the op naming them | 2 | 🟨 | The engine uploads from the `BlobDirectory` before pushing; tested over HTTP against a mock server |
+| Share-revoked edits held back, shares re-read every 5 min | 3 | 🟨 | Library done; UI pending. A push refused with "…is not shared with you for editing" is held in the log, neither quarantined nor pushed again, and listed by `SyncEngine::blocked_edits` (with a count); syncs re-read `/aoide/shares` at most every 5 minutes and release an edit whose share is back. Held in memory, so a restart asks once more |
 | Triggers: launch, focus, at most once a minute; "Sync now" | 1 | 🟨 | Launch and window focus, at most once a minute; Sync Now in Settings starts one at once unless one is running, and Settings says the last outcome in words ("Synced: sent 34 changes."). Seen against the stand-in server's empty sync log; not yet run against a real sidecar |
-| Sync status panel | 2 | ⬜ | |
-| Handoff: publish this device's queue; pick up another's | 2 | ⬜ | Electron only published while one page was open; publish always |
+| Sync status panel | 2 | 🟨 | Library done; UI pending. `SyncEngine::overview` returns `SyncOverview`, plain values: running and phase, last synced (kept across restarts) and last attempt, pushed/pulled/applied, waiting, quarantined (and retryable), held back for server support, held for a revoked share, the failure in the server's own words (a `ProblemDetails` title and detail), and whether the server has no sidecar |
+| Handoff: publish this device's queue; pick up another's | 2 | 🟨 | Library done; UI pending. `QueueBroadcast` (store) writes the queue row debounced from every player change, never from a screen; `SyncEngine::publish_queue` pushes just that row. `resumable_queues` reads `GET /aoide/queue` (server clock) and falls back to the op log's rows; `ResumableQueue::pick_up` keeps earlier tracks and starts at the named one. Not yet run against a real sidecar |
 
 ## Lyrics
 

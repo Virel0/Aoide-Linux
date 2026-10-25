@@ -957,3 +957,167 @@ fn counting_a_playlist_that_carries_no_rules_is_an_error_like_resolving_one() {
         Err(StoreError::Smart(SmartPlaylistError::NotSmart { .. }))
     ));
 }
+
+// MARK: - Every field and operator pair
+
+/// Spelled out rather than derived from the code under test: a matrix sharing the
+/// mapping could never catch the mapping being wrong. The iOS `SmartRule.check`.
+fn allowed(field: Field) -> &'static [Operator] {
+    use Operator::*;
+    match field {
+        Field::Title | Field::Artist | Field::Album | Field::AlbumArtist | Field::Genre => {
+            &[Is, IsNot, Contains, DoesNotContain, BeginsWith]
+        }
+        Field::Year | Field::DurationMs | Field::PlayCount | Field::SkipCount => {
+            &[Is, IsNot, GreaterThan, LessThan]
+        }
+        Field::LastPlayed | Field::FirstPlayed => &[Before, After, InTheLast, NotInTheLast],
+        Field::Liked => &[Is, IsNot],
+    }
+}
+
+fn suitable(field: Field) -> Value {
+    match field {
+        Field::Title | Field::Artist | Field::Album | Field::AlbumArtist | Field::Genre => {
+            Value::Text("a".into())
+        }
+        Field::Year | Field::DurationMs | Field::PlayCount | Field::SkipCount => Value::Number(1),
+        Field::LastPlayed | Field::FirstPlayed => Value::Text("-30d".into()),
+        Field::Liked => Value::Flag(true),
+    }
+}
+
+fn rule_json(field: Field, op: Operator, value: &Value) -> String {
+    let value = match value {
+        Value::Text(text) => serde_json::Value::String(text.clone()),
+        Value::Number(number) => serde_json::Value::from(*number),
+        Value::Flag(flag) => serde_json::Value::Bool(*flag),
+    };
+    serde_json::json!({
+        "match": "all",
+        "rules": [{ "field": field.wire_name(), "op": op.wire_name(), "value": value }]
+    })
+    .to_string()
+}
+
+#[test]
+fn every_field_and_operator_pair_is_evaluated_or_refused_by_name() {
+    let store = library();
+    let mut accepted = 0;
+    for field in Field::ALL {
+        for op in Operator::ALL {
+            let value = suitable(field);
+            let built = SmartRule::new(field, op, value.clone());
+            let decoded = SmartRules::from_json(&rule_json(field, op, &value));
+            if allowed(field).contains(&op) {
+                accepted += 1;
+                let rule = built.unwrap_or_else(|e| panic!("{field:?} {op:?}: {e}"));
+                let rules = SmartRules::new(Match::All, vec![rule], None, None).unwrap();
+                assert_eq!(decoded.as_ref(), Ok(&rules), "{field:?} {op:?} from JSON");
+                let ids = store.evaluate(&rules, NOW, Calendar::Utc).unwrap();
+                let count = store.match_count(&rules, NOW, Calendar::Utc).unwrap();
+                assert_eq!(ids.len() as i64, count, "{field:?} {op:?}");
+            } else {
+                let refusal = SmartPlaylistError::OperatorNotApplicable { field, op };
+                assert_eq!(built, Err(refusal.clone()), "{field:?} {op:?}");
+                assert_eq!(decoded, Err(refusal), "{field:?} {op:?} from JSON");
+            }
+        }
+    }
+    assert_eq!(
+        accepted,
+        5 * 5 + 4 * 4 + 2 * 4 + 2,
+        "every legal pair was tried"
+    );
+}
+
+#[test]
+fn every_legal_pair_refuses_a_value_of_the_wrong_kind() {
+    let values = [Value::Text("a".into()), Value::Number(1), Value::Flag(true)];
+    for field in Field::ALL {
+        for &op in allowed(field) {
+            for value in &values {
+                let fits = match (field, value) {
+                    (Field::LastPlayed | Field::FirstPlayed, Value::Number(_)) => {
+                        matches!(op, Operator::Before | Operator::After)
+                    }
+                    // Text names an interval, and "a" is not one.
+                    (Field::LastPlayed | Field::FirstPlayed, Value::Text(_)) => false,
+                    _ => std::mem::discriminant(value) == std::mem::discriminant(&suitable(field)),
+                };
+                let built = SmartRule::new(field, op, value.clone());
+                if fits {
+                    assert!(built.is_ok(), "{field:?} {op:?} {value:?}");
+                } else if matches!(
+                    (field, value),
+                    (Field::LastPlayed | Field::FirstPlayed, Value::Text(_))
+                ) {
+                    assert_eq!(
+                        built,
+                        Err(SmartPlaylistError::MalformedInterval("a".into())),
+                        "{field:?} {op:?}"
+                    );
+                } else {
+                    assert_eq!(
+                        built,
+                        Err(SmartPlaylistError::ValueTypeMismatch { field, op }),
+                        "{field:?} {op:?} {value:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn every_field_but_genre_sorts_both_ways() {
+    let store = library();
+    for field in Field::ALL {
+        for dir in [SortDirection::Asc, SortDirection::Desc] {
+            let rules =
+                SmartRules::new(Match::All, vec![], Some(Sort::new(field, dir)), Some(2)).unwrap();
+            let result = store.evaluate(&rules, NOW, Calendar::Utc);
+            if field == Field::Genre {
+                assert!(result.is_err());
+            } else {
+                assert_eq!(result.unwrap().len(), 2, "{field:?} {dir:?}");
+            }
+        }
+    }
+}
+
+/// `>=` and `<=` translate exactly, because every comparable field is integral.
+#[test]
+fn symbolic_operators_translate_to_the_named_ones() {
+    let parsed = SmartRules::from_json(
+        r#"{"match":"all","rules":[
+            {"field":"year","op":">=","value":1997},
+            {"field":"year","op":"<=","value":1960},
+            {"field":"play_count","op":"==","value":3},
+            {"field":"play_count","op":"!=","value":0}]}"#,
+    )
+    .unwrap();
+    let ops: Vec<(Operator, Value)> = parsed
+        .rules
+        .iter()
+        .map(|rule| (rule.op, rule.value.clone()))
+        .collect();
+    assert_eq!(
+        ops,
+        [
+            (Operator::GreaterThan, Value::Number(1996)),
+            (Operator::LessThan, Value::Number(1961)),
+            (Operator::Is, Value::Number(3)),
+            (Operator::IsNot, Value::Number(0)),
+        ]
+    );
+    assert_eq!(
+        SmartRules::from_json(
+            r#"{"match":"all","rules":[{"field":"title","op":">=","value":"x"}]}"#
+        ),
+        Err(SmartPlaylistError::ValueTypeMismatch {
+            field: Field::Title,
+            op: Operator::GreaterThan
+        })
+    );
+}

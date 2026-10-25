@@ -47,6 +47,31 @@ impl SidecarError {
         matches!(self, Self::Status { status, .. } if (500..=599).contains(status) && !matches!(status, 502..=504))
     }
 
+    /// What the server itself said, for a person to read: a `ProblemDetails`
+    /// body's `title` and `detail` (the sidecar's 503 names the real cause there),
+    /// or the start of any other body. `None` when the server said nothing.
+    pub fn server_text(&self) -> Option<String> {
+        let Self::Status {
+            detail: Some(detail),
+            ..
+        } = self
+        else {
+            return None;
+        };
+        let problem = serde_json::from_str::<serde_json::Value>(detail)
+            .ok()
+            .filter(serde_json::Value::is_object);
+        let Some(problem) = problem else {
+            return Some(detail.clone());
+        };
+        let field = |key: &str| problem.get(key).and_then(serde_json::Value::as_str);
+        match (field("title"), field("detail")) {
+            (Some(title), Some(detail)) => Some(format!("{title}: {detail}")),
+            (Some(only), None) | (None, Some(only)) => Some(only.to_owned()),
+            (None, None) => Some(detail.clone()),
+        }
+    }
+
     /// The HTTP status, when the server answered with one.
     pub fn status(&self) -> Option<u16> {
         match self {

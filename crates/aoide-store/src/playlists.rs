@@ -214,6 +214,25 @@ impl Store {
         Ok(())
     }
 
+    /// Removes a playlist and its entries **from this device only**, writing no op,
+    /// along with any of their changes still waiting to be pushed. For a playlist
+    /// someone shared with this user whose share is gone: the contract says to drop
+    /// it locally, and a delete op would only be refused. Reports whether there was a
+    /// row. Never for a playlist this user owns: every other device keeps it, and
+    /// this one would not hear of it again.
+    pub fn drop_playlist_locally(&self, id: &str) -> Result<bool> {
+        self.write_local(|tx| {
+            tx.execute(
+                "DELETE FROM op WHERE synced = 0 AND ((entity = 'playlist' AND entityId = ?1) \
+                 OR (entity = 'playlistItem' AND entityId IN \
+                     (SELECT id FROM playlistItem WHERE playlistId = ?1)))",
+                [id],
+            )?;
+            tx.execute("DELETE FROM playlistItem WHERE playlistId = ?", [id])?;
+            Ok(tx.execute("DELETE FROM playlist WHERE id = ?", [id])? > 0)
+        })
+    }
+
     /// Repositions a playlist between two siblings; `None` on either side is the end.
     /// Passing neither leaves it where it is.
     pub fn reorder_playlist(
@@ -590,7 +609,9 @@ impl Store {
 
 impl Store {
     /// Sets or clears the item whose cover stands in for a playlist's. `None` when the
-    /// playlist is gone.
+    /// playlist is gone. A chosen picture is cleared with it, as on the phone: left
+    /// behind, its hash would keep winning and choosing an album would look like it
+    /// did nothing.
     pub fn set_artwork(
         &self,
         item_id: Option<&str>,
@@ -601,6 +622,8 @@ impl Store {
             return Ok(None);
         };
         list.artwork_item_id = item_id.map(str::to_owned);
+        list.image_hash = None;
+        list.image_mime = None;
         Ok(Some(self.record(list, false, now)?))
     }
 

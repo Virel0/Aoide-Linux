@@ -13,10 +13,12 @@
 mod account;
 mod activity;
 mod built_in;
+mod covers;
 mod error;
 mod field_stamps;
 mod finish_rate;
 mod fractional_index;
+mod handoff;
 mod history;
 mod images;
 mod json;
@@ -28,6 +30,7 @@ mod quarantine;
 mod queue;
 mod recent_contexts;
 mod record;
+mod replay;
 mod schema;
 mod smart;
 mod store;
@@ -42,10 +45,15 @@ mod tests;
 pub use account::AccountClaim;
 pub use activity::Activity;
 pub use built_in::BuiltInPlaylist;
+pub use covers::{
+    BlobDirectory, CoverError, CoverRepair, MAX_IMAGE_BYTES, NamedJellyfinPlaylist, PlaylistCover,
+    is_coverless, is_image_hash, plan_cover_repairs, sniff_image_mime,
+};
 pub use error::{Result, StoreError};
 pub use field_stamps::{FieldStamps, METADATA_COLUMNS};
 pub use finish_rate::{FinishCounts, FinishRate};
 pub use fractional_index::FractionalIndex;
+pub use handoff::{PickUp, QueueBroadcast, QueueFreshness, QueueSnapshot, ResumableQueue};
 pub use history::{
     AlbumPlays, ArtistPlays, DayPlays, PlayWeighting, Recap, TrackPlays, TrackStats,
 };
@@ -59,8 +67,12 @@ pub use play_definition::{PlayClassifier, PlayOutcome};
 pub use playlists::{PlaylistError, RelinkReport, TrackLink, UNRESOLVED_PREFIX};
 pub use quarantine::{QuarantinedOp, SyncDirection};
 pub use queue::QueuePolicy;
-pub use recent_contexts::{RecentContext, RecentContextKind, RecentContextList};
+pub use recent_contexts::{
+    RESUME_GRID_LIMIT, RecentContext, RecentContextKind, RecentContextList, RecentContexts,
+    ResumeTile, StationSeed, resume_tiles,
+};
 pub use record::{Record, SyncRecord};
+pub use replay::{ReplayPeriod, hours_listened};
 pub use smart::{
     Calendar, Field, Match, Operator, RelativeInterval, SmartPlaylistError, SmartRule, SmartRules,
     Sort, SortDirection, TimeUnit, Value,

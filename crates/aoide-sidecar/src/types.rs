@@ -338,3 +338,137 @@ pub struct AnalysisCoverage {
     #[serde(default)]
     pub summary: Option<String>,
 }
+
+// MARK: - Handoff
+
+/// One device's row from `GET /aoide/queue`, read leniently: the payload is the
+/// writing client's own row, verbatim, so `trackIds` may be an array or the JSON text
+/// the phone stores, and an older desktop build put the fields beside the payload
+/// rather than inside it. Freshness is the server's clock — `age_seconds`,
+/// `received_at` — never `updated_at`, which a device with a wrong clock would win
+/// every handover with.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QueueEntry {
+    pub device_id: String,
+    /// This device's own row.
+    pub is_current_device: bool,
+    /// Seconds since the server received the row, on the server's clock.
+    pub age_seconds: Option<f64>,
+    /// When the server received it, on the server's clock.
+    pub received_at: Option<i64>,
+    /// The **writing** device's clock. Not for judging freshness.
+    pub updated_at: Option<i64>,
+    pub device_name: Option<String>,
+    pub track_ids: Vec<String>,
+    pub position: i64,
+    pub elapsed_ms: i64,
+}
+
+impl QueueEntry {
+    /// `None` for an entry with no device id; everything else has a default.
+    pub fn from_json(entry: &serde_json::Value) -> Option<Self> {
+        let object = entry.as_object()?;
+        let payload = object.get("payload").and_then(serde_json::Value::as_object);
+        // Inside the payload first, then beside it.
+        let field = |key: &str| {
+            payload
+                .and_then(|payload| payload.get(key))
+                .filter(|value| !value.is_null())
+                .or_else(|| object.get(key).filter(|value| !value.is_null()))
+        };
+        let device_id = object
+            .get("deviceId")
+            .and_then(serde_json::Value::as_str)
+            .or_else(|| field("deviceId").and_then(serde_json::Value::as_str))?
+            .to_owned();
+        let track_ids = match field("trackIds") {
+            Some(serde_json::Value::Array(items)) => items
+                .iter()
+                .filter_map(|id| id.as_str().map(str::to_owned))
+                .collect(),
+            Some(serde_json::Value::String(text)) => {
+                serde_json::from_str::<Vec<String>>(text).unwrap_or_default()
+            }
+            _ => Vec::new(),
+        };
+        let integer = |key: &str| {
+            field(key)
+                .and_then(serde_json::Value::as_f64)
+                .map(|v| v as i64)
+        };
+        Some(Self {
+            device_id,
+            is_current_device: object
+                .get("isCurrentDevice")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            age_seconds: object
+                .get("ageSeconds")
+                .and_then(serde_json::Value::as_f64)
+                .filter(|age| age.is_finite()),
+            received_at: object.get("receivedAt").and_then(serde_json::Value::as_i64),
+            updated_at: object
+                .get("updatedAt")
+                .and_then(serde_json::Value::as_i64)
+                .or_else(|| integer("updatedAt")),
+            device_name: field("deviceName")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            track_ids,
+            position: integer("position").unwrap_or(0),
+            elapsed_ms: integer("elapsedMs").unwrap_or(0),
+        })
+    }
+}
+
+/// A list endpoint's entries, as a bare array or wrapped under one of `keys`.
+pub(crate) fn list_from<'a>(body: &'a serde_json::Value, keys: &[&str]) -> &'a [serde_json::Value] {
+    if let Some(items) = body.as_array() {
+        return items;
+    }
+    keys.iter()
+        .find_map(|key| body.get(*key).and_then(serde_json::Value::as_array))
+        .map_or(&[], Vec::as_slice)
+}
+
+// MARK: - Collaborative playlists
+
+/// One grant from `GET /aoide/shares`: shares owned by the caller and shares granted
+/// to the caller, in one list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistShare {
+    pub playlist_id: String,
+    pub grantee_user_id: String,
+    #[serde(default)]
+    pub can_edit: bool,
+    /// Absent when the server does not name an owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_user_id: Option<String>,
+}
+
+impl PlaylistShare {
+    /// Whether this grant is evidence that `user_id` may **edit** the playlist: an
+    /// editable share that names them, or that they own. Without a `user_id` only an
+    /// ownerless share counts — claiming somebody else's access would mean a refused
+    /// push every sync, where doubting it merely keeps an edit visible as held back.
+    pub fn grants_edit_to(&self, user_id: Option<&str>) -> bool {
+        if !self.can_edit {
+            return false;
+        }
+        match (self.owner_user_id.as_deref(), user_id) {
+            (None, _) => true,
+            (Some(owner), Some(user)) => owner == user || self.grantee_user_id == user,
+            (Some(_), None) => false,
+        }
+    }
+}
+
+/// `POST /aoide/shares`. Only the owner can share.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareRequest {
+    pub playlist_id: String,
+    pub grantee_user_id: String,
+    pub can_edit: bool,
+}

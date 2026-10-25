@@ -14,6 +14,7 @@ use crate::models::{Op, OpKind, PlayEvent, PlaySource};
 use crate::play_definition::{PlayClassifier, PlayDefinition};
 use crate::playlists::TrackLink;
 use crate::record::{Record, placeholders};
+use crate::smart::Calendar;
 use crate::store::Store;
 
 /// SQLite on older systems caps host parameters at 999, and an id list here comes
@@ -371,8 +372,18 @@ impl Store {
         })
     }
 
-    /// A wrapped-style summary of `[from, to)`, read in one consistent snapshot.
+    /// A wrapped-style summary of `[from, to)`, read in one consistent snapshot, with
+    /// the busiest day bucketed in this device's time zone.
     pub fn recap(&self, from: Millis, to: Millis) -> Result<Recap> {
+        self.recap_in(from, to, Calendar::Local)
+    }
+
+    /// [`recap`](Self::recap), with the busiest day bucketed in `calendar`.
+    pub fn recap_in(&self, from: Millis, to: Millis, calendar: Calendar) -> Result<Recap> {
+        let zone = match calendar {
+            Calendar::Local => ", 'localtime'",
+            Calendar::Utc => "",
+        };
         self.read(|conn| {
             let play = qualifies_as_play();
             let (total_plays, distinct_tracks, distinct_artists, distinct_albums) = conn.query_row(
@@ -392,7 +403,7 @@ impl Store {
             )?;
             let busiest_day = {
                 let mut statement = conn.prepare(&format!(
-                    "SELECT strftime('%Y-%m-%d', e.startedAt / 1000, 'unixepoch', 'localtime') AS day, \
+                    "SELECT strftime('%Y-%m-%d', e.startedAt / 1000, 'unixepoch'{zone}) AS day, \
                             COUNT(*) AS playCount \
                      {EVENTS_WITH_TRACK} \
                      WHERE e.startedAt >= ? AND e.startedAt < ? AND {play} \

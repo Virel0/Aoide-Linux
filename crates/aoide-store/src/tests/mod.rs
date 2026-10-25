@@ -1,14 +1,17 @@
 //! Ports of CurationKit's test suites, which are the specification for this crate.
 //! Each file names the Swift suite it ports.
 
+mod covers;
 mod curation_store;
 mod field_merge;
 mod fractional_index;
+mod handoff;
 mod play_definition;
 mod play_history;
 mod playlists;
 mod queue_persistence;
 mod recent_contexts;
+mod replay;
 mod smart_playlist;
 mod sync_account;
 mod sync_entity;
