@@ -112,6 +112,8 @@ pub(crate) struct Signed {
     pub lyrics: Option<LyricsState>,
     /// The lyric line last scrolled to.
     pub lyric_line: Option<usize>,
+    /// Handoff and the resume grid.
+    pub handoff: crate::handoff::Handoff,
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +156,7 @@ pub enum Message {
     Notice(String),
     Dismiss,
     Ignore,
+    Handoff(crate::handoff::Msg),
 }
 
 /// The player bar's controls.
@@ -282,7 +285,10 @@ impl App {
                 Task::none()
             }
             Message::Window(id, event) => self.window_event(id, event),
-            Message::Engine(event) => self.engine_event(event),
+            Message::Engine(event) => {
+                let task = self.engine_event(event.clone());
+                Task::batch([task, self.handoff_engine_event(&event)])
+            }
             Message::Artwork(key, bytes) => {
                 self.artwork.arrived(key, bytes);
                 Task::none()
@@ -448,6 +454,7 @@ impl App {
                 Task::none()
             }
             Message::Ignore => Task::none(),
+            Message::Handoff(message) => self.handoff(message),
         }
     }
 
@@ -466,6 +473,8 @@ impl App {
         let sync = sidecar
             .clone()
             .map(|client| Arc::new(SyncEngine::new(self.store.shared(), client)));
+        let handoff =
+            crate::handoff::Handoff::open(self.paths.as_ref(), &connection.account.server);
         self.session = Some(Signed {
             connection,
             sidecar,
@@ -494,6 +503,7 @@ impl App {
             infinity: InfinityTrigger::default(),
             lyrics: None,
             lyric_line: None,
+            handoff,
         });
 
         let mut tasks = Vec::new();
@@ -592,6 +602,8 @@ impl App {
                     let now = aoide_store::now_millis();
                     self.store.send(move |w| {
                         let _ = w.recorder.stopped(&w.store, now);
+                        // What waited to be published was this account's.
+                        w.broadcast = aoide_store::QueueBroadcast::new();
                         let _ = w.store.clear_queue(now);
                     });
                 }
@@ -632,6 +644,10 @@ impl App {
         let Some(engine) = signed.sync.clone() else {
             return Task::none();
         };
+        if signed.handoff.publishing {
+            signed.handoff.sync_wanted = true;
+            return Task::none();
+        }
         // Not before the store is known to be this account's.
         if signed.unknown_owner || !signed.throttle.request(now) {
             return Task::none();
@@ -651,6 +667,10 @@ impl App {
         let Some(engine) = signed.sync.clone() else {
             return Task::none();
         };
+        if signed.handoff.publishing {
+            signed.handoff.sync_wanted = true;
+            return Task::none();
+        }
         if signed.unknown_owner || !signed.throttle.request_now(now) {
             return Task::none();
         }
@@ -889,7 +909,12 @@ impl App {
                 } else {
                     PlayRequest::shuffled(&menu.tracks, aoide_store::PlaySource::Shuffle)
                 };
-                self.play(request)
+                let context = menu
+                    .collection
+                    .as_ref()
+                    .and_then(|(c, title)| crate::handoff::collection_context(c, title));
+                let remembered = self.remembered(context);
+                Task::batch([self.play(request), remembered])
             }
             RowAction::FlagsLoaded(id, flags) => {
                 if let Some(menu) = signed.menu.as_mut()
@@ -1112,10 +1137,11 @@ impl App {
             self.notice = Some(error);
         }
         match control {
-            Transport::Toggle => self.report_pause_state(),
+            Transport::Toggle => Task::batch([self.report_pause_state(), self.save_queue()]),
             Transport::Next | Transport::Previous | Transport::Shuffle | Transport::Repeat => {
                 Task::batch([self.check_infinity(), self.save_queue()])
             }
+            Transport::Seek(_) | Transport::ScrubEnd => self.save_queue(),
             _ => Task::none(),
         }
     }
@@ -1246,7 +1272,7 @@ impl App {
             }
             C::Quit => return self.quit(),
         };
-        self.result(result)
+        Task::batch([self.result(result), self.save_queue()])
     }
 
     fn result(&mut self, result: Result<(), String>) -> Task<Message> {
@@ -1302,6 +1328,8 @@ impl App {
             store
                 .call(move |w| {
                     let _ = w.recorder.stopped(&w.store, now);
+                    // The queue as it was left, for the other devices.
+                    let _ = w.broadcast.flush_now(&w.store, now);
                 })
                 .await;
         })

@@ -14,6 +14,7 @@ use crate::widgets::{self, ListStyle};
 
 #[derive(Debug)]
 pub struct State {
+    pub id: String,
     pub title: String,
     album: Option<Item>,
     pub art: Option<ArtKey>,
@@ -39,6 +40,7 @@ pub fn open(ctx: &Ctx<'_>, id: &str, title: &str) -> (State, Task<App>) {
     ]);
     (
         State {
+            id: id.to_owned(),
             title: title.to_owned(),
             album: None,
             art: None,
@@ -148,7 +150,23 @@ impl State {
                 &disc_headings(tracks),
             ),
         });
-        widgets::page(body)
+        crate::handoff::played_from(widgets::page(body), Some(self.context()))
+    }
+
+    /// What playing from this page is remembered as.
+    fn context(&self) -> aoide_store::RecentContext {
+        let mut context = aoide_store::RecentContext::new(
+            aoide_store::RecentContextKind::Album,
+            self.id.clone(),
+            self.title.clone(),
+            aoide_store::now_millis(),
+        );
+        context.subtitle = self.album.as_ref().and_then(|a| {
+            a.album_artist
+                .clone()
+                .or_else(|| a.album_artists.first().map(|n| n.name.clone()))
+        });
+        context
     }
 }
 

@@ -415,7 +415,27 @@ impl State {
             Load::Ready(tracks) if self.editing => self.editable(tracks, view),
             Load::Ready(tracks) => widgets::track_list(tracks, view, LIST, PlaySource::Playlist),
         });
-        widgets::page(body)
+        crate::handoff::played_from(widgets::page(body), self.context())
+    }
+
+    /// What playing from this page is remembered as: the playlist, drawn by
+    /// its first track's cover.
+    fn context(&self) -> Option<aoide_store::RecentContext> {
+        let playlist = self.playlist.as_ref()?;
+        let mut context = aoide_store::RecentContext::new(
+            aoide_store::RecentContextKind::LocalPlaylist,
+            playlist.id.clone(),
+            playlist.name.clone(),
+            aoide_store::now_millis(),
+        );
+        context.smart = Some(playlist.is_smart);
+        context.artwork_item_id = playlist.artwork_item_id.clone().or_else(|| {
+            self.tracks
+                .ready()
+                .and_then(|t| t.first())
+                .and_then(|t| t.album_id.clone().or_else(|| Some(t.id.clone())))
+        });
+        Some(context)
     }
 
     /// The songs with each entry's Up, Down and Remove.
