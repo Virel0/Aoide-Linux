@@ -116,7 +116,11 @@ impl State {
     }
 }
 
-fn section<'a>(title: &'a str, rows: Column<'a, App>, footer: &'a str) -> Element<'a, App> {
+pub(crate) fn section<'a>(
+    title: &'a str,
+    rows: Column<'a, App>,
+    footer: &'a str,
+) -> Element<'a, App> {
     let mut block = column![
         text(title)
             .size(13)
@@ -142,6 +146,7 @@ pub fn view<'a>(
     account: Option<&'a Account>,
     sync: crate::sync::Status<'a>,
     view: &View<'a>,
+    system: Element<'a, App>,
 ) -> Element<'a, App> {
     let key = view.key;
     let message = move |m: Message| App::Page(key, PageMsg::Settings(m));
@@ -318,6 +323,7 @@ pub fn view<'a>(
             sound,
             lyrics,
             hidden,
+            system,
             account
         ]
         .spacing(24)

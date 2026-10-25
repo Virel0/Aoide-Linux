@@ -185,6 +185,7 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
                 last: signed.sync_status.as_ref(),
             },
             &view,
+            crate::system::settings_sections(app),
         ),
         page => page.view(&view),
     };

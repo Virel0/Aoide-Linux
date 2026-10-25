@@ -164,6 +164,8 @@ pub struct Config {
     pub settings: Settings,
     /// Master volume, 0 to 1.
     pub volume: f32,
+    /// Settings → System: the tray and the other desktop services.
+    pub system: crate::system::SystemSettings,
 }
 
 impl Default for Config {
@@ -175,6 +177,7 @@ impl Default for Config {
             window: WindowGeometry::default(),
             settings: Settings::default(),
             volume: 1.0,
+            system: crate::system::SystemSettings::default(),
         }
     }
 }
@@ -256,6 +259,7 @@ mod tests {
                 lyric_offset_ms: -250,
             },
             volume: 0.5,
+            system: crate::system::SystemSettings::default(),
         };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);

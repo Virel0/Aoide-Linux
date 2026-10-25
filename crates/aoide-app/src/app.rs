@@ -52,6 +52,8 @@ pub struct App {
     phase: Phase,
     login: login::State,
     pub(crate) session: Option<Signed>,
+    /// The tray and the other services of Settings → System.
+    pub(crate) system: crate::system::State,
 }
 
 /// An open page and its place in the stack.
@@ -154,6 +156,7 @@ pub enum Message {
     Notice(String),
     Dismiss,
     Ignore,
+    Tray(crate::tray::Message),
 }
 
 /// The player bar's controls.
@@ -222,6 +225,7 @@ impl App {
                 iced::widget::operation::focus(login::SERVER),
             ),
         };
+        let system = crate::system::State::new(&desktop, &config);
         let app = Self {
             login: login::State::new(config.last_server.clone()),
             paths,
@@ -237,6 +241,7 @@ impl App {
             clock: Instant::now(),
             phase,
             session: None,
+            system,
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
         (app, Task::batch([theme, restore]))
@@ -256,6 +261,7 @@ impl App {
             iced::system::theme_changes().map(Message::ThemeChanged),
             window::events().map(|(id, event)| Message::Window(id, event)),
             integration::commands(&self.desktop).map(Message::Desktop),
+            crate::tray::events(&self.system.tray).map(Message::Tray),
         ])
     }
 
@@ -269,6 +275,7 @@ impl App {
         let task = self.handle(message);
         // The desktop hears only what changed.
         self.publish();
+        self.publish_system();
         if quiet {
             return task;
         }
@@ -448,6 +455,7 @@ impl App {
                 Task::none()
             }
             Message::Ignore => Task::none(),
+            Message::Tray(message) => self.tray_message(message),
         }
     }
 
@@ -1057,7 +1065,7 @@ impl App {
 
     // MARK: - Playing
 
-    fn transport(&mut self, control: Transport) -> Task<Message> {
+    pub(crate) fn transport(&mut self, control: Transport) -> Task<Message> {
         let result = match control {
             Transport::Toggle => self.playback.toggle(),
             Transport::Next => self.playback.next(),
@@ -1204,7 +1212,7 @@ impl App {
         Task::batch([self.save_queue(), self.check_infinity()])
     }
 
-    fn desktop(&mut self, command: integration::Command) -> Task<Message> {
+    pub(crate) fn desktop(&mut self, command: integration::Command) -> Task<Message> {
         use integration::Command as C;
         let result = match command {
             C::Play => self.playback.play(),
@@ -1239,11 +1247,8 @@ impl App {
                 }
                 result
             }
-            C::Raise => {
-                return self.window.map_or_else(Task::none, |id| {
-                    window::minimize(id, false).chain(window::gain_focus(id))
-                });
-            }
+            // Also out of the tray, if the window is hidden there.
+            C::Raise => return self.show_window(),
             C::Quit => return self.quit(),
         };
         self.result(result)
@@ -1281,14 +1286,15 @@ impl App {
                 Task::none()
             }
             window::Event::Focused => self.request_sync(),
-            window::Event::CloseRequested => self.quit(),
+            window::Event::CloseRequested => self.close_requested(),
+            window::Event::Unfocused => self.window_unfocused(),
             _ => Task::none(),
         }
     }
 
     /// Saves what should outlive the window, waits for the store thread to
     /// finish what it was given, then exits.
-    fn quit(&mut self) -> Task<Message> {
+    pub(crate) fn quit(&mut self) -> Task<Message> {
         self.save_config();
         let _ = self.save_queue();
         let report = self.final_report();

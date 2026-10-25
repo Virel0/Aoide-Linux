@@ -20,7 +20,9 @@ mod session;
 mod shell;
 mod store_worker;
 mod sync;
+mod system;
 mod theme;
+mod tray;
 mod widgets;
 
 use iced::window;
@@ -65,6 +67,8 @@ fn main() -> iced::Result {
             (Some(x), Some(y)) => window::Position::Specific(iced::Point::new(x, y)),
             _ => window::Position::Centered,
         },
+        // Start Minimised: hidden in the tray (shown again if no panel takes it).
+        visible: !config.system.tray.start_hidden(),
         ..window::Settings::default()
     };
 
