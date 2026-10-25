@@ -3,7 +3,8 @@
 
 use aoide_store::Activity;
 use iced::widget::{
-    Column, button, column, container, mouse_area, opaque, pick_list, row, rule, text, text_input,
+    Column, button, column, container, mouse_area, opaque, pick_list, row, rule, scrollable, text,
+    text_input,
 };
 use iced::{Center, Element, Fill, Length, Padding};
 
@@ -23,7 +24,8 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
         BarMenu::More => more(app),
         BarMenu::Volume => outputs(app),
     };
-    let card = container(card)
+    // Scrolled when the window is too short for all of it.
+    let card = container(scrollable(card))
         .padding(8)
         .width(Length::Fixed(280.0))
         .style(theme::menu);
