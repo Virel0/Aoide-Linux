@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use crate::decode::{Decoder, MediaSource};
 use crate::error::{Error, Result};
-use crate::loudness::linear_gain;
+use crate::loudness::level_gain;
 use crate::mix::SoundBounds;
 use crate::queue::EntryId;
 use crate::resample::{StreamResampler, scale};
@@ -34,8 +34,14 @@ pub struct TrackSpec {
     pub source: MediaSource,
     /// Play only this span of the file.
     pub bounds: Option<SoundBounds>,
-    /// Loudness levelling, in dB; only a negative gain has any effect.
+    /// Loudness levelling from the sidecar, in dB; only a negative gain has
+    /// any effect.
     pub gain_db: Option<f64>,
+    /// Level volume over the file's own ReplayGain tags: when set, a file
+    /// that has them plays by them (album gain first, peak-limited, see
+    /// [`crate::loudness::ReplayGainTags::linear_gain`]) and `gain_db`
+    /// stands down for it. Unset, the tags are ignored.
+    pub replay_gain: bool,
 }
 
 impl TrackSpec {
@@ -45,6 +51,7 @@ impl TrackSpec {
             source,
             bounds: None,
             gain_db: None,
+            replay_gain: false,
         }
     }
 
@@ -55,6 +62,11 @@ impl TrackSpec {
 
     pub fn with_gain_db(mut self, gain_db: Option<f64>) -> Self {
         self.gain_db = gain_db;
+        self
+    }
+
+    pub fn with_replay_gain(mut self, replay_gain: bool) -> Self {
+        self.replay_gain = replay_gain;
         self
     }
 }
@@ -276,11 +288,12 @@ impl Pipeline {
 
         let at = self.output_position();
         let length = end.map(|end| scale(end.saturating_sub(start), rate, self.rate));
+        let tags = spec.replay_gain.then(|| decoder.replay_gain());
         out.marker(
             at,
             Marker::Start {
                 id: spec.id,
-                gain: linear_gain(spec.gain_db),
+                gain: level_gain(true, tags.as_ref(), spec.gain_db),
                 origin_ms: start as f64 * 1000.0 / f64::from(rate),
                 length,
             },

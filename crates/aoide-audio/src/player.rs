@@ -30,7 +30,9 @@ pub struct PlayerTrack {
     /// Album, track number, length, sound bounds and tempo, for the planner;
     /// its `sound` is also what the engine plays.
     pub mix: MixTrack,
-    /// Loudness levelling, from [`crate::loudness::gain_db`].
+    /// Loudness levelling, from [`crate::loudness::gain_db`]. Applied unless
+    /// [`Player::set_level_volume`] turned Level volume off, and standing
+    /// down for a file with ReplayGain tags of its own once it was turned on.
     pub gain_db: Option<f64>,
 }
 
@@ -58,6 +60,10 @@ pub struct Player {
     /// What has been handed to the engine to follow the current track.
     planned: Option<(EntryId, MixTransition)>,
     failures: usize,
+    /// The Level volume switch; `None` until the app says, which applies
+    /// each track's `gain_db` and ignores tags, as before the switch was
+    /// the player's.
+    level_volume: Option<bool>,
 }
 
 impl Player {
@@ -68,6 +74,7 @@ impl Player {
             settings: PlayerSettings::default(),
             planned: None,
             failures: 0,
+            level_volume: None,
         }
     }
 
@@ -96,6 +103,22 @@ impl Player {
 
     pub fn set_settings(&mut self, settings: PlayerSettings) -> Result<()> {
         self.settings = settings;
+        self.replan()
+    }
+
+    /// The Level volume switch, over both of its sources: a file's own
+    /// ReplayGain tags and the sidecar's measurement in each track's
+    /// `gain_db`. On, a file with tags plays by them and the measurement
+    /// stands down for it (the desktop's rule); a file without plays by the
+    /// measurement. Off, neither applies. Like [`Player::set_measurements`],
+    /// the current track keeps what it was loaded with until it is loaded
+    /// again; what follows it is planned again at once.
+    pub fn set_level_volume(&mut self, on: bool) -> Result<()> {
+        if self.level_volume == Some(on) {
+            return Ok(());
+        }
+        self.level_volume = Some(on);
+        self.planned = None;
         self.replan()
     }
 
@@ -156,7 +179,7 @@ impl Player {
             return Ok(());
         };
         let playing = self.engine.transport() == Transport::Playing;
-        self.engine.load(spec(&entry), ms, playing)?;
+        self.engine.load(self.spec(&entry), ms, playing)?;
         self.planned = None;
         self.replan()
     }
@@ -273,7 +296,7 @@ impl Player {
         let Some(entry) = self.queue.current().cloned() else {
             return self.engine.stop();
         };
-        self.engine.load(spec(&entry), start_ms, play)?;
+        self.engine.load(self.spec(&entry), start_ms, play)?;
         self.replan()
     }
 
@@ -300,7 +323,8 @@ impl Player {
             track: next.track.clone(),
             is_manual: false,
         };
-        self.engine.set_next(Some((spec(&entry), transition)))?;
+        self.engine
+            .set_next(Some((self.spec(&entry), transition)))?;
         self.planned = Some((next.entry_id, transition));
         Ok(())
     }
@@ -309,10 +333,15 @@ impl Player {
     pub fn planned(&self) -> Option<(EntryId, MixTransition)> {
         self.planned
     }
-}
 
-fn spec(entry: &QueueEntry<PlayerTrack>) -> TrackSpec {
-    TrackSpec::new(entry.id, entry.track.source.clone())
-        .with_bounds(entry.track.mix.sound)
-        .with_gain_db(entry.track.gain_db)
+    fn spec(&self, entry: &QueueEntry<PlayerTrack>) -> TrackSpec {
+        let gain_db = match self.level_volume {
+            Some(false) => None,
+            _ => entry.track.gain_db,
+        };
+        TrackSpec::new(entry.id, entry.track.source.clone())
+            .with_bounds(entry.track.mix.sound)
+            .with_gain_db(gain_db)
+            .with_replay_gain(self.level_volume == Some(true))
+    }
 }
