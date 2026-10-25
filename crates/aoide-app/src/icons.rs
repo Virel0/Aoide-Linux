@@ -37,6 +37,13 @@ pub enum Icon {
     Down,
     Remove,
     Plus,
+    Check,
+    Equalizer,
+    Moon,
+    Private,
+    Expand,
+    Visualizer,
+    Artwork,
 }
 
 /// How an icon is tinted.
@@ -121,11 +128,24 @@ fn source(icon: Icon) -> String {
         Icon::Down => format!(r#"<path d="M6 9l6 6 6-6" {STROKE}/>"#),
         Icon::Remove => format!(r#"<path d="M6 12h12" {STROKE}/>"#),
         Icon::Plus => format!(r#"<path d="M12 6v12M6 12h12" {STROKE}/>"#),
+        Icon::Check => format!(r#"<path d="M5 12.5l4.5 4.5L19 7.5" {STROKE}/>"#),
+        Icon::Equalizer => format!(
+            r#"<path d="M6 4v16M12 4v16M18 4v16" {STROKE}/><rect x="3.5" y="13" width="5" height="3" rx="1.5" fill="black"/><rect x="9.5" y="7" width="5" height="3" rx="1.5" fill="black"/><rect x="15.5" y="15" width="5" height="3" rx="1.5" fill="black"/>"#
+        ),
+        Icon::Moon => format!(r#"<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z" {STROKE}/>"#),
+        Icon::Private => format!(
+            r#"<path d="M3 12s3.5-6 9-6c1.6 0 3 .5 4.2 1.2M21 12s-3.5 6-9 6c-1.6 0-3-.5-4.2-1.2M9.9 9.9a3 3 0 0 0 4.2 4.2M4 20L20 4" {STROKE}/>"#
+        ),
+        Icon::Expand => format!(r#"<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" {STROKE}/>"#),
+        Icon::Visualizer => format!(r#"<path d="M5 20v-6M9.5 20V8M14 20v-9M18.5 20V4" {STROKE}/>"#),
+        Icon::Artwork => format!(
+            r#"<rect x="4" y="4" width="16" height="16" rx="3" {STROKE}/><circle cx="12" cy="12" r="3" {STROKE}/>"#
+        ),
     };
     format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>"#)
 }
 
-const ALL: [Icon; 29] = [
+const ALL: [Icon; 36] = [
     Icon::Play,
     Icon::Pause,
     Icon::Next,
@@ -155,6 +175,13 @@ const ALL: [Icon; 29] = [
     Icon::Down,
     Icon::Remove,
     Icon::Plus,
+    Icon::Check,
+    Icon::Equalizer,
+    Icon::Moon,
+    Icon::Private,
+    Icon::Expand,
+    Icon::Visualizer,
+    Icon::Artwork,
 ];
 
 /// One handle per icon, made once: a handle's id is what the renderer caches on.

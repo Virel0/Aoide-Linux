@@ -175,6 +175,7 @@ pub fn view<'a>(
         column![
             switch("Skip Silence", settings.skip_silence, Toggle::SkipSilence),
             switch("Level Volume", settings.level_volume, Toggle::LevelVolume),
+            crate::player_menu::device_row(&extras),
         ],
         "Skip Silence plays only the span of each track your server measured as sound. Level \
          Volume turns loud records down to the same loudness; a quieter track is left alone, \

@@ -190,6 +190,8 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             &view,
             crate::listening::SettingsExtras {
                 config: &app.config,
+                listening: &app.listening,
+                device_fell_back: app.playback.device_fell_back(),
             },
         ),
         Page::Equalizer(state) => {

@@ -1,7 +1,7 @@
 //! The player bar's popovers: drawn over the window just above the bar, at
 //! its right-hand end; a click anywhere else closes them.
 
-use iced::widget::{button, column, container, mouse_area, opaque, row, text};
+use iced::widget::{Column, button, column, container, mouse_area, opaque, pick_list, row, text};
 use iced::{Center, Element, Fill, Length, Padding};
 
 use crate::app::{App, Message};
@@ -17,6 +17,7 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
     let menu = app.listening.menu?;
     let card = match menu {
         BarMenu::More => more(app),
+        BarMenu::Volume => outputs(app),
     };
     let card = container(card)
         .padding(8)
@@ -53,7 +54,7 @@ pub fn item<'a>(
 
 fn more(_app: &App) -> Element<'_, Message> {
     column![item(
-        Some(Icon::Settings),
+        Some(Icon::Equalizer),
         "Equaliser…",
         Message::Listening(Msg::OpenEqualizer)
     ),]
@@ -71,5 +72,114 @@ pub fn menu_button<'a>(glyph: Icon, open: bool, menu: BarMenu) -> Element<'a, Me
     .padding(6)
     .style(if open { theme::icon_on } else { theme::row })
     .on_press(Message::Listening(Msg::Menu(Some(menu))))
+    .into()
+}
+
+/// A line with a tick in front when it is the one chosen.
+pub fn check_item<'a>(
+    on: bool,
+    label: impl Into<String>,
+    message: Message,
+) -> Element<'a, Message> {
+    let tick = container(if on {
+        icon(Icon::Check, 14.0, Tone::Accent)
+    } else {
+        iced::widget::space().into()
+    })
+    .width(Length::Fixed(16.0));
+    button(
+        row![tick, text(label.into()).size(14)]
+            .spacing(8)
+            .align_y(Center),
+    )
+    .width(Fill)
+    .padding([6, 10])
+    .style(theme::row)
+    .on_press(message)
+    .into()
+}
+
+fn heading<'a>(label: &'a str) -> Element<'a, Message> {
+    container(
+        crate::widgets::secondary(label)
+            .size(12)
+            .font(crate::widgets::SEMIBOLD),
+    )
+    .padding([4, 10])
+    .into()
+}
+
+/// The volume button's popover: where the sound goes.
+fn outputs(app: &App) -> Element<'_, Message> {
+    let chosen = &app.config.sound.device;
+    let listed = match &app.listening.devices {
+        Some(Ok(listed)) => listed.as_slice(),
+        _ => &[],
+    };
+    let mut list = Column::new().spacing(2).push(heading("Play On"));
+    for option in crate::sound::device_options(listed, chosen) {
+        let on = crate::sound::chosen_option(std::slice::from_ref(&option), chosen).is_some();
+        list = list.push(check_item(
+            on,
+            option.label,
+            Message::Listening(Msg::ChooseDevice(option.choice)),
+        ));
+    }
+    match &app.listening.devices {
+        None => list = list.push(heading("Looking for devices…")),
+        Some(Err(error)) => {
+            list = list.push(heading("The devices couldn't be listed:"));
+            list = list.push(container(text(error.as_str()).size(12)).padding([0, 10]));
+        }
+        Some(Ok(_)) => {}
+    }
+    if app.playback.device_fell_back() {
+        list = list.push(
+            container(
+                crate::widgets::secondary(
+                    "The chosen device couldn't be opened, so the system default is playing.",
+                )
+                .size(12),
+            )
+            .padding([4, 10]),
+        );
+    }
+    list.into()
+}
+
+/// The output picker in Settings → Sound.
+pub fn device_row<'a>(extras: &crate::listening::SettingsExtras<'a>) -> Element<'a, Message> {
+    let chosen = &extras.config.sound.device;
+    let listed = match &extras.listening.devices {
+        Some(Ok(listed)) => listed.as_slice(),
+        _ => &[],
+    };
+    let options = crate::sound::device_options(listed, chosen);
+    let selected = crate::sound::chosen_option(&options, chosen);
+    let mut words = column![text("Output")].spacing(2).width(Fill);
+    if extras.device_fell_back {
+        words = words.push(
+            crate::widgets::secondary(
+                "The chosen device couldn't be opened, so the system default is playing.",
+            )
+            .size(13),
+        );
+    } else if let Some(Err(error)) = &extras.listening.devices {
+        words = words.push(
+            crate::widgets::secondary(format!("The devices couldn't be listed: {error}")).size(13),
+        );
+    }
+    row![
+        words,
+        pick_list(options, selected, |o: crate::sound::DeviceOption| {
+            Message::Listening(Msg::ChooseDevice(o.choice))
+        })
+        .on_open(Message::Listening(Msg::LoadDevices))
+        .padding([6, 10])
+        .text_size(14)
+        .width(Length::Fixed(360.0)),
+    ]
+    .spacing(10)
+    .align_y(Center)
     .into()
 }

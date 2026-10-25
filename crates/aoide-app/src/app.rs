@@ -202,7 +202,7 @@ impl App {
             }
         };
         let artwork = Artwork::new(paths.as_ref().map(|p| p.artwork_dir.clone()));
-        let mut playback = Playback::start(config.volume);
+        let mut playback = Playback::start(config.volume, config.sound.device.clone());
         let _ = playback.set_settings(config.settings.player());
         let _ = playback.set_level_volume(config.settings.level_volume);
         if let Err(error) = playback.apply_sound(&config.sound) {
@@ -248,7 +248,7 @@ impl App {
             listening: crate::listening::State::default(),
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
-        (app, Task::batch([theme, restore]))
+        (app, Task::batch([theme, restore, crate::listening::boot()]))
     }
 
     pub fn title(&self) -> String {

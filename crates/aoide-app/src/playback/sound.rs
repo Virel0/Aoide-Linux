@@ -41,6 +41,25 @@ impl Playback {
             .map_err(|e| e.to_string())
     }
 
+    /// Moves playback to `device`, carrying on from what was heard.
+    pub fn set_device(&mut self, device: aoide_audio::DeviceChoice) -> Result<(), String> {
+        match self._output.as_mut() {
+            Some(output) => output.set_device(device).map_err(|e| e.to_string()),
+            None => Err(format!(
+                "Nothing can play: {}",
+                self.unavailable.as_deref().unwrap_or("no sound output")
+            )),
+        }
+    }
+
+    /// A device was chosen but couldn't be opened, so the default plays.
+    pub fn device_fell_back(&self) -> bool {
+        self._output.as_ref().is_some_and(|output| {
+            *output.device() != aoide_audio::DeviceChoice::FollowDefault
+                && output.playing_on() == aoide_audio::DeviceChoice::FollowDefault
+        })
+    }
+
     /// The engine's sample rate, which the equaliser's curve is drawn at;
     /// 48 kHz when nothing can play.
     pub fn sample_rate(&self) -> u32 {

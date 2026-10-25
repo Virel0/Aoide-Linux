@@ -1,5 +1,6 @@
 //! The sound settings past Round 1, kept in the config file: the equaliser
-//! and the compressor (with the listener's own equaliser presets).
+//! and the compressor (with the listener's own equaliser presets), and the
+//! output device.
 //!
 //! Plain data and pure functions; what applies them is the equaliser screen
 //! (`screens::equalizer`) and `playback::sound`.
@@ -13,6 +14,8 @@ use serde::{Deserialize, Serialize};
 pub struct SoundSettings {
     pub equalizer: EqualizerSettings,
     pub compressor: CompressorChoice,
+    /// The output device: the system's default unless one was chosen.
+    pub device: aoide_audio::DeviceChoice,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,6 +62,79 @@ impl Default for CompressorChoice {
                 .unwrap_or_default(),
         }
     }
+}
+
+/// One line of the output picker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceOption {
+    pub label: String,
+    pub choice: aoide_audio::DeviceChoice,
+}
+
+impl std::fmt::Display for DeviceOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+/// The output picker's lines: the system default (naming the device it is
+/// now, when the list says), then every listed device, then the chosen one
+/// if it isn't connected, so the picker still shows what was chosen.
+pub fn device_options(
+    listed: &[aoide_audio::OutputDevice],
+    chosen: &aoide_audio::DeviceChoice,
+) -> Vec<DeviceOption> {
+    use aoide_audio::DeviceChoice;
+    let default = listed.iter().find(|d| d.is_default);
+    let mut options = vec![DeviceOption {
+        label: match default {
+            Some(device) => format!("System Default ({})", device.name),
+            None => "System Default".to_owned(),
+        },
+        choice: DeviceChoice::FollowDefault,
+    }];
+    options.extend(listed.iter().map(|device| DeviceOption {
+        label: device.name.clone(),
+        choice: DeviceChoice::from(device),
+    }));
+    if let DeviceChoice::Device { name, .. } = chosen
+        && !listed.iter().any(|d| same_device(chosen, d))
+    {
+        options.push(DeviceOption {
+            label: format!("{name} (not connected)"),
+            choice: chosen.clone(),
+        });
+    }
+    options
+}
+
+/// Whether `choice` names `device`: by id, or by name when the id has
+/// changed (as `aoide_audio::DeviceChoice` finds it).
+pub fn same_device(choice: &aoide_audio::DeviceChoice, device: &aoide_audio::OutputDevice) -> bool {
+    match choice {
+        aoide_audio::DeviceChoice::FollowDefault => false,
+        aoide_audio::DeviceChoice::Device { id, name } => *id == device.id || *name == device.name,
+    }
+}
+
+/// The picker's line for what is chosen.
+pub fn chosen_option(
+    options: &[DeviceOption],
+    chosen: &aoide_audio::DeviceChoice,
+) -> Option<DeviceOption> {
+    options
+        .iter()
+        .find(|o| o.choice == *chosen)
+        .or_else(|| {
+            let aoide_audio::DeviceChoice::Device { id, name } = chosen else {
+                return None;
+            };
+            options.iter().find(|o| match &o.choice {
+                aoide_audio::DeviceChoice::Device { id: i, name: n } => i == id || n == name,
+                aoide_audio::DeviceChoice::FollowDefault => false,
+            })
+        })
+        .cloned()
 }
 
 /// What the picker shows when the curve is no preset.
@@ -497,6 +573,66 @@ mod tests {
         assert_eq!(sound.sanitised().compressor.settings.threshold_db, -60.0);
     }
 
+    fn device(id: &str, name: &str, is_default: bool) -> aoide_audio::OutputDevice {
+        aoide_audio::OutputDevice {
+            id: id.into(),
+            name: name.into(),
+            is_default,
+        }
+    }
+
+    #[test]
+    fn the_output_picker_lists_the_default_then_every_device() {
+        use aoide_audio::DeviceChoice;
+        let listed = [
+            device("alsa:pipewire", "PipeWire", true),
+            device("alsa:hw:CARD=USB", "USB DAC", false),
+        ];
+        let options = device_options(&listed, &DeviceChoice::FollowDefault);
+        let labels: Vec<&str> = options.iter().map(|o| o.label.as_str()).collect();
+        assert_eq!(labels, ["System Default (PipeWire)", "PipeWire", "USB DAC"]);
+        assert_eq!(
+            chosen_option(&options, &DeviceChoice::FollowDefault)
+                .unwrap()
+                .label,
+            "System Default (PipeWire)"
+        );
+        let usb = DeviceChoice::from(&listed[1]);
+        assert_eq!(chosen_option(&options, &usb).unwrap().label, "USB DAC");
+    }
+
+    #[test]
+    fn a_renumbered_card_is_found_by_name_and_a_missing_one_still_shown() {
+        use aoide_audio::DeviceChoice;
+        let listed = [device("alsa:hw:CARD=2", "USB DAC", false)];
+        let renumbered = DeviceChoice::Device {
+            id: "alsa:hw:CARD=1".into(),
+            name: "USB DAC".into(),
+        };
+        let options = device_options(&listed, &renumbered);
+        assert_eq!(options.len(), 2);
+        assert_eq!(
+            chosen_option(&options, &renumbered).unwrap().label,
+            "USB DAC"
+        );
+
+        let gone = DeviceChoice::Device {
+            id: "alsa:hw:CARD=9".into(),
+            name: "Headphones".into(),
+        };
+        let options = device_options(&listed, &gone);
+        assert_eq!(options.last().unwrap().label, "Headphones (not connected)");
+        assert_eq!(
+            chosen_option(&options, &gone).unwrap().label,
+            "Headphones (not connected)"
+        );
+        // Nothing listed at all: the default without a name.
+        assert_eq!(
+            device_options(&[], &DeviceChoice::FollowDefault)[0].label,
+            "System Default"
+        );
+    }
+
     #[test]
     fn labels_read_plainly() {
         assert_eq!(frequency_label(32.0), "32");
@@ -517,6 +653,10 @@ mod tests {
         sound.equalizer.choose("Jazz");
         sound.equalizer.save_preset("Mine").unwrap();
         sound.compressor.enabled = true;
+        sound.device = aoide_audio::DeviceChoice::Device {
+            id: "alsa:hw:CARD=USB".into(),
+            name: "USB DAC".into(),
+        };
         let json = serde_json::to_string(&sound).unwrap();
         let back: SoundSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(back, sound);

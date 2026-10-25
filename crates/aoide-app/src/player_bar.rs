@@ -141,7 +141,11 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             panel_on(Panel::Lyrics),
             Transport::Panel(Panel::Lyrics)
         ),
-        icon(Icon::Volume, 18.0, Tone::Secondary),
+        crate::player_menu::menu_button(
+            Icon::Volume,
+            app.listening.menu == Some(crate::listening::BarMenu::Volume),
+            crate::listening::BarMenu::Volume
+        ),
         slider(0.0..=1.0, playback.volume(), |v| Message::Player(
             Transport::Volume(v)
         ))
