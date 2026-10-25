@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream data for Aoide for Linux. Installed by the Flatpak, the deb and
+     the AppImage alike. -->
+<component type="desktop-application">
+  <id>io.github.Virel0.Aoide.Linux</id>
+  <name>Aoide for Linux</name>
+  <summary>A native Jellyfin music player</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <developer id="io.github.virel0">
+    <name>Virel0</name>
+  </developer>
+
+  <description>
+    <p>
+      Aoide for Linux plays the music on your own Jellyfin server. It is a
+      native app, and the companion of the Aoide app for iPhone: with the Aoide
+      plugin on the server, playlists and listening history sync between them.
+    </p>
+    <ul>
+      <li>Gapless playback, sample-exact for FLAC, ALAC, WAV and AIFF</li>
+      <li>Crossfade between tracks, with albums left whole</li>
+      <li>Infinity: when the queue runs low, it keeps going</li>
+      <li>Local playlists and a listening history of its own</li>
+      <li>Synced lyrics that follow along</li>
+      <li>Media keys and the desktop's media controls</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.Virel0.Aoide.Linux.desktop</launchable>
+  <provides>
+    <binary>aoide-linux</binary>
+  </provides>
+
+  <url type="homepage">https://github.com/Virel0/aoide-linux</url>
+  <url type="bugtracker">https://github.com/Virel0/aoide-linux/issues</url>
+  <url type="vcs-browser">https://github.com/Virel0/aoide-linux</url>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <!-- TODO: screenshots. Each needs a public URL that stays put, e.g. a file
+       committed under packaging/screenshots and linked by its raw URL at a tag:
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/Virel0/aoide-linux/vX.Y.Z/packaging/screenshots/home.png</image>
+      <caption>Home</caption>
+    </screenshot>
+  </screenshots>
+  -->
+
+  <!-- social-info "mild" is "uses an online API": besides the user's own
+       server the app asks LRCLIB for lyrics, GitHub for the latest release
+       and, once given a key, OpenRouter. Discord Rich Presence, off unless
+       turned on, shows what is playing on the user's Discord profile, which
+       arguably makes this "intense" (shares information identifying the
+       user). -->
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-info">mild</content_attribute>
+  </content_rating>
+
+  <!-- Newest first. Add one for each tag before tagging it; the date is the
+       release's. -->
+  <releases>
+    <release version="0.1.0" date="2026-10-24" type="development">
+      <description>
+        <p>The first release: browsing, playback, queue, sync, MPRIS.</p>
+      </description>
+    </release>
+  </releases>
+</component>

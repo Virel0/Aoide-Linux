@@ -1,0 +1,102 @@
+name: Release (AppImage and deb)
+
+# A tag like v1.2.3 builds the app once, packages it as an AppImage
+# (packaging/appimage) and a .deb (packaging/deb), and attaches both to the
+# release. Run by hand on a branch, it builds and keeps the files as a
+# workflow artifact only, to try the packaging before tagging.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    # The oldest supported Ubuntu runner: the binary needs at least the glibc
+    # it was built against (2.35 here), and an AppImage is meant to run on
+    # older systems than the one that built it.
+    runs-on: ubuntu-22.04
+    env:
+      # Strip without touching Cargo.toml; makepkg and flatpak-builder strip
+      # their own copies.
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config desktop-file-utils
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Version
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ $REF_TYPE == tag ]]; then
+            version="${REF_NAME#v}"
+          else
+            version="0~git${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: cargo build --locked --release -p aoide-app
+
+      # The AppImage carries no libraries (see packaging/appimage); a new one
+      # linked here would be missing on some systems, so stop rather than ship.
+      - name: Check what the binary links
+        run: |
+          set -euo pipefail
+          readelf -d target/release/aoide | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u > needed.txt
+          printf '%s\n' ld-linux-x86-64.so.2 libasound.so.2 libc.so.6 libdbus-1.so.3 \
+              libdl.so.2 libgcc_s.so.1 libm.so.6 libpthread.so.0 librt.so.1 libutil.so.1 \
+              | sort -u > allowed.txt
+          cat needed.txt
+          unexpected="$(comm -23 needed.txt allowed.txt)"
+          if [[ -n $unexpected ]]; then
+            echo "::error::The binary now links libraries the packages do not account for: $unexpected"
+            exit 1
+          fi
+
+      - name: Validate the desktop entry
+        run: desktop-file-validate packaging/arch/io.github.Virel0.Aoide.Linux.desktop
+
+      - name: AppImage
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: packaging/appimage/build-appimage.sh target/release/aoide "$VERSION" out
+
+      - name: deb
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: packaging/deb/build-deb.sh target/release/aoide "$VERSION" out
+
+      # Installing it is the check that every name in Depends resolves (on
+      # 22.04 the libasound2 alternative, as on Debian 12).
+      - name: Check the deb installs
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y ./out/aoide-linux_*_amd64.deb
+          dpkg -L aoide-linux
+          test -x /usr/bin/aoide-linux
+
+      - name: Keep them for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: aoide-linux-packages
+          path: out/*
+
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*

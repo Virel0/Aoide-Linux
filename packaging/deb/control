@@ -1,0 +1,30 @@
+# The deb's DEBIAN/control. build-deb.sh drops these comment lines and fills
+# in @VERSION@ and @INSTALLED_SIZE@.
+#
+# Depends, as in the Arch PKGBUILD: libasound2 and libdbus-1-3 are linked
+# (sound, and the keyring's Secret Service client); the Wayland, X11 and
+# xkbcommon libraries are loaded at run time by the window toolkit, so no
+# tool would find them in the binary. libasound2 is libasound2t64 from
+# Debian 13 and Ubuntu 24.04 on. libc6 is the glibc CI builds against.
+#
+# The keyring keeps the sign-in between launches; any Secret Service
+# provider does (GNOME Keyring, KWallet, KeePassXC), and KDE has its own.
+# Vulkan draws the window on the GPU; without it iced draws in software.
+Package: aoide-linux
+Version: @VERSION@
+Architecture: amd64
+Maintainer: Virel0
+Installed-Size: @INSTALLED_SIZE@
+Section: sound
+Priority: optional
+Homepage: https://github.com/Virel0/aoide-linux
+Depends: libc6 (>= 2.35), libgcc-s1, libasound2t64 | libasound2, libdbus-1-3, libxkbcommon0, libwayland-client0, libwayland-cursor0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrandr2
+Recommends: libvulkan1, mesa-vulkan-drivers | vulkan-icd
+Suggests: gnome-keyring | keepassxc
+Description: native Jellyfin music client
+ Aoide for Linux plays the music on your own Jellyfin server. It is the
+ companion of the Aoide app for iPhone: with the Aoide plugin on the
+ server, playlists and listening history sync between them.
+ .
+ It installs beside the Electron-based Aoide desktop app, as the command
+ aoide-linux.

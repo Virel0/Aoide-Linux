@@ -1,0 +1,14 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: aoide-linux
+Source: https://github.com/Virel0/aoide-linux
+
+Files: *
+Copyright: Virel0
+License: GPL-3.0-or-later
+ On Debian systems the full text of the GNU General Public License
+ version 3 is in /usr/share/common-licenses/GPL-3.
+
+Files: crates/aoide-app/fonts/*
+Copyright: 2020 The Inter Project Authors (https://github.com/rsms/inter)
+License: OFL-1.1
+ The full text is in /usr/share/doc/aoide-linux/Inter-LICENSE.txt.
