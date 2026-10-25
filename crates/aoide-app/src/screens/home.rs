@@ -32,6 +32,8 @@ pub struct State {
     genres: Load<Vec<(String, String)>>,
     /// The resume grid; empty draws nothing.
     resume: Vec<crate::handoff::Card>,
+    /// How many songs this week's Discover holds; `None` hides the tile.
+    discover: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +45,7 @@ pub enum Message {
     Random(Result<Vec<Item>, String>),
     Genres(Result<Vec<Item>, String>),
     Resume(Vec<crate::handoff::Card>),
+    Discover(Option<usize>),
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
@@ -74,6 +77,7 @@ pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
     let (la, lb, lc) = (library.clone(), library.clone(), library);
     let tasks = Task::batch([
         Task::done(App::Handoff(crate::handoff::Msg::LoadResume(key))),
+        Task::done(App::Discover(super::discover::Msg::Home(key))),
         fetch(
             key,
             async move { a.recently_added(la.as_deref(), SHELF as u32).await },
@@ -115,6 +119,7 @@ pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
             random: Load::Loading,
             genres: Load::Loading,
             resume: Vec::new(),
+            discover: None,
         },
         tasks,
     )
@@ -157,6 +162,7 @@ impl State {
                 }));
             }
             Message::Resume(cards) => self.resume = cards,
+            Message::Discover(count) => self.discover = count,
         }
         Task::none()
     }
@@ -189,6 +195,9 @@ impl State {
         let mut body = column![widgets::title_bar("Home", view.can_go_back)].spacing(28);
         if !self.resume.is_empty() {
             body = body.push(resume_grid(&self.resume, view));
+        }
+        if let Some(count) = self.discover {
+            body = body.push(super::discover::tile(count));
         }
         for (title, shelf) in self.shelves() {
             match shelf {

@@ -114,6 +114,8 @@ pub(crate) struct Signed {
     pub lyric_line: Option<usize>,
     /// Handoff and the resume grid.
     pub handoff: crate::handoff::Handoff,
+    /// This week's Discover list.
+    pub discover: crate::screens::discover::Discover,
 }
 
 #[derive(Debug, Clone)]
@@ -157,6 +159,7 @@ pub enum Message {
     Dismiss,
     Ignore,
     Handoff(crate::handoff::Msg),
+    Discover(crate::screens::discover::Msg),
 }
 
 /// The player bar's controls.
@@ -455,6 +458,7 @@ impl App {
             }
             Message::Ignore => Task::none(),
             Message::Handoff(message) => self.handoff(message),
+            Message::Discover(message) => self.discover(message),
         }
     }
 
@@ -504,6 +508,7 @@ impl App {
             lyrics: None,
             lyric_line: None,
             handoff,
+            discover: Default::default(),
         });
 
         let mut tasks = Vec::new();

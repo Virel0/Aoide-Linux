@@ -24,7 +24,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 |---|---|---|---|
 | Home: resume grid (last 6 contexts, "Pick up from {device}") | 2 | ✅ | "Jump Back In" on Home: `resume_tiles` over `RecentContexts` (kept per server in `recent-contexts.json` beside the store), led by "Pick up from {device}" only when that device played more recently than anything here. Contexts are remembered when playback replaces the queue from an album's or an Aoide playlist's own page (Play, Shuffle, a row) or from an album or playlist menu's Play/Shuffle; a tile plays at once, its `×` removes it. Picking up plays the other device's list from its track and seeks to its place; that queue is not offered again until it changes. Seen against the stand-in server (its `/aoide/queue`); Jellyfin playlist and station contexts arrive with their screens. A mix tile says the Mixes screen is missing |
 | Home: shelves (most played, recently added/played/released, random albums, genres) | 1 | ✅ | Recently added, recently played and most played (the last two as the albums of the tracks), recently released, random albums, and a random dozen genres as chips. A shelf with nothing on it is left out. Seen in the app against the stand-in server |
-| Home: Discover tile (`/aoide/discover`) | 2 | ⬜ | New: the Electron app has no Discover |
+| Home: Discover tile (`/aoide/discover`) | 2 | ✅ | New: the Electron app has no Discover. The tile shows the week's count; fetched when Home opens and again only once the UTC ISO week has turned (`iso_week`); a 404 hides it for the session, another failure tries again at the next Home. Seen against the stand-in server, with and without the endpoint |
 | Albums list and album detail (with finish rate) | 1 | 🟨 | Grid loaded a page at a time, sortable (title, artist, recently added, release date); detail with cover, artist, year, Play, Shuffle, tracks in disc and track order with "Disc 1", "Disc 2" headings on a multi-disc album (seen against the stand-in server). Finish rate not yet |
 | Album artists, artists, artist detail (discography, top songs, finish rate) | 1 | 🟨 | Album artists as a grid; an artist's albums. Top songs and finish rate not yet |
 | Genres list and detail | 1 | ✅ | A genre's albums through `ListQuery::genre_ids` (Jellyfin `genreIds`). Seen in the app against the stand-in server |
@@ -107,7 +107,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Track, album and artist radio (Instant Mix) | 2 | 🟨 | library done; UI pending. `instant_mix_from` with a track, album, artist, genre or playlist seed; `similar_items`, `similar_albums`, `similar_artists` |
 | Taste flags: Not Interested, Don't Count Plays; "Hidden from mixes" list | 1 | ✅ | Set from the action strip; Hidden from mixes lists them in Settings with Clear |
 | Mixes (describe a mood → smart rules via OpenRouter) | 3 | 🟨 | Library done; UI pending. `describe_mix` returns rules in the phone's `smartRules` JSON (byte for byte, illegal field/operator pairs refused with a reason) and the names the mood mentioned; `mix_plan` has the genre matching ("rock" takes Hard Rock, not Rockabilly), name-first ordering and the summary line, ported from the Electron app. Evaluating the history rules against the local store is the app's (aoide-store). Tested against a local stand-in, not yet against OpenRouter |
-| Discover | 2 | ⬜ | |
+| Discover | 2 | ✅ | The screen: the 30 songs in the server's order, Play, Shuffle, any row to start from, as the iOS `DiscoverView`. Seen against the stand-in server |
 
 ## Playlists
 

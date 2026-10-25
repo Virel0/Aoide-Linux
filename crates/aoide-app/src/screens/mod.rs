@@ -10,6 +10,7 @@ pub mod album;
 pub mod albums;
 pub mod artist;
 pub mod artists;
+pub mod discover;
 pub mod genre;
 pub mod genres;
 pub mod home;
@@ -80,6 +81,7 @@ pub enum Route {
     Artist { id: String, name: String },
     Genre { id: String, name: String },
     Playlist { id: String },
+    Discover,
 }
 
 /// An Aoide playlist as the sidebar and the pickers list it.
@@ -163,6 +165,7 @@ pub enum Page {
     Playlists(playlists::State),
     Playlist(playlist::State),
     Settings(settings::State),
+    Discover(discover::State),
 }
 
 #[derive(Debug, Clone)]
@@ -179,6 +182,7 @@ pub enum PageMsg {
     Playlists(playlists::Message),
     Playlist(playlist::Message),
     Settings(settings::Message),
+    Discover(discover::Message),
 }
 
 impl Page {
@@ -203,6 +207,7 @@ impl Page {
             Route::Artist { id, name } => wrap(artist::open(ctx, id, name), Page::Artist),
             Route::Genre { id, name } => wrap(genre::open(ctx, id, name), Page::Genre),
             Route::Playlist { id } => wrap(playlist::open(ctx, id), Page::Playlist),
+            Route::Discover => wrap(discover::open(ctx), Page::Discover),
         }
     }
 
@@ -220,6 +225,7 @@ impl Page {
             (Page::Playlists(state), PageMsg::Playlists(m)) => state.update(m, ctx),
             (Page::Playlist(state), PageMsg::Playlist(m)) => state.update(m, ctx),
             (Page::Settings(state), PageMsg::Settings(m)) => state.update(m),
+            (Page::Discover(state), PageMsg::Discover(m)) => state.update(m),
             _ => Task::none(),
         }
     }
@@ -239,6 +245,7 @@ impl Page {
             Page::Playlists(state) => state.view(view),
             Page::Playlist(state) => state.view(view),
             Page::Settings(_) => iced::widget::space().into(),
+            Page::Discover(state) => state.view(view),
         }
     }
 
@@ -262,6 +269,7 @@ impl Page {
                 .map(|t| track_art(t))
                 .unwrap_or_default(),
             Page::Genres(_) | Page::Settings(_) | Page::Playlists(_) => Vec::new(),
+            Page::Discover(state) => state.artwork(),
         }
     }
 }
