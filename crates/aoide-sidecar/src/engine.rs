@@ -4,7 +4,7 @@
 //! which is how it learns they are durable — and pulling first would merge a server
 //! state missing the local changes.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,6 +17,7 @@ use aoide_store::{
 
 use crate::client::SidecarClient;
 use crate::error::SidecarError;
+use crate::types::PlaylistShare;
 
 /// The network, held at arm's length so the engine can run against a stand-in.
 ///
@@ -60,6 +61,12 @@ pub trait SyncTransport: Send + Sync {
         _mime: &str,
     ) -> impl Future<Output = Result<(), SidecarError>> + Send {
         async { Err(SidecarError::Unsupported("images")) }
+    }
+
+    /// `GET /aoide/shares`. A transport without sharing has no shares to re-read,
+    /// and an edit held back for one stays held back and visible.
+    fn list_shares(&self) -> impl Future<Output = Result<Vec<PlaylistShare>, SidecarError>> + Send {
+        async { Err(SidecarError::Unsupported("shares")) }
     }
 }
 
@@ -108,6 +115,62 @@ impl SyncTransport for SidecarClient {
     ) -> impl Future<Output = Result<(), SidecarError>> + Send {
         self.put_image(sha256, bytes, mime)
     }
+
+    fn list_shares(&self) -> impl Future<Output = Result<Vec<PlaylistShare>, SidecarError>> + Send {
+        SidecarClient::list_shares(self)
+    }
+}
+
+// MARK: - Share-revoked edits
+
+/// How long a share refusal is believed before `/aoide/shares` is read again. A held
+/// edit is not pushed again, so nothing else would ever ask; five minutes is well
+/// under the patience of somebody just re-added to a playlist.
+pub const SHARE_RECHECK_MS: Millis = 5 * 60 * 1000;
+
+/// The words of the one refusal that is not permanent:
+/// `Playlist 'p1' belongs to another user and is not shared with you for editing.`
+/// Only this clause is matched — the quoted id and the full stop are formatting, and
+/// requiring them would turn a reworded message back into a lost edit.
+pub const REVOKED_SHARE_CLAUSE: &str =
+    "belongs to another user and is not shared with you for editing";
+
+/// Whether a rejection reason is the share-revoked refusal.
+pub fn is_share_revoked(reason: &str) -> bool {
+    reason.to_lowercase().contains(REVOKED_SHARE_CLAUSE)
+}
+
+/// An edit refused because the playlist's share was revoked while it sat queued.
+///
+/// **Not quarantined and not dropped**: the op stays in the log, because a restored
+/// share would see it accepted. **Not retried blindly** either: it is left out of
+/// every push until a re-read of `/aoide/shares` says this user may edit that
+/// playlist again. Held in memory, so a restart asks the server once more.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockedEdit {
+    pub op_id: String,
+    /// From the op (a playlist's own id, or an entry's `playlistId`), else from the
+    /// server's message. `None` when neither says.
+    pub playlist_id: Option<String>,
+    /// The server's words.
+    pub reason: String,
+    /// Whether the last read of `/aoide/shares` lists the playlist as editable by
+    /// this user. `None`: not asked yet, or the read failed — unknown, not gone.
+    pub still_shared: Option<bool>,
+}
+
+fn playlist_of(op: &Op, reason: &str) -> Option<String> {
+    let from_op = match op.entity.as_str() {
+        "playlist" => Some(op.entity_id.clone()),
+        _ => serde_json::from_str::<serde_json::Value>(&op.payload)
+            .ok()
+            .and_then(|payload| payload.get("playlistId")?.as_str().map(str::to_owned)),
+    };
+    from_op.filter(|id| !id.is_empty()).or_else(|| {
+        let start = reason.find("laylist '")? + "laylist '".len();
+        let end = reason[start..].find('\'')? + start;
+        Some(reason[start..end].to_owned()).filter(|id| !id.is_empty())
+    })
 }
 
 /// Reads the bytes behind a cover hash from wherever this device keeps them. The store
@@ -159,6 +222,11 @@ struct EngineState {
     phase: SyncPhase,
     last_report: Option<SyncReport>,
     held_entities: BTreeSet<String>,
+    blocked: BTreeMap<String, BlockedEdit>,
+    shares: Option<Vec<PlaylistShare>>,
+    shares_checked_at: Option<Millis>,
+    share_error: Option<String>,
+    lost_shares: BTreeSet<String>,
 }
 
 /// Runs syncs for one store over one transport, one at a time.
@@ -176,6 +244,7 @@ pub struct SyncEngine<T: SyncTransport> {
     policy: SyncPolicy,
     clock: Clock,
     observer: Option<Observer>,
+    user_id: Option<String>,
     running: AtomicBool,
     state: Mutex<EngineState>,
 }
@@ -198,11 +267,17 @@ impl<T: SyncTransport> SyncEngine<T> {
             policy: SyncPolicy::default(),
             clock: Arc::new(now_millis),
             observer: None,
+            user_id: None,
             running: AtomicBool::new(false),
             state: Mutex::new(EngineState {
                 phase: SyncPhase::Idle,
                 last_report: None,
                 held_entities: BTreeSet::new(),
+                blocked: BTreeMap::new(),
+                shares: None,
+                shares_checked_at: None,
+                share_error: None,
+                lost_shares: BTreeSet::new(),
             }),
         }
     }
@@ -232,6 +307,111 @@ impl<T: SyncTransport> SyncEngine<T> {
     pub fn with_image_bytes(mut self, source: Arc<dyn ImageByteSource>) -> Self {
         self.image_bytes = Some(source);
         self
+    }
+
+    /// This user's Jellyfin id: what tells a share granted to this user from one this
+    /// user granted. Without it only ownerless shares count as editable.
+    pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
+        self.user_id = Some(user_id.into());
+        self
+    }
+
+    /// Edits held back because a playlist's share was revoked — every one still
+    /// held, not only those refused on the last sync. Show them, with the count, so
+    /// nobody's change disappears without a word.
+    pub fn blocked_edits(&self) -> Vec<BlockedEdit> {
+        self.state().blocked.values().cloned().collect()
+    }
+
+    pub fn blocked_edit_count(&self) -> usize {
+        self.state().blocked.len()
+    }
+
+    /// The share list as last read, if it has been.
+    pub fn shares(&self) -> Option<Vec<PlaylistShare>> {
+        self.state().shares.clone()
+    }
+
+    /// Why the last read of `/aoide/shares` failed, if it did.
+    pub fn share_error(&self) -> Option<String> {
+        self.state().share_error.clone()
+    }
+
+    /// Playlists shared **to** this user that a later read no longer lists: access
+    /// was revoked. The contract says to drop them locally
+    /// ([`aoide_store::Store::drop_playlist_locally`]); reported rather than done,
+    /// so the app can say so first. Needs [`with_user_id`](Self::with_user_id).
+    pub fn lost_shares(&self) -> BTreeSet<String> {
+        self.state().lost_shares.clone()
+    }
+
+    /// Reads `/aoide/shares` now and lets go of every held edit it says may go out
+    /// again. Syncs do this themselves at most every [`SHARE_RECHECK_MS`]; this is
+    /// for a sharing screen that wants the list.
+    pub async fn refresh_shares(&self) -> Result<Vec<PlaylistShare>, SidecarError> {
+        self.state().shares_checked_at = Some((self.clock)());
+        let read = self.transport.list_shares().await;
+        let mut state = self.state();
+        let shares = match read {
+            Ok(shares) => shares,
+            Err(error) => {
+                // A server or transport without sharing is not a failure to report.
+                let unsupported =
+                    error.is_absent() || matches!(error, SidecarError::Unsupported(_));
+                state.share_error = (!unsupported).then(|| error.to_string());
+                return Err(error);
+            }
+        };
+        state.share_error = None;
+        let user = self.user_id.as_deref();
+        let editable: BTreeSet<&str> = shares
+            .iter()
+            .filter(|share| share.grants_edit_to(user))
+            .map(|share| share.playlist_id.as_str())
+            .collect();
+        let mut released = Vec::new();
+        for edit in state.blocked.values_mut() {
+            let Some(playlist) = edit.playlist_id.as_deref() else {
+                continue;
+            };
+            let shared = editable.contains(playlist);
+            edit.still_shared = Some(shared);
+            if shared {
+                released.push(edit.op_id.clone());
+            }
+        }
+        for op_id in released {
+            state.blocked.remove(&op_id);
+        }
+        if let (Some(user), Some(previous)) = (user, state.shares.as_ref()) {
+            let granted_to_me = |list: &[PlaylistShare]| -> BTreeSet<String> {
+                list.iter()
+                    .filter(|share| {
+                        share.grantee_user_id == user
+                            && share.owner_user_id.as_deref() != Some(user)
+                    })
+                    .map(|share| share.playlist_id.clone())
+                    .collect()
+            };
+            let now_granted = granted_to_me(&shares);
+            let lost: Vec<String> = granted_to_me(previous)
+                .into_iter()
+                .filter(|playlist| !now_granted.contains(playlist))
+                .collect();
+            state.lost_shares.extend(lost);
+            state
+                .lost_shares
+                .retain(|playlist| !now_granted.contains(playlist));
+        }
+        state.shares = Some(shares.clone());
+        Ok(shares)
+    }
+
+    fn shares_due(&self) -> bool {
+        let now = (self.clock)();
+        self.state()
+            .shares_checked_at
+            .is_none_or(|checked| now - checked >= SHARE_RECHECK_MS)
     }
 
     pub fn transport(&self) -> &T {
@@ -310,10 +490,20 @@ impl<T: SyncTransport> SyncEngine<T> {
         // Before push, never after: an op naming a hash the server does not hold
         // leaves every other device with a cover it can never fetch.
         let uploaded = self.upload_pending_images().await?;
+        // Before deciding what is pushable: a held edit is never pushed, so it can
+        // never be refused again, and only this re-read can let it go.
+        let mut shares_read = false;
+        if self.shares_due() {
+            let _ = self.refresh_shares().await;
+            shares_read = true;
+        }
         let held = self.entities_to_hold().await;
         self.state().held_entities = held.clone();
         let mut report = self.push_pending(&held).await?;
         report.images_uploaded = uploaded;
+        if report.blocked_by_share > 0 && !shares_read {
+            let _ = self.refresh_shares().await;
+        }
         let pulled = self.pull_and_apply().await?;
         report.absorb(&pulled);
         Ok(report)
@@ -373,12 +563,29 @@ impl<T: SyncTransport> SyncEngine<T> {
 
     async fn push_pending(&self, held: &BTreeSet<String>) -> Result<SyncReport, SyncError> {
         let mut report = SyncReport::default();
+        // An edit whose op has left the log (its playlist dropped here) is held no more.
+        let blocked: Vec<String> = self.state().blocked.keys().cloned().collect();
+        if !blocked.is_empty() {
+            let present = self.store.unsynced_op_ids(&blocked)?;
+            self.state()
+                .blocked
+                .retain(|op_id, _| present.contains(op_id));
+        }
         let mut previous_batch: BTreeSet<String> = BTreeSet::new();
         // What the previous round trip came back with, so a stall can say why.
         let mut last_exchange = (0, 0, 0);
 
         loop {
-            let pending = self.store.pending_ops(self.policy.push_batch_size, held)?;
+            // Held edits are the oldest unsynced rows, so they head every page; the
+            // page is widened past them so they never starve what queued behind.
+            let blocked: BTreeSet<String> = self.state().blocked.keys().cloned().collect();
+            let pending: Vec<Op> = self
+                .store
+                .pending_ops(self.policy.push_batch_size + blocked.len(), held)?
+                .into_iter()
+                .filter(|op| !blocked.contains(&op.op_id))
+                .take(self.policy.push_batch_size)
+                .collect();
             if pending.is_empty() {
                 break;
             }
@@ -444,6 +651,21 @@ impl<T: SyncTransport> SyncEngine<T> {
                     unmatched += 1;
                     continue;
                 };
+                // The one refusal a restored share would turn into an acceptance:
+                // held back and surfaced, never quarantined.
+                if is_share_revoked(&rejection.reason) {
+                    self.state().blocked.insert(
+                        op.op_id.clone(),
+                        BlockedEdit {
+                            op_id: op.op_id.clone(),
+                            playlist_id: playlist_of(op, &rejection.reason),
+                            reason: rejection.reason.clone(),
+                            still_shared: None,
+                        },
+                    );
+                    report.blocked_by_share += 1;
+                    continue;
+                }
                 self.store.quarantine(
                     op,
                     &SyncFault::ServerRejected(rejection.reason.clone()),

@@ -17,11 +17,15 @@ mod tests;
 
 pub use client::{MAX_IDS_PER_CALL, SidecarClient};
 pub use covers::{CoverFetchError, cover_bytes};
-pub use engine::{ImageByteSource, SyncEngine, SyncError, SyncTransport};
+pub use engine::{
+    BlockedEdit, ImageByteSource, REVOKED_SHARE_CLAUSE, SHARE_RECHECK_MS, SyncEngine, SyncError,
+    SyncTransport, is_share_revoked,
+};
 pub use error::SidecarError;
 pub use handoff::{QueueSource, queues_from_server, resumable_queues};
 pub use types::{
     AnalysisCoverage, AudioAnalysis, AudioAnalysisResponse, DiscoverCandidate, DiscoverFactors,
     DiscoverResponse, Measurement, NextCandidate, NextFactors, NextMode, NextRequest, NextResponse,
-    ProfileSummary, QueueEntry, SoundBounds, SoundBoundsResponse, SyncStatus, iso_week,
+    PlaylistShare, ProfileSummary, QueueEntry, ShareRequest, SoundBounds, SoundBoundsResponse,
+    SyncStatus, iso_week,
 };

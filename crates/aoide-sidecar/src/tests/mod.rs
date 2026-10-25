@@ -9,6 +9,7 @@ mod handoff;
 mod held_entities;
 mod http;
 mod next_discover;
+mod shares;
 mod sidecar_stub;
 mod sync_engine;
 mod sync_integration;

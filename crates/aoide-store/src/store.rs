@@ -199,6 +199,24 @@ impl Store {
         })
     }
 
+    /// Which of `op_ids` are still waiting to be pushed.
+    pub fn unsynced_op_ids(&self, op_ids: &[String]) -> Result<BTreeSet<String>> {
+        self.read(|conn| {
+            let mut present = BTreeSet::new();
+            for chunk in op_ids.chunks(crate::history::MAX_PARAMETERS) {
+                let mut statement = conn.prepare(&format!(
+                    "SELECT \"opId\" FROM \"op\" WHERE \"synced\" = 0 AND \"opId\" IN ({})",
+                    placeholders(chunk.len())
+                ))?;
+                let rows = statement.query_map(params_from_iter(chunk), |row| row.get(0))?;
+                for row in rows {
+                    present.insert(row?);
+                }
+            }
+            Ok(present)
+        })
+    }
+
     /// How many ops are waiting to be pushed.
     pub fn pending_op_count(&self) -> Result<i64> {
         self.read(|conn| {

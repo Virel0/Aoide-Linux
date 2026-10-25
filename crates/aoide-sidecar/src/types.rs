@@ -430,3 +430,45 @@ pub(crate) fn list_from<'a>(body: &'a serde_json::Value, keys: &[&str]) -> &'a [
         .find_map(|key| body.get(*key).and_then(serde_json::Value::as_array))
         .map_or(&[], Vec::as_slice)
 }
+
+// MARK: - Collaborative playlists
+
+/// One grant from `GET /aoide/shares`: shares owned by the caller and shares granted
+/// to the caller, in one list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistShare {
+    pub playlist_id: String,
+    pub grantee_user_id: String,
+    #[serde(default)]
+    pub can_edit: bool,
+    /// Absent when the server does not name an owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_user_id: Option<String>,
+}
+
+impl PlaylistShare {
+    /// Whether this grant is evidence that `user_id` may **edit** the playlist: an
+    /// editable share that names them, or that they own. Without a `user_id` only an
+    /// ownerless share counts — claiming somebody else's access would mean a refused
+    /// push every sync, where doubting it merely keeps an edit visible as held back.
+    pub fn grants_edit_to(&self, user_id: Option<&str>) -> bool {
+        if !self.can_edit {
+            return false;
+        }
+        match (self.owner_user_id.as_deref(), user_id) {
+            (None, _) => true,
+            (Some(owner), Some(user)) => owner == user || self.grantee_user_id == user,
+            (Some(_), None) => false,
+        }
+    }
+}
+
+/// `POST /aoide/shares`. Only the owner can share.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareRequest {
+    pub playlist_id: String,
+    pub grantee_user_id: String,
+    pub can_edit: bool,
+}

@@ -123,7 +123,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Repair covers | 3 | 🟨 | Library done; UI pending. `Store::repair_covers`: a coverless playlist whose name matches exactly one Jellyfin playlist gets that `artworkItemId`, never `sourceJellyfinId` |
 | Playlist import (Spotify link, CSV, Exportify; `/aoide/match`) | 3 | ⬜ | |
 | Folders screen | 3 | ⬜ | Folders sync but the Electron app never had a screen |
-| Sharing a playlist with another user | 3 | ⬜ | Client methods exist in Electron but no UI |
+| Sharing a playlist with another user | 3 | 🟨 | Library done; UI pending. `SidecarClient::list_shares`, `share_playlist`, `revoke_share`; `SyncEngine::lost_shares` names playlists shared to this user that a re-read no longer lists, and `Store::drop_playlist_locally` drops one without an op. Not yet run against a real sidecar |
 
 ## Sync with the sidecar
 
@@ -133,7 +133,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Per-field merge for playlists, folders, track flags; row merge elsewhere | 1 | 🟨 | |
 | Quarantine of unreadable or refused ops | 1 | 🟨 | |
 | Covers uploaded before the op naming them | 2 | 🟨 | The engine uploads from the `BlobDirectory` before pushing; tested over HTTP against a mock server |
-| Share-revoked edits held back, shares re-read every 5 min | 3 | ⬜ | |
+| Share-revoked edits held back, shares re-read every 5 min | 3 | 🟨 | Library done; UI pending. A push refused with "…is not shared with you for editing" is held in the log, neither quarantined nor pushed again, and listed by `SyncEngine::blocked_edits` (with a count); syncs re-read `/aoide/shares` at most every 5 minutes and release an edit whose share is back. Held in memory, so a restart asks once more |
 | Triggers: launch, focus, at most once a minute; "Sync now" | 1 | 🟨 | Launch and window focus, at most once a minute; Sync Now in Settings starts one at once unless one is running, and Settings says the last outcome in words ("Synced: sent 34 changes."). Seen against the stand-in server's empty sync log; not yet run against a real sidecar |
 | Sync status panel | 2 | ⬜ | |
 | Handoff: publish this device's queue; pick up another's | 2 | 🟨 | Library done; UI pending. `QueueBroadcast` (store) writes the queue row debounced from every player change, never from a screen; `SyncEngine::publish_queue` pushes just that row. `resumable_queues` reads `GET /aoide/queue` (server clock) and falls back to the op log's rows; `ResumableQueue::pick_up` keeps earlier tracks and starts at the named one. Not yet run against a real sidecar |

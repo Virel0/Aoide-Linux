@@ -214,6 +214,25 @@ impl Store {
         Ok(())
     }
 
+    /// Removes a playlist and its entries **from this device only**, writing no op,
+    /// along with any of their changes still waiting to be pushed. For a playlist
+    /// someone shared with this user whose share is gone: the contract says to drop
+    /// it locally, and a delete op would only be refused. Reports whether there was a
+    /// row. Never for a playlist this user owns: every other device keeps it, and
+    /// this one would not hear of it again.
+    pub fn drop_playlist_locally(&self, id: &str) -> Result<bool> {
+        self.write_local(|tx| {
+            tx.execute(
+                "DELETE FROM op WHERE synced = 0 AND ((entity = 'playlist' AND entityId = ?1) \
+                 OR (entity = 'playlistItem' AND entityId IN \
+                     (SELECT id FROM playlistItem WHERE playlistId = ?1)))",
+                [id],
+            )?;
+            tx.execute("DELETE FROM playlistItem WHERE playlistId = ?", [id])?;
+            Ok(tx.execute("DELETE FROM playlist WHERE id = ?", [id])? > 0)
+        })
+    }
+
     /// Repositions a playlist between two siblings; `None` on either side is the end.
     /// Passing neither leaves it where it is.
     pub fn reorder_playlist(
