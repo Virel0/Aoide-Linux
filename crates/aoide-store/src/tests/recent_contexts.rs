@@ -293,3 +293,130 @@ mod grid {
         assert_eq!(RecentContexts::load(&path), RecentContexts::default());
     }
 }
+
+// MARK: - Built-ins created once (desktop `playlists.test.ts` "built-in playlists")
+
+mod ensured {
+    use super::super::{pending, store};
+    use crate::{
+        BuiltInPlaylist, Calendar, Millis, PlayEvent, PlaySource, Record, Store, TrackRef,
+    };
+
+    #[test]
+    fn both_are_created_under_their_fixed_ids_with_exactly_the_pinned_rules() {
+        let store = store();
+        let created = store.ensure_built_in_playlists(1_000).unwrap();
+        assert_eq!(created, BuiltInPlaylist::ALL);
+        for built in BuiltInPlaylist::ALL {
+            let row = store.playlist(built.id()).unwrap().unwrap();
+            assert_eq!(row.name, built.name());
+            assert_eq!(row.notes.as_deref(), Some(built.notes()));
+            assert!(row.is_smart);
+            assert_eq!(
+                row.smart_rules.as_deref(),
+                Some(built.rules().to_json().as_str())
+            );
+            assert_eq!(row.smart_rule_set().unwrap(), Some(built.rules()));
+        }
+    }
+
+    #[test]
+    fn they_reach_the_other_devices_as_two_playlist_ops_each() {
+        let store = store();
+        store.ensure_built_in_playlists(1_000).unwrap();
+        let ops = pending(&store);
+        assert_eq!(ops.len(), BuiltInPlaylist::ALL.len() * 2);
+        assert!(ops.iter().all(|op| op.entity == "playlist"));
+        let mut ids: Vec<&str> = ops.iter().map(|op| op.entity_id.as_str()).collect();
+        ids.dedup();
+        assert_eq!(ids, ["builtin:rediscover", "builtin:heavy-rotation"]);
+    }
+
+    #[test]
+    fn nothing_is_created_the_second_time() {
+        let store = store();
+        store.ensure_built_in_playlists(1_000).unwrap();
+        let ops: Vec<String> = pending(&store).into_iter().map(|op| op.op_id).collect();
+        store.mark_synced(&ops).unwrap();
+        assert!(store.ensure_built_in_playlists(2_000).unwrap().is_empty());
+        assert!(pending(&store).is_empty());
+        assert_eq!(store.playlists().unwrap().len(), BuiltInPlaylist::ALL.len());
+    }
+
+    /// A built-in removed on any device stays removed on all of them.
+    #[test]
+    fn a_deleted_built_in_stays_deleted() {
+        let store = store();
+        store.ensure_built_in_playlists(1_000).unwrap();
+        store
+            .delete_playlist(BuiltInPlaylist::Rediscover.id(), 1_500)
+            .unwrap();
+        let ops: Vec<String> = pending(&store).into_iter().map(|op| op.op_id).collect();
+        store.mark_synced(&ops).unwrap();
+        assert!(store.ensure_built_in_playlists(2_000).unwrap().is_empty());
+        assert!(pending(&store).is_empty());
+        assert_eq!(
+            store.playlist(BuiltInPlaylist::Rediscover.id()).unwrap(),
+            None
+        );
+    }
+
+    /// One the phone made and sync brought is the same row, not a twin.
+    #[test]
+    fn one_another_device_created_is_not_made_again() {
+        let phone = store();
+        phone.ensure_built_in_playlists(1_000).unwrap();
+        let desk = Store::in_memory("desk").unwrap();
+        let row = phone
+            .playlist(BuiltInPlaylist::HeavyRotation.id())
+            .unwrap()
+            .unwrap();
+        desk.write_local(|tx| row.insert(tx)).unwrap();
+        assert_eq!(
+            desk.ensure_built_in_playlists(2_000).unwrap(),
+            [BuiltInPlaylist::Rediscover]
+        );
+        assert_eq!(desk.playlists().unwrap().len(), 2);
+    }
+
+    const NOW: Millis = 1_700_000_000_000;
+    const DAY: Millis = 86_400_000;
+
+    fn listen(store: &Store, track: &str, days_ago: i64) {
+        let started = NOW - days_ago * DAY;
+        store
+            .append(
+                PlayEvent::new(track, track, started, "phone")
+                    .with_source(PlaySource::Album)
+                    .finished(Some(started + 200_000), 200_000, true, false),
+            )
+            .unwrap();
+    }
+
+    /// The rules do what their names promise, evaluated here rather than synced as
+    /// a snapshot.
+    #[test]
+    fn rediscover_finds_old_favourites_and_heavy_rotation_this_months() {
+        let store = store();
+        for id in ["old-favourite", "this-month", "once", "never"] {
+            let mut row = TrackRef::new(id, id, id, "Artist", "Album", NOW);
+            row.duration_ms = Some(200_000);
+            store.cache_tracks(&[row]).unwrap();
+        }
+        for days in [300, 290, 280] {
+            listen(&store, "old-favourite", days);
+        }
+        for days in [2, 9] {
+            listen(&store, "this-month", days);
+        }
+        listen(&store, "once", 400);
+        store.ensure_built_in_playlists(NOW).unwrap();
+
+        let resolve = |built: BuiltInPlaylist| {
+            let row = store.playlist(built.id()).unwrap().unwrap();
+            store.resolve_smart(&row, NOW, Calendar::Utc).unwrap()
+        };
+        assert_eq!(resolve(BuiltInPlaylist::Rediscover), ["old-favourite"]);
+        assert_eq!(resolve(BuiltInPlaylist::HeavyRotation), ["this-month"]);
+    }
+}
