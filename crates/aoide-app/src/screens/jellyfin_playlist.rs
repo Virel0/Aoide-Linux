@@ -438,6 +438,8 @@ impl State {
             ]
             .spacing(8)
             .align_y(Center)
+            .wrap()
+            .vertical_spacing(8)
         });
         let mut info = column![
             title,
@@ -456,7 +458,7 @@ impl State {
             .spacing(10)
             .wrap()
             .vertical_spacing(10),
-            tools,
+            tools.wrap().vertical_spacing(8),
         ]
         .spacing(10)
         .width(Length::Fill);
