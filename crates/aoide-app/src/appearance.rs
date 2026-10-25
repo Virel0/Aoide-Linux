@@ -187,6 +187,7 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
     let title = {
         let interface = interface.clone();
         toggler(interface.track_in_title)
+            .style(theme::switch)
             .label("Show the Song in the Window Title")
             .width(Fill)
             .on_toggle(move |on| {

@@ -368,6 +368,7 @@ pub fn transcode_rows<'a>(transcode: &crate::sound::Transcode) -> Element<'a, Me
     };
     let mut rows = column![
         iced::widget::toggler(t.enabled)
+            .style(theme::switch)
             .label("Transcode Streams")
             .width(Fill)
             .on_toggle(move |enabled| set(Transcode { enabled, ..t })),

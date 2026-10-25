@@ -3,7 +3,7 @@
 //! the artwork carries the colour.
 
 use iced::theme::{Mode, Palette};
-use iced::widget::{button, container, slider, text_input};
+use iced::widget::{button, container, slider, text_input, toggler};
 use iced::{Background, Border, Color, Shadow, Theme, color};
 
 /// The accent on a light ground.
@@ -211,9 +211,38 @@ pub fn destructive(theme: &Theme, status: button::Status) -> button::Style {
     style
 }
 
+/// The edge of a control that has no fill of its own to show where it is:
+/// a field, a switch turned off (contrast: at least 3:1 on the page and on
+/// a card, in both modes; tested).
+pub fn edge(theme: &Theme) -> Color {
+    let fade = if theme.extended_palette().is_dark {
+        0.4
+    } else {
+        0.5
+    };
+    theme.palette().text.scale_alpha(fade)
+}
+
 pub fn field(theme: &Theme, status: text_input::Status) -> text_input::Style {
     let mut style = text_input::default(theme, status);
     style.border.radius = 8.0.into();
+    style.placeholder = secondary(theme);
+    if let text_input::Status::Active = status {
+        style.border.color = edge(theme);
+    }
+    style
+}
+
+/// A switch: off, a knob on the edge colour's track, so it is seen at all
+/// on a card; on, as iced draws it, in the accent.
+pub fn switch(theme: &Theme, status: toggler::Status) -> toggler::Style {
+    let mut style = toggler::default(theme, status);
+    if let toggler::Status::Active { is_toggled: false }
+    | toggler::Status::Hovered { is_toggled: false } = status
+    {
+        style.background = Background::Color(edge(theme));
+        style.foreground = Background::Color(theme.extended_palette().background.base.color);
+    }
     style
 }
 
@@ -236,10 +265,15 @@ mod tests {
     use super::*;
     use crate::appearance::{self, Accent, Appearance, InterfaceSettings};
 
+    /// `fg` drawn over `bg`.
+    fn over(fg: Color, bg: Color) -> Color {
+        let mix = |f: f32, b: f32| f * fg.a + b * (1.0 - fg.a);
+        Color::from_rgb(mix(fg.r, bg.r), mix(fg.g, bg.g), mix(fg.b, bg.b))
+    }
+
     /// WCAG 2's contrast ratio of `fg`, drawn over `bg`.
     fn contrast(fg: Color, bg: Color) -> f32 {
-        let mix = |f: f32, b: f32| f * fg.a + b * (1.0 - fg.a);
-        let fg = Color::from_rgb(mix(fg.r, bg.r), mix(fg.g, bg.g), mix(fg.b, bg.b));
+        let fg = over(fg, bg);
         fn luminance(c: Color) -> f32 {
             let channel = |v: f32| {
                 if v <= 0.04045 {
@@ -288,6 +322,33 @@ mod tests {
             let style = destructive(&theme, button::Status::Active);
             let ratio = contrast(style.text_color, button_ground(style));
             assert!(ratio >= 4.5, "{theme} destructive: {ratio}");
+        }
+    }
+
+    #[test]
+    fn fields_and_switches_show_their_edges() {
+        for theme in themes() {
+            let page_ground = ground(page(&theme));
+            let card = ground(menu(&theme));
+            let field = field(&theme, text_input::Status::Active);
+            let off = switch(&theme, toggler::Status::Active { is_toggled: false });
+            let Background::Color(track) = off.background else {
+                panic!("not a plain colour")
+            };
+            let Background::Color(knob) = off.foreground else {
+                panic!("not a plain colour")
+            };
+            for (name, surface) in [("page", page_ground), ("card", card)] {
+                let ratio = contrast(field.border.color, surface);
+                assert!(ratio >= 3.0, "{theme} field edge on {name}: {ratio}");
+                let ratio = contrast(track, surface);
+                assert!(ratio >= 3.0, "{theme} switch track on {name}: {ratio}");
+                let ratio = contrast(knob, over(track, surface));
+                assert!(ratio >= 3.0, "{theme} switch knob on {name}: {ratio}");
+            }
+            // The placeholder is drawn on the field's own ground.
+            let ratio = contrast(field.placeholder, page_ground);
+            assert!(ratio >= 4.5, "{theme} placeholder: {ratio}");
         }
     }
 
