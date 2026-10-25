@@ -26,6 +26,7 @@ mod sync;
 mod system;
 mod theme;
 mod tray;
+mod updates;
 mod widgets;
 
 use iced::window;

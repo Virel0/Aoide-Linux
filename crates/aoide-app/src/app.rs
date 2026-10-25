@@ -162,6 +162,7 @@ pub enum Message {
     Discord(crate::discord::Message),
     Smart(crate::smart::Message),
     Mixes(crate::mixes::Request),
+    Update(crate::updates::Message),
 }
 
 /// The player bar's controls.
@@ -251,7 +252,8 @@ impl App {
             smart: crate::smart::State::default(),
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
-        (app, Task::batch([theme, restore, key]))
+        let update = Task::done(Message::Update(crate::updates::Message::Tick));
+        (app, Task::batch([theme, restore, key, update]))
     }
 
     pub fn title(&self) -> String {
@@ -270,6 +272,7 @@ impl App {
             integration::commands(&self.desktop).map(Message::Desktop),
             crate::tray::events(&self.system.tray).map(Message::Tray),
             crate::discord::status(self.system.discord.as_ref()).map(Message::Discord),
+            crate::updates::ticks(&self.config.system.updates).map(Message::Update),
         ])
     }
 
@@ -467,6 +470,7 @@ impl App {
             Message::Discord(message) => self.discord_message(message),
             Message::Smart(message) => self.smart_message(message),
             Message::Mixes(request) => self.mix_request(request),
+            Message::Update(message) => self.update_message(message),
         }
     }
 
