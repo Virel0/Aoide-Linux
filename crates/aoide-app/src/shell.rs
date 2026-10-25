@@ -90,6 +90,7 @@ fn sidebar(signed: &Signed) -> Element<'_, Message> {
         Section::Search => Icon::Search,
         Section::Settings => Icon::Settings,
         Section::Favourites => Icon::Heart,
+        Section::Replay => Icon::Sparkle,
     };
 
     let mut library = Column::new().spacing(2);

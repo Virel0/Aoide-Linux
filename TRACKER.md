@@ -96,7 +96,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Local play history: events opened/closed, completed/skipped classification | 1 | ✅ | Opened at the heard start, closed with the furthest point reached, classified by the store; Don't Count Plays opens none |
 | Activity tag on plays (Gaming, Focus, Chores, Commute) | 3 | ⬜ | |
 | Finish rate on album and artist headers | 2 | ✅ | `FinishRate` summed over the album's or the artist's songs; absent under three decided listens. Seen moving from 100% to 70% after three skips, against the stand-in server |
-| Replay (month, year, all time; top songs, artists, albums) | 2 | 🟨 | Library done; UI pending. `Store::replay(period, now, calendar)`: plays, hours (one decimal), songs, artists and albums, busiest day as a date, top 10 songs, artists and albums, and the unattributed count; periods open at local midnight on the 1st and on 1 January |
+| Replay (month, year, all time; top songs, artists, albums) | 2 | ✅ | A sidebar section: This Month / This Year (the default, as on the phone) / All Time from `Store::replay` on the local calendar; Plays, Hours, Songs and Artists tiles, the busiest day, Top Songs fetched in rank order and playable, Top Artists and Top Albums with play counts, and the unattributed plays named when there are any. Seen against the stand-in server's history; the periods differ only with older history than it had |
 
 ## Discovery
 

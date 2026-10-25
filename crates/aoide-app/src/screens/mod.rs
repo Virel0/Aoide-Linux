@@ -18,6 +18,7 @@ pub mod home;
 pub mod login;
 pub mod playlist;
 pub mod playlists;
+pub mod replay;
 pub mod search;
 pub mod settings;
 pub mod songs;
@@ -48,10 +49,11 @@ pub enum Section {
     /// One Aoide playlist, by id.
     Playlist(String),
     Favourites,
+    Replay,
 }
 
 impl Section {
-    pub const LIBRARY: [Section; 8] = [
+    pub const LIBRARY: [Section; 9] = [
         Section::Home,
         Section::Albums,
         Section::Artists,
@@ -59,6 +61,7 @@ impl Section {
         Section::Genres,
         Section::Favourites,
         Section::Playlists,
+        Section::Replay,
         Section::Search,
     ];
 
@@ -74,6 +77,7 @@ impl Section {
             Section::Settings => "Settings",
             Section::Playlist(_) => "Playlist",
             Section::Favourites => "Favourites",
+            Section::Replay => "Replay",
         }
     }
 }
@@ -171,6 +175,7 @@ pub enum Page {
     Settings(settings::State),
     Discover(discover::State),
     Favourites(favourites::State),
+    Replay(replay::State),
 }
 
 #[derive(Debug, Clone)]
@@ -189,6 +194,7 @@ pub enum PageMsg {
     Settings(settings::Message),
     Discover(discover::Message),
     Favourites(favourites::Message),
+    Replay(replay::Message),
 }
 
 impl Page {
@@ -205,6 +211,7 @@ impl Page {
             Section::Settings => wrap(settings::open(ctx), Page::Settings),
             Section::Playlist(id) => wrap(playlist::open(ctx, id), Page::Playlist),
             Section::Favourites => wrap(favourites::open(ctx), Page::Favourites),
+            Section::Replay => wrap(replay::open(ctx), Page::Replay),
         }
     }
 
@@ -234,6 +241,7 @@ impl Page {
             (Page::Settings(state), PageMsg::Settings(m)) => state.update(m),
             (Page::Discover(state), PageMsg::Discover(m)) => state.update(m),
             (Page::Favourites(state), PageMsg::Favourites(m)) => state.update(m),
+            (Page::Replay(state), PageMsg::Replay(m)) => state.update(m, ctx),
             _ => Task::none(),
         }
     }
@@ -255,6 +263,7 @@ impl Page {
             Page::Settings(_) => iced::widget::space().into(),
             Page::Discover(state) => state.view(view),
             Page::Favourites(state) => state.view(view),
+            Page::Replay(state) => state.view(view),
         }
     }
 
@@ -280,6 +289,7 @@ impl Page {
             Page::Genres(_) | Page::Settings(_) | Page::Playlists(_) => Vec::new(),
             Page::Discover(state) => state.artwork(),
             Page::Favourites(state) => state.artwork(),
+            Page::Replay(state) => state.artwork(),
         }
     }
 }
