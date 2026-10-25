@@ -10,6 +10,7 @@
 mod address;
 mod auth;
 mod client;
+mod details;
 mod error;
 mod filters;
 mod folders;
@@ -26,6 +27,7 @@ pub mod ticks;
 pub use address::ServerAddress;
 pub use auth::{Credentials, Device, PublicSystemInfo};
 pub use client::JellyfinClient;
+pub use details::ItemDetails;
 pub use error::Error;
 pub use filters::QueryFilters;
 pub use library::{ListQuery, SearchResults, Sort, SortOrder};

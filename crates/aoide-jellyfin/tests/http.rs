@@ -51,6 +51,7 @@ fn fixture(name: &str) -> Value {
         "lyrics_enhanced" => include_str!("fixtures/lyrics_enhanced.json"),
         "system_info_public" => include_str!("fixtures/system_info_public.json"),
         "authenticate_by_name" => include_str!("fixtures/authenticate_by_name.json"),
+        "item_details" => include_str!("fixtures/item_details.json"),
         other => panic!("no fixture {other}"),
     };
     serde_json::from_str(text).unwrap()
@@ -1483,5 +1484,31 @@ async fn folder_children_are_one_level_folders_first() {
             (ItemKind::MusicAlbum, true),
             (ItemKind::Audio, false)
         ]
+    );
+}
+
+// MARK: - Get Info
+
+#[tokio::test]
+async fn item_details_come_from_the_single_item_endpoint() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items/a1b2c3d4e5f60718293a4b5c6d7e8f90"))
+        .and(query_param("userId", USER))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture("item_details")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let details = signed_in(&server)
+        .item_details("a1b2c3d4e5f60718293a4b5c6d7e8f90")
+        .await
+        .unwrap();
+    assert_eq!(details.item.kind, ItemKind::Audio);
+    assert_eq!(details.codec.as_deref(), Some("flac"));
+    assert_eq!(details.sample_rate, Some(96_000));
+    assert_eq!(details.play_count, 12);
+    assert_eq!(
+        details.item.duration(),
+        Some(Duration::from_millis(243_500))
     );
 }

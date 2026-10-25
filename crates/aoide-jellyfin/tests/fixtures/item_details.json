@@ -1,0 +1,54 @@
+{
+  "Name": "Harbour Lights",
+  "Id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "Type": "Audio",
+  "IsFolder": false,
+  "Path": "/media/music/The Quiet Engines/Low Tide Radio/01 Harbour Lights.flac",
+  "Container": "flac",
+  "DateCreated": "2025-11-02T09:30:00.0000000Z",
+  "RunTimeTicks": 2435000000,
+  "Album": "Low Tide Radio",
+  "AlbumId": "b0a1c2d3e4f5061728394a5b6c7d8e9f",
+  "Artists": ["The Quiet Engines"],
+  "MediaSources": [
+    {
+      "Protocol": "File",
+      "Id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "Path": "/media/music/The Quiet Engines/Low Tide Radio/01 Harbour Lights.flac",
+      "Type": "Default",
+      "Container": "flac",
+      "Size": 31754112,
+      "Name": "01 Harbour Lights",
+      "RunTimeTicks": 2435000000,
+      "Bitrate": 1043201,
+      "MediaStreams": [
+        {
+          "Codec": "flac",
+          "TimeBase": "1/96000",
+          "Type": "Audio",
+          "ChannelLayout": "stereo",
+          "BitRate": 1043201,
+          "BitDepth": 24,
+          "Channels": 2,
+          "SampleRate": 96000,
+          "Index": 0,
+          "IsDefault": false
+        },
+        {
+          "Codec": "mjpeg",
+          "Type": "EmbeddedImage",
+          "Index": 1,
+          "Width": 1200,
+          "Height": 1200
+        }
+      ]
+    }
+  ],
+  "UserData": {
+    "PlayCount": 12,
+    "IsFavorite": true,
+    "Played": true,
+    "LastPlayedDate": "2026-03-14T21:07:45.1234567Z",
+    "PlaybackPositionTicks": 0
+  }
+}
