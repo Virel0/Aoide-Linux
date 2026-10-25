@@ -26,3 +26,7 @@ jobs:
       - run: cargo test --workspace
       - name: MPRIS, single instance and sleep inhibit, on a private D-Bus
         run: cargo test -p aoide-mpris -- --include-ignored
+      - name: The keyring, against GNOME Keyring on a private D-Bus
+        run: |
+          sudo apt-get install -y gnome-keyring
+          dbus-run-session -- sh -c 'printf ci | gnome-keyring-daemon --unlock --components=secrets > /dev/null && cargo test -p aoide-app -- --ignored keyring'

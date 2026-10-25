@@ -58,8 +58,10 @@ finish-args:
   # pid 1) and the first tray is n=1, so the name is fixed.
   - --talk-name=org.kde.StatusNotifierWatcher
   - --own-name=org.kde.StatusNotifierItem-2-1
-  # The access token lives in the keyring (GNOME Keyring, KWallet, KeePassXC).
-  - --talk-name=org.freedesktop.secrets
+  # No keyring grant: the access token is kept through the Secret portal
+  # (oo7), which gives the app a key for a file of its own rather than the
+  # whole unlocked keyring. Where a desktop's portal fails, the app says how
+  # to grant org.freedesktop.secrets with `flatpak override`.
   # Discord Rich Presence: the socket of a Discord installed natively, and the
   # directories the Discord Flatpaks put theirs in (the places
   # aoide_integrations::discord looks). The native socket is bound only if

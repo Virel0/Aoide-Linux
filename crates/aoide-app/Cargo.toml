@@ -58,7 +58,11 @@ uuid = { version = "1.29", features = ["v4"] }
 # The system keyring holds the access token: Secret Service on Linux (pure-Rust
 # crypto, no OpenSSL), the Keychain on macOS, where the app is developed.
 [target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3.6", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
+# oo7 (MIT, linux-credentials/oo7): the Secret Service outside a sandbox, and
+# inside a Flatpak the Secret portal, which hands the app a key for its own
+# encrypted file instead of the whole keyring. Pure-Rust crypto, on the
+# app's tokio; the same zbus as aoide-mpris.
+oo7 = { version = "0.6.0", default-features = false, features = ["tokio", "native_crypto"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["apple-native"] }
