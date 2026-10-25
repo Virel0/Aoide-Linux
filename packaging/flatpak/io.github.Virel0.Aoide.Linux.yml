@@ -50,11 +50,9 @@ finish-args:
   # The Jellyfin server, the sidecar, lyrics, the update check.
   - --share=network
   # Media keys and the shell's media controls (aoide-mpris MPRIS_BUS_NAME).
-  - --own-name=org.mpris.MediaPlayer2.aoide
-  # The name a second launch calls Raise on (aoide-mpris APP_BUS_NAME). A
-  # Flatpak may own its own id without asking, but this name is the id
-  # without ".Linux", so it has to be granted.
-  - --own-name=io.github.Virel0.Aoide
+  # The name a second launch calls Raise on (APP_BUS_NAME) is the app id,
+  # which a Flatpak owns without a grant.
+  - --own-name=org.mpris.MediaPlayer2.aoide_linux
   # The tray icon: it registers with the panel's watcher, under a name of the
   # form org.kde.StatusNotifierItem-<pid>-<n>. Flatpak cannot grant a pattern
   # like that, but inside the sandbox the app is always pid 2 (bubblewrap is

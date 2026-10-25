@@ -1,9 +1,9 @@
 //! Aoide's face to the Linux desktop, over D-Bus:
 //!
 //! - [`Mpris`]: the `org.mpris.MediaPlayer2` and `.Player` interfaces under the
-//!   bus name `org.mpris.MediaPlayer2.aoide`, so media keys, the shell's media
+//!   bus name `org.mpris.MediaPlayer2.aoide_linux`, so media keys, the shell's media
 //!   widget and `playerctl` can see and drive the player.
-//! - [`single_instance`]: the app's well-known name `io.github.Virel0.Aoide`,
+//! - [`single_instance`]: the app's well-known name `io.github.Virel0.Aoide.Linux`,
 //!   so a second launch raises the first window instead of starting another
 //!   player.
 //! - [`Inhibitor`]: keeps the machine from suspending while music plays.
@@ -67,18 +67,21 @@ pub use track_id::{NO_TRACK, TRACK_PATH_PREFIX, jellyfin_id_from_track_path, tra
 pub use tray::{Pixmap, TOOLTIP_TITLE, TrayCommand, TrayIcon, TrayState};
 pub use types::{Command, LoopStatus, Metadata, PlaybackStatus, PlayerState};
 
-/// The MPRIS bus name.
-pub const MPRIS_BUS_NAME: &str = "org.mpris.MediaPlayer2.aoide";
+/// The MPRIS bus name. Not the Electron app's `org.mpris.MediaPlayer2.aoide`:
+/// the two install side by side, and whichever started second would lose its
+/// media controls.
+pub const MPRIS_BUS_NAME: &str = "org.mpris.MediaPlayer2.aoide_linux";
 /// What the desktop shows as the player's name.
 pub const IDENTITY: &str = "Aoide";
 /// The `.desktop` file's basename.
-pub const DESKTOP_ENTRY: &str = "io.github.Virel0.Aoide";
-/// The app's own well-known name, held by the first instance.
-pub const APP_BUS_NAME: &str = "io.github.Virel0.Aoide";
+pub const DESKTOP_ENTRY: &str = "io.github.Virel0.Aoide.Linux";
+/// The app's own well-known name, held by the first instance: the app id,
+/// which a Flatpak may own without being granted it.
+pub const APP_BUS_NAME: &str = "io.github.Virel0.Aoide.Linux";
 /// The object the first instance serves, with a `Raise` method.
-pub const APP_OBJECT_PATH: &str = "/io/github/Virel0/Aoide";
+pub const APP_OBJECT_PATH: &str = "/io/github/Virel0/Aoide/Linux";
 /// The interface of that object.
-pub const APP_INTERFACE: &str = "io.github.Virel0.Aoide";
+pub const APP_INTERFACE: &str = "io.github.Virel0.Aoide.Linux";
 
 /// Which D-Bus bus to connect to.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

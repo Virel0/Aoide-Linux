@@ -48,7 +48,7 @@ pub struct Mpris {
 
 impl Mpris {
     /// Connects to `bus`, serves the MPRIS interfaces and takes the name
-    /// `org.mpris.MediaPlayer2.aoide`. Requests arrive on the receiver.
+    /// `org.mpris.MediaPlayer2.aoide_linux`. Requests arrive on the receiver.
     ///
     /// Must be awaited inside a tokio runtime. Fails with
     /// [`Error::NameTaken`] if another process already holds the name.

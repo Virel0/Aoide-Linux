@@ -1,4 +1,4 @@
-//! Single instance through the bus: whoever holds `io.github.Virel0.Aoide` is
+//! Single instance through the bus: whoever holds `io.github.Virel0.Aoide.Linux` is
 //! the running app, and a later launch calls its `Raise` method and exits.
 //! The bus daemon grants a name to one connection at a time, so two launches
 //! racing each other still end with exactly one first.
@@ -25,7 +25,7 @@ struct App {
     raise: Sender<()>,
 }
 
-#[interface(name = "io.github.Virel0.Aoide")]
+#[interface(name = "io.github.Virel0.Aoide.Linux")]
 impl App {
     /// Asks the running app to show its window.
     fn raise(&self) -> fdo::Result<()> {

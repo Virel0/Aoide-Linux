@@ -93,6 +93,13 @@ fn main() -> iced::Result {
         },
         // Start Minimised: hidden in the tray (shown again if no panel takes it).
         visible: !config.system.tray.start_hidden(),
+        // Wayland matches a window to its desktop entry (taskbar icon, name)
+        // by this id.
+        #[cfg(target_os = "linux")]
+        platform_specific: window::settings::PlatformSpecific {
+            application_id: aoide_mpris::DESKTOP_ENTRY.to_owned(),
+            ..Default::default()
+        },
         ..window::Settings::default()
     };
 

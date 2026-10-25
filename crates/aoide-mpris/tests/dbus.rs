@@ -113,7 +113,7 @@ async fn the_player_identifies_itself() {
     assert_eq!(string(props.get(ROOT, "Identity").await.unwrap()), "Aoide");
     assert_eq!(
         string(props.get(ROOT, "DesktopEntry").await.unwrap()),
-        "io.github.Virel0.Aoide"
+        "io.github.Virel0.Aoide.Linux"
     );
     assert!(bool::try_from(props.get(ROOT, "CanRaise").await.unwrap()).unwrap());
     assert_eq!(
