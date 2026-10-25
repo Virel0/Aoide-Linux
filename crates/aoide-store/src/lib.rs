@@ -13,6 +13,7 @@
 mod account;
 mod activity;
 mod built_in;
+mod covers;
 mod error;
 mod field_stamps;
 mod finish_rate;
@@ -43,6 +44,10 @@ mod tests;
 pub use account::AccountClaim;
 pub use activity::Activity;
 pub use built_in::BuiltInPlaylist;
+pub use covers::{
+    BlobDirectory, CoverError, CoverRepair, MAX_IMAGE_BYTES, NamedJellyfinPlaylist, PlaylistCover,
+    is_coverless, is_image_hash, plan_cover_repairs, sniff_image_mime,
+};
 pub use error::{Result, StoreError};
 pub use field_stamps::{FieldStamps, METADATA_COLUMNS};
 pub use finish_rate::{FinishCounts, FinishRate};

@@ -590,7 +590,9 @@ impl Store {
 
 impl Store {
     /// Sets or clears the item whose cover stands in for a playlist's. `None` when the
-    /// playlist is gone.
+    /// playlist is gone. A chosen picture is cleared with it, as on the phone: left
+    /// behind, its hash would keep winning and choosing an album would look like it
+    /// did nothing.
     pub fn set_artwork(
         &self,
         item_id: Option<&str>,
@@ -601,6 +603,8 @@ impl Store {
             return Ok(None);
         };
         list.artwork_item_id = item_id.map(str::to_owned);
+        list.image_hash = None;
+        list.image_mime = None;
         Ok(Some(self.record(list, false, now)?))
     }
 

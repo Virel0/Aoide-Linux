@@ -6,6 +6,7 @@
 //! store's merge rules applied to every pulled page.
 
 mod client;
+mod covers;
 mod engine;
 mod error;
 mod handoff;
@@ -15,6 +16,7 @@ mod types;
 mod tests;
 
 pub use client::{MAX_IDS_PER_CALL, SidecarClient};
+pub use covers::{CoverFetchError, cover_bytes};
 pub use engine::{ImageByteSource, SyncEngine, SyncError, SyncTransport};
 pub use error::SidecarError;
 pub use handoff::{QueueSource, queues_from_server, resumable_queues};

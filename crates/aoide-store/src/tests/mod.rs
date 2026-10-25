@@ -1,6 +1,7 @@
 //! Ports of CurationKit's test suites, which are the specification for this crate.
 //! Each file names the Swift suite it ports.
 
+mod covers;
 mod curation_store;
 mod field_merge;
 mod fractional_index;

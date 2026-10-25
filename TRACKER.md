@@ -119,8 +119,8 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Add to Aoide playlist (with search past 8, "New playlist…") | 1 | ✅ | |
 | Built-in Rediscover Mix and Heavy Rotation | 2 | 🟨 | |
 | Smart playlists **evaluated** on open | 2 | 🟨 | The Electron app syncs the rules but does not evaluate them on the detail screen; do it right here |
-| Covers: image hash → sidecar → artwork item → first track | 2 | ⬜ | |
-| Repair covers | 3 | ⬜ | |
+| Covers: image hash → sidecar → artwork item → first track | 2 | 🟨 | Library done; UI pending. `Store::playlist_covers` picks image hash → `artworkItemId` → `sourceJellyfinId` → first track's album; `cover_bytes` (sidecar) draws a hash from the `BlobDirectory` or fetches `GET /aoide/images/{sha}` only when asked at draw time, checks the hash and keeps it. `set_cover_from_file` takes a JPEG, PNG or WebP up to 5 MB (not resized); the engine uploads it before the op naming it. Not yet run against a real sidecar |
+| Repair covers | 3 | 🟨 | Library done; UI pending. `Store::repair_covers`: a coverless playlist whose name matches exactly one Jellyfin playlist gets that `artworkItemId`, never `sourceJellyfinId` |
 | Playlist import (Spotify link, CSV, Exportify; `/aoide/match`) | 3 | ⬜ | |
 | Folders screen | 3 | ⬜ | Folders sync but the Electron app never had a screen |
 | Sharing a playlist with another user | 3 | ⬜ | Client methods exist in Electron but no UI |
@@ -132,7 +132,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Push / pull, cursors, acceptedEntities gating | 1 | 🟨 | |
 | Per-field merge for playlists, folders, track flags; row merge elsewhere | 1 | 🟨 | |
 | Quarantine of unreadable or refused ops | 1 | 🟨 | |
-| Covers uploaded before the op naming them | 2 | 🟨 | |
+| Covers uploaded before the op naming them | 2 | 🟨 | The engine uploads from the `BlobDirectory` before pushing; tested over HTTP against a mock server |
 | Share-revoked edits held back, shares re-read every 5 min | 3 | ⬜ | |
 | Triggers: launch, focus, at most once a minute; "Sync now" | 1 | 🟨 | Launch and window focus, at most once a minute; Sync Now in Settings starts one at once unless one is running, and Settings says the last outcome in words ("Synced: sent 34 changes."). Seen against the stand-in server's empty sync log; not yet run against a real sidecar |
 | Sync status panel | 2 | ⬜ | |
