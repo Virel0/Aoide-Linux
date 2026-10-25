@@ -168,6 +168,7 @@ pub enum Message {
     Sharing(crate::screens::share::Msg),
     /// Match an imported playlist for the import page with this key.
     ImportMatch(u64, Box<aoide_sidecar::ImportedPlaylist>),
+    Collections(crate::screens::collections::Msg),
 }
 
 /// The player bar's controls.
@@ -474,6 +475,7 @@ impl App {
             Message::Covers(message) => self.covers(message),
             Message::Sharing(message) => self.sharing(message),
             Message::ImportMatch(key, playlist) => self.import_match(key, *playlist),
+            Message::Collections(message) => self.collections(message),
         }
     }
 

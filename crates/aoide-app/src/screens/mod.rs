@@ -10,6 +10,7 @@ pub mod album;
 pub mod albums;
 pub mod artist;
 pub mod artists;
+pub mod collections;
 pub mod discover;
 pub mod favourites;
 pub mod genre;
@@ -56,6 +57,10 @@ pub enum Section {
     Favourites,
     Replay,
     JellyfinPlaylists,
+    /// A new saved filter.
+    Collections,
+    /// One saved filter, by id.
+    Collection(String),
 }
 
 impl Section {
@@ -85,6 +90,8 @@ impl Section {
             Section::Favourites => "Favourites",
             Section::Replay => "Replay",
             Section::JellyfinPlaylists => "Jellyfin Playlists",
+            Section::Collections => "New Collection",
+            Section::Collection(_) => "Collection",
         }
     }
 }
@@ -194,6 +201,7 @@ pub enum Page {
     JellyfinPlaylist(jellyfin_playlist::State),
     Share(share::State),
     Import(import::State),
+    Collections(collections::State),
 }
 
 #[derive(Debug, Clone)]
@@ -218,6 +226,7 @@ pub enum PageMsg {
     JellyfinPlaylist(jellyfin_playlist::Message),
     Share(share::Message),
     Import(import::Message),
+    Collections(collections::Message),
 }
 
 impl Page {
@@ -238,6 +247,8 @@ impl Page {
             Section::JellyfinPlaylists => {
                 wrap(jellyfin_playlists::open(ctx), Page::JellyfinPlaylists)
             }
+            Section::Collections => wrap(collections::open(ctx, None), Page::Collections),
+            Section::Collection(id) => wrap(collections::open(ctx, Some(id)), Page::Collections),
         }
     }
 
@@ -280,6 +291,7 @@ impl Page {
             (Page::JellyfinPlaylist(state), PageMsg::JellyfinPlaylist(m)) => state.update(m, ctx),
             (Page::Share(state), PageMsg::Share(m)) => state.update(m, ctx),
             (Page::Import(state), PageMsg::Import(m)) => state.update(m, ctx),
+            (Page::Collections(state), PageMsg::Collections(m)) => state.update(m, ctx),
             _ => Task::none(),
         }
     }
@@ -307,6 +319,7 @@ impl Page {
             Page::JellyfinPlaylist(state) => state.view(view),
             Page::Share(state) => state.view(view),
             Page::Import(state) => state.view(view),
+            Page::Collections(state) => state.view(view),
         }
     }
 
@@ -333,6 +346,7 @@ impl Page {
                 Vec::new()
             }
             Page::Playlists(state) => state.artwork(),
+            Page::Collections(state) => state.artwork(),
             Page::JellyfinPlaylist(state) => state.artwork(),
         }
     }

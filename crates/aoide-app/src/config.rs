@@ -167,6 +167,8 @@ pub struct Config {
     pub settings: Settings,
     /// Master volume, 0 to 1.
     pub volume: f32,
+    /// Saved filters, listed in the sidebar.
+    pub collections: Vec<crate::screens::collections::SavedFilter>,
 }
 
 impl Default for Config {
@@ -178,6 +180,7 @@ impl Default for Config {
             window: WindowGeometry::default(),
             settings: Settings::default(),
             volume: 1.0,
+            collections: Vec::new(),
         }
     }
 }
@@ -260,6 +263,7 @@ mod tests {
                 infinity_albums: true,
             },
             volume: 0.5,
+            collections: Vec::new(),
         };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);

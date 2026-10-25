@@ -16,7 +16,7 @@ use crate::{now_playing, player_bar, screens, theme, widgets};
 const SIDEBAR_WIDTH: f32 = 220.0;
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
-    let main = row![sidebar(signed), content(app, signed)].height(Fill);
+    let main = row![sidebar(app, signed), content(app, signed)].height(Fill);
     let main = match signed.panel {
         Some(panel) => main
             .push(rule::vertical(1))
@@ -52,7 +52,7 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
     )
 }
 
-fn sidebar(signed: &Signed) -> Element<'_, Message> {
+fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     let item = |label: String, glyph: Icon, section: Section| {
         let selected = signed.section == section
             || (section == Section::Playlists && signed.section == Section::JellyfinPlaylists);
@@ -92,6 +92,7 @@ fn sidebar(signed: &Signed) -> Element<'_, Message> {
         Section::Settings => Icon::Settings,
         Section::Favourites => Icon::Heart,
         Section::Replay => Icon::Sparkle,
+        Section::Collections | Section::Collection(_) => Icon::Genre,
     };
 
     let mut library = Column::new().spacing(2);
@@ -122,6 +123,17 @@ fn sidebar(signed: &Signed) -> Element<'_, Message> {
         library,
     ]
     .spacing(14);
+    // Before the playlists, which can run long.
+    body = body.push(heading("Collections")).push(
+        screens::collections::sidebar(&app.config.collections, |label, section| {
+            item(label, Icon::Genre, section).into()
+        })
+        .push(item(
+            "New Collection…".into(),
+            Icon::Plus,
+            Section::Collections,
+        )),
+    );
     if !signed.playlists.is_empty() {
         body = body.push(heading("Aoide Playlists")).push(lists);
     }
