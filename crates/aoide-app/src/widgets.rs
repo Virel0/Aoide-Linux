@@ -565,7 +565,7 @@ pub fn play_buttons<'a>(
     let enabled = !tracks.is_empty();
     row![
         button(
-            row![icon(Icon::Play, 14.0, Tone::Normal), text("Play")]
+            row![icon(Icon::Play, 14.0, Tone::OnAccent), text("Play")]
                 .spacing(6)
                 .align_y(Center)
         )

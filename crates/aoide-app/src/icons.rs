@@ -57,6 +57,8 @@ pub enum Tone {
     Normal,
     Accent,
     Secondary,
+    /// On a filled button: the colour of the button's own label.
+    OnAccent,
 }
 
 const STROKE: &str =
@@ -228,6 +230,7 @@ pub fn icon<'a, Message: 'a>(icon: Icon, size: f32, tone: Tone) -> Element<'a, M
                 Tone::Normal => theme.palette().text,
                 Tone::Accent => crate::theme::accent(theme),
                 Tone::Secondary => crate::theme::secondary(theme),
+                Tone::OnAccent => theme.extended_palette().primary.base.text,
             }),
         })
         .into()
