@@ -22,6 +22,7 @@ pub mod replay;
 pub mod search;
 pub mod settings;
 pub mod songs;
+pub mod sync_status;
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -90,6 +91,7 @@ pub enum Route {
     Genre { id: String, name: String },
     Playlist { id: String },
     Discover,
+    SyncStatus,
 }
 
 /// An Aoide playlist as the sidebar and the pickers list it.
@@ -176,6 +178,7 @@ pub enum Page {
     Discover(discover::State),
     Favourites(favourites::State),
     Replay(replay::State),
+    SyncStatus(sync_status::State),
 }
 
 #[derive(Debug, Clone)]
@@ -195,6 +198,7 @@ pub enum PageMsg {
     Discover(discover::Message),
     Favourites(favourites::Message),
     Replay(replay::Message),
+    SyncStatus(sync_status::Message),
 }
 
 impl Page {
@@ -222,6 +226,7 @@ impl Page {
             Route::Genre { id, name } => wrap(genre::open(ctx, id, name), Page::Genre),
             Route::Playlist { id } => wrap(playlist::open(ctx, id), Page::Playlist),
             Route::Discover => wrap(discover::open(ctx), Page::Discover),
+            Route::SyncStatus => wrap(sync_status::open(ctx), Page::SyncStatus),
         }
     }
 
@@ -242,6 +247,7 @@ impl Page {
             (Page::Discover(state), PageMsg::Discover(m)) => state.update(m),
             (Page::Favourites(state), PageMsg::Favourites(m)) => state.update(m),
             (Page::Replay(state), PageMsg::Replay(m)) => state.update(m, ctx),
+            (Page::SyncStatus(state), PageMsg::SyncStatus(m)) => state.update(m, ctx),
             _ => Task::none(),
         }
     }
@@ -264,6 +270,7 @@ impl Page {
             Page::Discover(state) => state.view(view),
             Page::Favourites(state) => state.view(view),
             Page::Replay(state) => state.view(view),
+            Page::SyncStatus(state) => state.view(view),
         }
     }
 
@@ -290,6 +297,7 @@ impl Page {
             Page::Discover(state) => state.artwork(),
             Page::Favourites(state) => state.artwork(),
             Page::Replay(state) => state.artwork(),
+            Page::SyncStatus(_) => Vec::new(),
         }
     }
 }

@@ -280,6 +280,7 @@ pub fn view<'a>(
             .style(theme::tonal)
             .padding([6, 14])
             .on_press_maybe((sync.available && !sync.running).then_some(App::SyncNow)),
+            super::sync_status::settings_link(),
         ]
         .spacing(10)
         .align_y(Center),
