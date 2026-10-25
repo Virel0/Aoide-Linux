@@ -7,7 +7,7 @@ use crate::{Error, Result, ticks};
 
 /// The longest one word's highlight may take to sweep. Without a cap, the word
 /// before an instrumental break crawls across the screen for the whole break.
-const MAX_SWEEP: Duration = Duration::from_millis(1_200);
+const MAX_SWEEP: Duration = LyricWord::MAX_SWEEP;
 
 /// A track's lyrics, as lines.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -30,8 +30,14 @@ pub struct LyricWord {
     pub text: String,
     pub start: Duration,
     /// When the word's highlight should finish: the next word's start, or the cue's
-    /// own end for the last word, capped at 1.2 s after `start`.
+    /// own end for the last word, capped at [`MAX_SWEEP`](Self::MAX_SWEEP) after `start`.
     pub end: Duration,
+}
+
+impl LyricWord {
+    /// The longest a word's highlight sweeps, 1.2 s. Every source of word timings
+    /// caps `end` at `start` plus this.
+    pub const MAX_SWEEP: Duration = Duration::from_millis(1_200);
 }
 
 impl Lyrics {
