@@ -155,6 +155,8 @@ dependencies = [
  "rtrb",
  "rubato",
  "rustls",
+ "serde",
+ "serde_json",
  "symphonia",
  "tempfile",
  "tokio",

@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread;
 
+use crate::eq::{EqCurve, EqParams, Equalizer};
 use crate::error::{Error, Result};
 use crate::mix::{MixTransition, curve};
 use crate::pipeline::{Feed, FeedRead, InlineFeed, Marker, ThreadFeed, TrackSpec};
@@ -101,6 +102,7 @@ enum Command {
     Pause,
     Stop,
     Volume(f32),
+    Equalizer(EqParams),
 }
 
 struct NextPlan {
@@ -180,6 +182,19 @@ impl EngineHandle {
     /// Master volume, 0 to 1, ramped over one block.
     pub fn set_volume(&self, volume: f32) -> Result<()> {
         self.send(Command::Volume(volume.clamp(0.0, 1.0)))
+    }
+
+    /// The equaliser's curve, or `None` to turn it off. The change glides in
+    /// over about 15 ms, so moving a slider never clicks; off glides to flat
+    /// and then the equaliser is not run at all. Refuses a curve of more than
+    /// [`crate::eq::MAX_BANDS`] bands or one with a number that is not one;
+    /// values out of range are held to it.
+    pub fn set_equalizer(&self, curve: Option<&EqCurve>) -> Result<()> {
+        let params = match curve {
+            Some(curve) => EqParams::from_curve(curve)?,
+            None => EqParams::flat(),
+        };
+        self.send(Command::Equalizer(params))
     }
 
     /// The heard position in the current track, in milliseconds.
@@ -341,6 +356,7 @@ pub struct Engine {
     latency: u64,
     timeline: Timeline,
     scratch: Vec<f32>,
+    eq: Equalizer,
     /// The loaded track and those chained since, newest last.
     remembered: VecDeque<TrackSpec>,
     /// What follows the current track, and the overlap when it blends in.
@@ -391,6 +407,7 @@ impl Engine {
             latency: 0,
             timeline: Timeline::new(),
             scratch: vec![0.0; BLOCK * config.channels],
+            eq: Equalizer::new(config.sample_rate, config.channels),
             remembered: VecDeque::with_capacity(REMEMBERED),
             chained: None,
         };
@@ -544,6 +561,7 @@ impl Engine {
                 });
             }
             Command::Volume(volume) => self.volume_target = volume,
+            Command::Equalizer(params) => self.eq.set(params),
         }
     }
 
@@ -698,6 +716,10 @@ impl Engine {
                 }
             }
         }
+
+        // The equaliser on the mix, before the fades and the volume, so
+        // neither changes what it does.
+        self.eq.process(out);
 
         // Pause and resume fade, then master volume, per frame.
         let fade_target = if self.transport == Transport::Paused {

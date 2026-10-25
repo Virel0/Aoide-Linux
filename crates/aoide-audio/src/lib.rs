@@ -5,11 +5,13 @@
 //! - [`Engine`] renders f32 frames; [`EngineHandle`] drives it.
 //! - [`Player`] adds the queue, the crossfade planner and the transport rules.
 //! - [`Output`] runs an engine on the default cpal device.
+//! - [`eq`] is the parametric equaliser the engine runs after the decks.
 //! - [`mix`], [`loudness`] and [`queue`] are the rules shared with the iOS and
 //!   desktop apps, held to the same parity tables.
 
 pub mod decode;
 pub mod engine;
+pub mod eq;
 pub mod error;
 pub mod http;
 pub mod loudness;
@@ -22,6 +24,7 @@ mod resample;
 
 pub use decode::MediaSource;
 pub use engine::{DecodeMode, Engine, EngineConfig, EngineEvent, EngineHandle, Transport};
+pub use eq::{BandKind, EqBand, EqCurve, EqPreset};
 pub use error::{Error, Result};
 pub use mix::{MixTrack, MixTransition, SoundBounds};
 pub use output::{CpalOutput, DeviceFormat, OpenStream, Output, Render, StreamReport};
