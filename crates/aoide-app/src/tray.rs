@@ -496,6 +496,7 @@ pub fn settings_section<'a>(
 ) -> Element<'a, AppMessage> {
     let switch = |label: &'a str, value: bool, message: fn(bool) -> Message| {
         toggler(value)
+            .style(crate::theme::switch)
             .label(label)
             .width(Fill)
             .on_toggle(move |on| AppMessage::Tray(message(on)))

@@ -155,6 +155,7 @@ pub fn view<'a>(
     let message = move |m: Message| App::Page(key, PageMsg::Settings(m));
     let switch = |label: &'a str, value: bool, which: Toggle| {
         toggler(value)
+            .style(theme::switch)
             .label(label)
             .width(Fill)
             .on_toggle(move |on| message(Message::Toggle(which, on)))
@@ -369,6 +370,7 @@ fn infinity_albums_section<'a>(settings: &Settings, key: u64) -> Element<'a, App
         "Infinity",
         column![
             toggler(settings.infinity_albums)
+                .style(theme::switch)
                 .label("Add Whole Albums")
                 .width(Fill)
                 .on_toggle(move |on| {

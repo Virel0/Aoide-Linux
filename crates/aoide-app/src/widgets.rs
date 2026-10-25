@@ -220,9 +220,14 @@ pub fn title_bar<'a>(title: &'a str, back: bool) -> Element<'a, Message> {
     bar.push(text(title).size(28).font(BOLD)).into()
 }
 
+/// The scrollable every page is drawn in, put back at its top when another
+/// page opens.
+pub const PAGE: &str = "page-scroll";
+
 /// A page's whole body: scrolled, padded.
 pub fn page<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     scrollable(container(content).padding([24, 28]).width(Fill))
+        .id(PAGE)
         .height(Fill)
         .into()
 }
@@ -304,18 +309,19 @@ pub fn track_row<'a>(
 ) -> Element<'a, Message> {
     let playing = view.playing == Some(track.id.as_str());
     let lead: Element<'a, Message> = if style.numbered {
-        let label = if playing {
-            "♪".to_owned()
+        let label: Element<'a, Message> = if playing {
+            icon(Icon::Song, 14.0, Tone::Accent)
         } else {
-            track
-                .track_number
-                .map(|n| n.to_string())
-                .unwrap_or_default()
-        };
-        container(secondary(label).size(13))
-            .width(28)
-            .align_x(Center)
+            secondary(
+                track
+                    .track_number
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
+            )
+            .size(13)
             .into()
+        };
+        container(label).width(28).align_x(Center).into()
     } else {
         art(
             track
@@ -403,12 +409,11 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
             .on_press(Message::Row(action))
     };
     let check = |label: &'static str, on: bool, act: RowAction| {
-        let text_label = if on {
-            format!("✓ {label}")
-        } else {
-            label.to_owned()
-        };
-        button(text(text_label).size(13))
+        let mut body = row![].spacing(4).align_y(Center);
+        if on {
+            body = body.push(icon(Icon::Check, 13.0, Tone::Accent));
+        }
+        button(body.push(text(label).size(13)))
             .style(theme::tonal)
             .padding([6, 10])
             .on_press(Message::Row(act))
@@ -563,9 +568,11 @@ pub fn play_buttons<'a>(
     source: PlaySource,
 ) -> Element<'a, Message> {
     let enabled = !tracks.is_empty();
+    // Icons don't fade with a disabled button's label: quiet them here.
+    let tone = |on: Tone| if enabled { on } else { Tone::Secondary };
     row![
         button(
-            row![icon(Icon::Play, 14.0, Tone::Normal), text("Play")]
+            row![icon(Icon::Play, 14.0, tone(Tone::OnAccent)), text("Play")]
                 .spacing(6)
                 .align_y(Center)
         )
@@ -573,16 +580,19 @@ pub fn play_buttons<'a>(
         .padding([8, 18])
         .on_press_maybe(enabled.then(|| Message::Play(PlayRequest::from(tracks, 0, source)))),
         button(
-            row![icon(Icon::Shuffle, 14.0, Tone::Accent), text("Shuffle")]
-                .spacing(6)
-                .align_y(Center)
+            row![
+                icon(Icon::Shuffle, 14.0, tone(Tone::Accent)),
+                text("Shuffle")
+            ]
+            .spacing(6)
+            .align_y(Center)
         )
         .style(theme::tonal)
         .padding([8, 18])
         .on_press_maybe(
             enabled.then(|| Message::Play(PlayRequest::shuffled(tracks, PlaySource::Shuffle)))
         ),
-        button(icon(Icon::More, 18.0, Tone::Accent))
+        button(icon(Icon::More, 18.0, tone(Tone::Accent)))
             .style(theme::tonal)
             .padding([8, 10])
             .on_press_maybe(enabled.then(|| {

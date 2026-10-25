@@ -334,6 +334,7 @@ fn equalizer<'a>(
     section(
         "Equaliser",
         toggler(eq.enabled)
+            .style(theme::switch)
             .on_toggle(move |on| message(Message::Equalizer(on)))
             .into(),
         body,
@@ -387,6 +388,7 @@ fn compressor<'a>(
     section(
         "Compressor",
         toggler(comp.enabled)
+            .style(theme::switch)
             .on_toggle(move |on| message(Message::Compressor(on)))
             .into(),
         body,

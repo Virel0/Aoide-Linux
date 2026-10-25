@@ -88,6 +88,8 @@ pub(crate) struct Signed {
     /// The store held data from before accounts were claimed: only the
     /// listener can say whose it is.
     pub unknown_owner: bool,
+    /// Erase Them was pressed: asking once more before erasing.
+    pub confirm_erase: bool,
     /// The music library to stay inside; `None` until found, or if the
     /// server has none (everything is shown then).
     pub library: Option<String>,
@@ -141,6 +143,8 @@ pub enum Message {
     ResolveOwner {
         keep: bool,
     },
+    /// Erase Them pressed (true), or the erase called off (false).
+    ConfirmErase(bool),
     SignOut,
     TokenRejected,
     /// Sync with the sidecar now, not at the next launch or focus.
@@ -258,7 +262,9 @@ impl App {
             ),
             None => (
                 Phase::SignedOut,
-                iced::widget::operation::focus(login::SERVER),
+                iced::widget::operation::focus(
+                    login::State::new(config.last_server.clone()).first_field(),
+                ),
             ),
         };
         let system = crate::system::State::new(&desktop, &config);
@@ -313,6 +319,12 @@ impl App {
         ])
     }
 
+    /// The open page's back-stack entry, if signed in.
+    fn page_key(&self) -> Option<u64> {
+        let nav = self.session.as_ref()?.nav.as_ref()?;
+        Some(nav.current().key)
+    }
+
     pub(crate) fn now(&self) -> u64 {
         u64::try_from(self.clock.elapsed().as_millis()).unwrap_or(u64::MAX)
     }
@@ -321,7 +333,19 @@ impl App {
         // Position ticks arrive four times a second and change no artwork.
         let quiet = matches!(message, Message::Engine(EngineEvent::Position { .. }))
             || crate::listening::is_quiet(&message);
-        let task = self.handle(message);
+        let page = self.page_key();
+        let mut task = self.handle(message);
+        // Another page opened: it starts at its top, not at the offset the
+        // last one was scrolled to (iced keeps one scroll state for both).
+        if self.page_key() != page {
+            task = Task::batch([
+                task,
+                iced::widget::operation::snap_to(
+                    crate::widgets::PAGE,
+                    iced::widget::scrollable::RelativeOffset::START,
+                ),
+            ]);
+        }
         // The desktop hears only what changed.
         self.publish();
         self.publish_system();
@@ -365,7 +389,7 @@ impl App {
                 Ok(Some(connection)) => self.enter(Event::Restored, connection),
                 Ok(None) => {
                     self.phase = session::transition(self.phase, Event::NothingToRestore).0;
-                    iced::widget::operation::focus(login::SERVER)
+                    iced::widget::operation::focus(self.login.first_field())
                 }
                 Err(error) => {
                     self.phase = session::transition(self.phase, Event::NothingToRestore).0;
@@ -402,6 +426,12 @@ impl App {
                     Err(error) => self.notice = Some(error),
                 }
                 Task::batch([self.request_sync(), self.after_claim()])
+            }
+            Message::ConfirmErase(ask) => {
+                if let Some(signed) = self.session.as_mut() {
+                    signed.confirm_erase = ask;
+                }
+                Task::none()
             }
             Message::ResolveOwner { keep } => {
                 let Some(signed) = self.session.as_mut() else {
@@ -566,6 +596,7 @@ impl App {
             syncing: None,
             sync_status: None,
             unknown_owner: false,
+            confirm_erase: false,
             library: None,
             library_known: false,
             section: Section::Home,

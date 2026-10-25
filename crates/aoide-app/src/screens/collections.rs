@@ -403,6 +403,7 @@ impl State {
         }
         body = body.push(
             toggler(self.filter.favourites_only)
+                .style(theme::switch)
                 .label("Only favourites")
                 .on_toggle(move |on| message(Message::Favourites(on))),
         );

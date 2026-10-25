@@ -108,9 +108,12 @@ pub enum Msg {
 /// A page's Start Radio button.
 pub fn start_button<'a>(station: Station) -> Element<'a, Message> {
     button(
-        row![icon(Icon::Radio, 14.0, Tone::Accent), text("Start Radio")]
-            .spacing(6)
-            .align_y(Center),
+        row![
+            icon(Icon::Radio, 14.0, Tone::Accent),
+            text("Start Radio").wrapping(text::Wrapping::None)
+        ]
+        .spacing(6)
+        .align_y(Center),
     )
     .style(theme::tonal)
     .padding([8, 14])

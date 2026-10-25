@@ -186,6 +186,8 @@ impl Palette {
 pub enum Message {
     Toggle,
     Close,
+    /// Tab (forward) or Shift+Tab: the next or previous field.
+    Tab(bool),
     Typed(String),
     Due(u64),
     Found(String, Result<SearchResults, String>),
@@ -195,7 +197,9 @@ pub enum Message {
 }
 
 /// The palette's keys, wherever the focus is. Escape is taken even from a
-/// focused field (which would otherwise only lose its focus).
+/// focused field (which would otherwise only lose its focus); with the
+/// palette shut it closes whatever else is open on top. Tab moves between
+/// fields.
 fn key(
     event: iced::Event,
     _status: iced::event::Status,
@@ -209,9 +213,19 @@ fn key(
             Some(Message::Toggle)
         }
         Key::Named(Named::Escape) => Some(Message::Close),
+        Key::Named(Named::Tab) => Some(Message::Tab(!modifiers.shift())),
         Key::Named(Named::ArrowDown) => Some(Message::Move(1)),
         Key::Named(Named::ArrowUp) => Some(Message::Move(-1)),
         _ => None,
+    }
+}
+
+/// iced moves no focus on Tab itself: on to the next field, or back.
+fn tab<T>(forward: bool) -> Task<T> {
+    if forward {
+        iced::widget::operation::focus_next()
+    } else {
+        iced::widget::operation::focus_previous()
     }
 }
 
@@ -223,7 +237,10 @@ impl App {
     pub(crate) fn palette_message(&mut self, message: Message) -> Task<AppMessage> {
         let Some(signed) = &self.session else {
             self.system.palette = None;
-            return Task::none();
+            return match message {
+                Message::Tab(forward) => tab(forward),
+                _ => Task::none(),
+            };
         };
         let open = &mut self.system.palette;
         match message {
@@ -234,9 +251,28 @@ impl App {
                 *open = Some(Palette::default());
                 iced::widget::operation::focus(FIELD)
             }
+            Message::Tab(forward) => tab(forward),
             Message::Close => {
-                *open = None;
-                Task::none()
+                if open.take().is_some() || self.listening.full.is_some() {
+                    return Task::none();
+                }
+                // Otherwise Escape closes what is on top, as a click outside
+                // it does: Get Info, the release notes, a player bar
+                // popover, then a row's or a tile's actions.
+                let close = if signed.info.is_some() {
+                    Some(AppMessage::Info(crate::info::Msg::Close))
+                } else if self.system.updates.notes_open {
+                    Some(AppMessage::Update(crate::updates::Message::ShowNotes(
+                        false,
+                    )))
+                } else if self.listening.menu.is_some() {
+                    Some(AppMessage::Listening(crate::listening::Msg::Menu(None)))
+                } else if signed.menu.is_some() {
+                    Some(AppMessage::Row(crate::actions::RowAction::Close))
+                } else {
+                    None
+                };
+                close.map_or_else(Task::none, Task::done)
             }
             Message::Typed(query) => {
                 let Some(palette) = open.as_mut() else {
@@ -441,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn the_keys_are_ctrl_k_the_arrows_and_escape() {
+    fn the_keys_are_ctrl_k_the_arrows_escape_and_tab() {
         let press = |key: Key, modifiers: keyboard::Modifiers| {
             iced::Event::Keyboard(keyboard::Event::KeyPressed {
                 key: key.clone(),
@@ -485,6 +521,22 @@ mod tests {
                 window
             ),
             Some(Message::Move(1))
+        ));
+        assert!(matches!(
+            key(
+                press(Key::Named(Named::Tab), keyboard::Modifiers::empty()),
+                status,
+                window
+            ),
+            Some(Message::Tab(true))
+        ));
+        assert!(matches!(
+            key(
+                press(Key::Named(Named::Tab), keyboard::Modifiers::SHIFT),
+                status,
+                window
+            ),
+            Some(Message::Tab(false))
         ));
     }
 }

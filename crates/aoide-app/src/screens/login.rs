@@ -112,6 +112,15 @@ impl State {
         }
     }
 
+    /// Where typing starts: the username when the address is already there.
+    pub fn first_field(&self) -> &'static str {
+        if self.form.server.trim().is_empty() {
+            SERVER
+        } else {
+            USERNAME
+        }
+    }
+
     /// The server answered no.
     pub fn failed(&mut self, error: String) {
         self.busy = false;
@@ -133,13 +142,13 @@ impl State {
             .on_submit(Message::Next(USERNAME))
             .padding(10)
             .style(theme::field);
-        let username = text_input("Username", &self.form.username)
+        let username = text_input("", &self.form.username)
             .id(USERNAME)
             .on_input_maybe(editable.then_some(Message::Username))
             .on_submit(Message::Next(PASSWORD))
             .padding(10)
             .style(theme::field);
-        let password = text_input("Password", &self.form.password)
+        let password = text_input("", &self.form.password)
             .id(PASSWORD)
             .secure(true)
             .on_input_maybe(editable.then_some(Message::Password))
@@ -180,7 +189,8 @@ impl State {
                 }),
             ]
             .spacing(6),
-            column![label("Account"), username, password].spacing(6),
+            column![label("Username"), username].spacing(6),
+            column![label("Password"), password].spacing(6),
         ]
         .spacing(20)
         .width(Length::Fixed(380.0));
@@ -347,6 +357,15 @@ mod tests {
         );
         assert_eq!(state.form.server, "http://192.0.2.10:8096");
         assert!(state.found.is_none());
+    }
+
+    #[test]
+    fn typing_starts_after_a_remembered_address() {
+        assert_eq!(State::new(None).first_field(), SERVER);
+        assert_eq!(
+            State::new(Some("music.example.net".into())).first_field(),
+            USERNAME
+        );
     }
 
     #[test]

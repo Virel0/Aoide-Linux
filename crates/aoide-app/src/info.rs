@@ -8,7 +8,7 @@ use aoide_jellyfin::ItemDetails;
 use iced::widget::{
     Column, button, center, column, container, mouse_area, opaque, row, scrollable, text,
 };
-use iced::{Color, Element, Fill, Task};
+use iced::{Element, Fill, Task};
 
 use crate::app::{App, Message};
 use crate::icons::{Icon, Tone, icon};
@@ -225,13 +225,7 @@ pub fn view(sheet: &Sheet) -> Element<'_, Message> {
         .max_width(560)
         .max_height(620)
         .style(theme::menu);
-    opaque(
-        mouse_area(center(opaque(card)).style(|_| container::Style {
-            background: Some(Color::BLACK.scale_alpha(0.45).into()),
-            ..container::Style::default()
-        }))
-        .on_press(close),
-    )
+    opaque(mouse_area(center(opaque(card)).style(theme::scrim)).on_press(close))
 }
 
 #[cfg(test)]

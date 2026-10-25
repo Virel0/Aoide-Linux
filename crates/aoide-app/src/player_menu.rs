@@ -3,7 +3,8 @@
 
 use aoide_store::Activity;
 use iced::widget::{
-    Column, button, column, container, mouse_area, opaque, pick_list, row, rule, text, text_input,
+    Column, button, column, container, mouse_area, opaque, pick_list, row, rule, scrollable, text,
+    text_input,
 };
 use iced::{Center, Element, Fill, Length, Padding};
 
@@ -23,7 +24,8 @@ pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
         BarMenu::More => more(app),
         BarMenu::Volume => outputs(app),
     };
-    let card = container(card)
+    // Scrolled when the window is too short for all of it.
+    let card = container(scrollable(card))
         .padding(8)
         .width(Length::Fixed(280.0))
         .style(theme::menu);
@@ -184,8 +186,9 @@ pub fn status_line(app: &App) -> Option<Element<'_, Message>> {
             text(label).size(11).style(|t: &iced::Theme| text::Style {
                 color: Some(theme::accent(t)),
             }),
+            // A 24-point target round a small glyph.
             button(icon(Icon::Close, 10.0, Tone::Secondary))
-                .padding(2)
+                .padding(7)
                 .style(theme::row)
                 .on_press(Message::Listening(off)),
         ]
@@ -368,6 +371,7 @@ pub fn transcode_rows<'a>(transcode: &crate::sound::Transcode) -> Element<'a, Me
     };
     let mut rows = column![
         iced::widget::toggler(t.enabled)
+            .style(theme::switch)
             .label("Transcode Streams")
             .width(Fill)
             .on_toggle(move |enabled| set(Transcode { enabled, ..t })),

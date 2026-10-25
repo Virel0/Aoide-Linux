@@ -475,28 +475,32 @@ impl State {
                 .padding([8, 14])
                 .on_press(message(Message::Edit(true)))
         });
-        tools = tools.push(if self.confirm_delete {
-            Element::from(
-                row![
-                    text("Delete this playlist?"),
-                    button("Delete")
-                        .style(theme::destructive)
-                        .padding([8, 14])
-                        .on_press(message(Message::ConfirmDelete(true))),
-                    button("Cancel")
-                        .style(theme::tonal)
-                        .padding([8, 14])
-                        .on_press(message(Message::ConfirmDelete(false))),
-                ]
-                .spacing(8)
-                .align_y(Center),
-            )
-        } else {
+        tools = tools.push(
             button(text("Delete"))
                 .style(theme::destructive)
                 .padding([8, 14])
-                .on_press(message(Message::Delete))
-                .into()
+                .on_press_maybe((!self.confirm_delete).then(|| message(Message::Delete))),
+        );
+        // On a line of its own, as on a Jellyfin playlist: beside the other
+        // buttons the question runs off a narrow window.
+        let confirm = self.confirm_delete.then(|| {
+            row![
+                text(format!(
+                    "Delete \u{201c}{name}\u{201d}? Its songs stay in your library."
+                )),
+                button("Delete")
+                    .style(theme::destructive)
+                    .padding([8, 14])
+                    .on_press(message(Message::ConfirmDelete(true))),
+                button("Cancel")
+                    .style(theme::tonal)
+                    .padding([8, 14])
+                    .on_press(message(Message::ConfirmDelete(false))),
+            ]
+            .spacing(8)
+            .align_y(Center)
+            .wrap()
+            .vertical_spacing(8)
         });
         let small = |label: &'a str, m: Option<Message>| {
             button(text(label).size(13))
@@ -523,7 +527,12 @@ impl State {
             share,
         ]
         .spacing(8);
-        head = head.push(tools).push(cover_tools);
+        // Wrapped: at the narrowest window the buttons don't fit on one line.
+        head = head.push(tools.wrap().vertical_spacing(10));
+        if let Some(confirm) = confirm {
+            head = head.push(confirm);
+        }
+        head = head.push(cover_tools);
         if let Some(note) = &self.cover_note {
             head = head.push(match note {
                 Ok(note) => widgets::secondary(note.as_str()).size(13).into(),

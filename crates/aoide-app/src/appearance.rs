@@ -187,6 +187,7 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
     let title = {
         let interface = interface.clone();
         toggler(interface.track_in_title)
+            .style(theme::switch)
             .label("Show the Song in the Window Title")
             .width(Fill)
             .on_toggle(move |on| {
@@ -205,11 +206,7 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
             choices = choices.push(
                 button(text(choice.title()).size(13))
                     .padding([5, 14])
-                    .style(if on {
-                        theme::row_selected
-                    } else {
-                        theme::tonal
-                    })
+                    .style(if on { theme::filled } else { theme::tonal })
                     .on_press(set(change)),
             );
         }

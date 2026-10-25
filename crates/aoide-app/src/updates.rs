@@ -368,6 +368,7 @@ pub fn settings_section<'a>(
     let send = |m: Message| AppMessage::Update(m);
     let mut rows = column![
         toggler(settings.check)
+            .style(theme::switch)
             .label("Check for Updates")
             .width(Fill)
             .on_toggle(|on| AppMessage::Update(Message::Check(on))),

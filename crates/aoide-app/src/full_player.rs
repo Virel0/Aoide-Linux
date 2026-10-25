@@ -225,7 +225,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
         .on_press(listen(Msg::CloseFull)),
         crate::shell::gap(),
         switch("Artwork", Icon::Artwork, Show::Artwork),
-        switch("Visualizer", Icon::Visualizer, Show::Visualizer),
+        switch("Visualiser", Icon::Visualizer, Show::Visualizer),
     ]
     .spacing(6)
     .align_y(Center);
