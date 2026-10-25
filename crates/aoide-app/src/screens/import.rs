@@ -66,7 +66,7 @@ impl JellyfinSearch for LibrarySearch {
                 .songs(&query)
                 .await
                 .map(|page| page.items.iter().map(library_track).collect())
-                .map_err(|e| crate::session::describe(&e))
+                .map_err(|e| crate::failure::describe(&e).to_string())
         }
     }
 }
@@ -317,7 +317,7 @@ impl State {
                         let items = client
                             .items_by_ids(&ids)
                             .await
-                            .map_err(|e| crate::session::describe(&e))?;
+                            .map_err(|e| crate::failure::describe(&e).to_string())?;
                         let tracks: Vec<TrackMeta> =
                             items.iter().map(TrackMeta::from_item).collect();
                         let now = aoide_store::now_millis();
@@ -426,7 +426,7 @@ impl State {
             Step::Matched(found) => body = body.push(self.matched(&found.0, &found.1, view)),
         }
         if let Some(error) = &self.error {
-            body = body.push(widgets::failure(error));
+            body = body.push(widgets::plain_failure(error));
         }
         if let Some(note) = &self.note {
             body = body.push(widgets::secondary(note.as_str()).size(13));

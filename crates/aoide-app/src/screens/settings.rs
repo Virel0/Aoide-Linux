@@ -221,9 +221,11 @@ pub fn view<'a>(
         ]
         .spacing(24)
         .into(),
-        Category::SmartSearch => {
-            crate::smart::settings_section(&app.smart, &app.config.system.smart_search)
-        }
+        Category::SmartSearch => crate::smart::settings_section(
+            &app.smart,
+            &app.config.system.smart_search,
+            app.failure_details,
+        ),
         Category::Sync => sync_section(sync),
         Category::Server => server_section(),
         Category::System => crate::system::settings_sections(app),
@@ -420,7 +422,7 @@ fn hidden_section(state: &State, key: u64) -> Element<'_, App> {
     let mut hidden_rows = column![];
     match &state.hidden {
         Load::Loading => hidden_rows = hidden_rows.push(widgets::secondary("Loading…")),
-        Load::Failed(error) => hidden_rows = hidden_rows.push(text(error.as_str())),
+        Load::Failed(error) => hidden_rows = hidden_rows.push(text(error.summary.as_str())),
         Load::Ready(rows) if rows.is_empty() => {
             hidden_rows = hidden_rows.push(widgets::secondary("Nothing hidden."));
         }

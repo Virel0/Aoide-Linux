@@ -310,7 +310,7 @@ impl App {
                         Err(aoide_jellyfin::Error::Unauthorized) => AppMessage::TokenRejected,
                         result => AppMessage::Palette(Message::Found(
                             query.clone(),
-                            result.map_err(|e| crate::session::describe(&e)),
+                            result.map_err(|e| crate::failure::describe(&e).to_string()),
                         )),
                     },
                 )

@@ -6,6 +6,7 @@ use iced::{Element, Task};
 
 use super::{Ctx, Load, PageMsg, View, fetch};
 use crate::app::Message as App;
+use crate::failure::Failure;
 use crate::library::Tile;
 use crate::widgets;
 
@@ -18,7 +19,7 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Albums(Result<Vec<Item>, String>),
+    Albums(Result<Vec<Item>, Failure>),
 }
 
 pub fn open(ctx: &Ctx<'_>, id: &str, name: &str) -> (State, Task<App>) {
@@ -66,7 +67,7 @@ impl State {
         .spacing(20);
         let body = body.push(match &self.albums {
             Load::Loading => widgets::loading(),
-            Load::Failed(error) => widgets::failure(error),
+            Load::Failed(error) => view.failure(error),
             Load::Ready(tiles) if tiles.is_empty() => widgets::empty("No albums in this genre."),
             Load::Ready(tiles) => widgets::tile_grid(tiles, view.artwork, super::home::open_album),
         });

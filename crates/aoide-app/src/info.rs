@@ -27,7 +27,7 @@ pub struct Sheet {
 #[derive(Debug, Clone)]
 pub enum Msg {
     Open { id: String, title: String },
-    Loaded(String, Result<Box<ItemDetails>, String>),
+    Loaded(String, Result<Box<ItemDetails>, crate::failure::Failure>),
     Close,
 }
 
@@ -170,7 +170,7 @@ impl App {
                             id,
                             result
                                 .map(Box::new)
-                                .map_err(|e| crate::session::describe(&e)),
+                                .map_err(|e| crate::failure::describe(&e)),
                         )),
                     },
                 )
@@ -190,7 +190,7 @@ impl App {
 }
 
 /// The sheet over everything; a click outside closes it.
-pub fn view(sheet: &Sheet) -> Element<'_, Message> {
+pub fn view(sheet: &Sheet, details: bool) -> Element<'_, Message> {
     let close = Message::Info(Msg::Close);
     let mut body = column![row![
         text(sheet.title.as_str())
@@ -205,7 +205,14 @@ pub fn view(sheet: &Sheet) -> Element<'_, Message> {
     .spacing(14);
     body = body.push(match &sheet.details {
         Load::Loading => widgets::loading(),
-        Load::Failed(error) => widgets::failure(error),
+        Load::Failed(error) => widgets::failure(
+            error,
+            Some(Message::Info(Msg::Open {
+                id: sheet.id.clone(),
+                title: sheet.title.clone(),
+            })),
+            details,
+        ),
         Load::Ready(details) => {
             let mut list = Column::new().spacing(8);
             for (label, value) in lines(details) {

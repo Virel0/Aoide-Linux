@@ -31,7 +31,9 @@ pub struct State {
 pub enum Message {
     Typed(String),
     Compose,
-    Composed(String, Result<Box<Mix>, String>),
+    Composed(String, Result<Box<Mix>, crate::failure::Failure>),
+    /// Compose the description that failed again.
+    Retry,
     Save,
     Saved(Result<String, String>),
     Discard,
@@ -66,6 +68,16 @@ impl State {
                 }
                 Task::none()
             }
+            Message::Retry => match self.mix.take() {
+                Some((description, Load::Failed(_))) => {
+                    self.description = description;
+                    self.update(Message::Compose, key)
+                }
+                other => {
+                    self.mix = other;
+                    Task::none()
+                }
+            },
             Message::Save => {
                 let Some(mix) = self.ready().filter(|m| m.can_save()).cloned() else {
                     return Task::none();
@@ -162,7 +174,13 @@ impl State {
         match self.mix.as_ref().map(|(_, mix)| mix) {
             None => {}
             Some(Load::Loading) => body = body.push(widgets::loading()),
-            Some(Load::Failed(error)) => body = body.push(widgets::failure(error)),
+            Some(Load::Failed(error)) => {
+                body = body.push(widgets::failure(
+                    error,
+                    Some(App::Page(key, PageMsg::Mixes(Message::Retry))),
+                    view.details,
+                ));
+            }
             Some(Load::Ready(mix)) => body = body.push(self.mix_view(mix, view)),
         }
         widgets::page(body)

@@ -11,6 +11,7 @@ use iced::{Center, ContentFit, Element, Fill, Font, Length, Shrink, font};
 use crate::actions::{self, Collection, Menu, PlayRequest, RowAction};
 use crate::app::Message;
 use crate::artwork::{ArtKey, Artwork};
+use crate::failure::Failure;
 use crate::icons::{Icon, Tone, icon};
 use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
@@ -251,9 +252,60 @@ pub fn loading<'a>() -> Element<'a, Message> {
     container(secondary("Loading…")).padding(20).into()
 }
 
-pub fn failure<'a>(error: &'a str) -> Element<'a, Message> {
+/// A failure whose words are all there is: the local store's, the app's own.
+pub fn plain_failure<'a>(error: &'a str) -> Element<'a, Message> {
     container(text(error))
         .padding(12)
+        .style(theme::error_box)
+        .into()
+}
+
+/// Something that failed, in words: Retry runs it again (when there is
+/// something to run), and Details shows the technical text under it.
+pub fn failure<'a>(
+    failure: &'a Failure,
+    retry: Option<Message>,
+    details_open: bool,
+) -> Element<'a, Message> {
+    let has_actions = retry.is_some() || failure.details.is_some();
+    let mut actions = row![].spacing(8).align_y(Center);
+    if let Some(retry) = retry {
+        actions = actions.push(
+            button(text("Retry").size(13))
+                .style(theme::tonal)
+                .padding([4, 12])
+                .on_press(retry),
+        );
+    }
+    if failure.details.is_some() {
+        actions = actions.push(
+            button(
+                row![
+                    text("Details").size(13),
+                    icon(
+                        if details_open { Icon::Up } else { Icon::Down },
+                        14.0,
+                        Tone::Secondary
+                    ),
+                ]
+                .spacing(4)
+                .align_y(Center),
+            )
+            .style(theme::row)
+            .padding([4, 8])
+            .on_press(Message::FailureDetails(!details_open)),
+        );
+    }
+    let mut body = column![text(failure.summary.as_str())].spacing(10);
+    if has_actions {
+        body = body.push(actions);
+    }
+    if let (true, Some(details)) = (details_open, &failure.details) {
+        body = body.push(secondary(details.as_str()).size(12));
+    }
+    container(body)
+        .padding(12)
+        .width(Fill)
         .style(theme::error_box)
         .into()
 }
@@ -510,7 +562,7 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
         body = body.push(secondary("Fetching the songs…").size(13));
     }
     if let Some(error) = &menu.error {
-        body = body.push(failure(error));
+        body = body.push(plain_failure(error));
     }
     if menu.adding {
         let mut lists = column![].spacing(2);

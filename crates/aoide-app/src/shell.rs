@@ -42,7 +42,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     };
     // Get Info over everything.
     match &signed.info {
-        Some(sheet) => stack![window, crate::info::view(sheet)].into(),
+        Some(sheet) => stack![window, crate::info::view(sheet, app.failure_details)].into(),
         None => window,
     }
 }
@@ -59,6 +59,7 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
         favourites: &signed.favourites,
         can_go_back: false,
         smart_search: false,
+        details: app.failure_details,
     };
     let card = container(widgets::menu_strip(menu, &view)).max_width(560);
     opaque(
@@ -216,6 +217,7 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         favourites: &signed.favourites,
         can_go_back: nav.can_go_back(),
         smart_search: app.smart.has_key(),
+        details: app.failure_details,
     };
     let page = match &entry.page {
         Page::Settings(state) => screens::settings::view(

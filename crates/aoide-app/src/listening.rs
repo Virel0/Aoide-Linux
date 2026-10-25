@@ -59,7 +59,10 @@ pub enum Msg {
     /// What the listener is doing, for the next plays; `None` untags.
     Activity(Option<aoide_store::Activity>),
     Interface(crate::appearance::InterfaceSettings),
-    LyricsFound(String, Result<Option<crate::lyrics_online::Found>, String>),
+    LyricsFound(
+        String,
+        Result<Option<crate::lyrics_online::Found>, crate::failure::Failure>,
+    ),
     /// New lyrics are in the panel.
     LyricsShown,
     Translate(bool),

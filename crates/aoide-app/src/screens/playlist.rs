@@ -15,6 +15,7 @@ use iced::{Center, Element, Length, Task};
 use super::{Ctx, Load, PageMsg, Section, View, fetch};
 use crate::actions::PlayRequest;
 use crate::app::Message as App;
+use crate::failure::Failure;
 use crate::icons::{Icon, Tone, icon};
 use crate::playback::tracks::TrackMeta;
 use crate::theme;
@@ -76,7 +77,7 @@ pub fn read_rows(store: &aoide_store::Store, id: &str, now: i64) -> aoide_store:
 #[derive(Debug, Clone)]
 pub enum Message {
     Rows(Result<Box<Rows>, String>),
-    Tracks(Result<Vec<Item>, String>),
+    Tracks(Result<Vec<Item>, Failure>),
     Rename,
     RenameText(String),
     SaveName,
@@ -194,7 +195,7 @@ impl State {
     pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {
         match message {
             Message::Rows(Err(error)) => {
-                self.tracks = Load::Failed(error);
+                self.tracks = Load::Failed(error.into());
                 Task::none()
             }
             Message::Rows(Ok(rows)) => {
@@ -206,9 +207,9 @@ impl State {
                         ids
                     }
                     Some(Err(error)) => {
-                        self.tracks = Load::Failed(format!(
-                            "This smart playlist's rules couldn't be read: {error}"
-                        ));
+                        self.tracks = Load::Failed(
+                            format!("This smart playlist's rules couldn't be read: {error}").into(),
+                        );
                         return Task::none();
                     }
                     None => {
@@ -536,7 +537,7 @@ impl State {
         if let Some(note) = &self.cover_note {
             head = head.push(match note {
                 Ok(note) => widgets::secondary(note.as_str()).size(13).into(),
-                Err(error) => widgets::failure(error),
+                Err(error) => widgets::plain_failure(error),
             });
         }
         let mut body = column![
@@ -556,7 +557,7 @@ impl State {
             body = body.push(widgets::menu_strip(menu, view));
         }
         if let Some(error) = &self.error {
-            body = body.push(widgets::failure(error));
+            body = body.push(widgets::plain_failure(error));
         }
         if self.smart.is_some() {
             body = body.push(
@@ -580,7 +581,7 @@ impl State {
         }
         body = body.push(match &self.tracks {
             Load::Loading => widgets::loading(),
-            Load::Failed(error) => widgets::failure(error),
+            Load::Failed(error) => view.failure(error),
             Load::Ready(tracks) if tracks.is_empty() && self.smart.is_some() => widgets::empty(
                 "Nothing matches its rules yet. Songs appear as your listening fits them.",
             ),

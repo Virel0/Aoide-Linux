@@ -375,7 +375,7 @@ impl State {
         let mut body = column![widgets::title_bar("Sync", view.can_go_back)].spacing(20);
         let snapshot = match &self.snapshot {
             Load::Loading => return widgets::page(body.push(widgets::loading())),
-            Load::Failed(error) => return widgets::page(body.push(widgets::failure(error))),
+            Load::Failed(error) => return widgets::page(body.push(view.failure(error))),
             Load::Ready(None) => {
                 return widgets::page(body.push(widgets::empty(
                     "This server has no Aoide sidecar; playlists and history stay on this computer.",

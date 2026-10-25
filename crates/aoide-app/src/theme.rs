@@ -391,4 +391,17 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn a_failure_and_its_details_read_on_their_box() {
+        for theme in themes() {
+            let style = error_box(&theme);
+            let surface = over(ground(style), ground(page(&theme)));
+            let words = style.text_color.expect("the box sets its text colour");
+            let ratio = contrast(words, surface);
+            assert!(ratio >= 4.5, "{theme} failure: {ratio}");
+            let ratio = contrast(secondary(&theme), surface);
+            assert!(ratio >= 4.5, "{theme} details: {ratio}");
+        }
+    }
 }

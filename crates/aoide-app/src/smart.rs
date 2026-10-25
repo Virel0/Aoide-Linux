@@ -144,7 +144,7 @@ pub enum Message {
     ModelTyped(String),
     UseModel(String),
     ShowModels,
-    Models(Result<Vec<Model>, String>),
+    Models(Result<Vec<Model>, crate::failure::Failure>),
     /// Search's "Search by description", for the page with this key.
     Describe {
         page: u64,
@@ -466,8 +466,11 @@ impl App {
                 state.models = Some(Load::Loading);
                 Task::perform(
                     async move {
-                        let client = client()?;
-                        client.models().await.map_err(|e| e.to_string())
+                        let client = client().map_err(crate::failure::Failure::from)?;
+                        client
+                            .models()
+                            .await
+                            .map_err(|e| crate::failure::openrouter(&e))
                     },
                     |r| AppMessage::Smart(Message::Models(r)),
                 )
@@ -487,7 +490,10 @@ impl App {
                         return Task::done(AppMessage::Page(
                             page,
                             crate::screens::PageMsg::Search(
-                                crate::screens::search::Message::Described(asked, Err(error)),
+                                crate::screens::search::Message::Described(
+                                    asked,
+                                    Err(error.into()),
+                                ),
                             ),
                         ));
                     }
@@ -510,10 +516,7 @@ impl App {
                             crate::screens::PageMsg::Search(
                                 crate::screens::search::Message::Described(
                                     asked.clone(),
-                                    result.map_err(|failure| match failure {
-                                        Failure::Server(e) => crate::session::describe(&e),
-                                        Failure::Other(e) => e,
-                                    }),
+                                    result.map_err(crate::failure::Failure::from),
                                 ),
                             ),
                         ),
@@ -528,6 +531,7 @@ impl App {
 pub fn settings_section<'a>(
     state: &'a State,
     settings: &'a SmartSettings,
+    details: bool,
 ) -> Element<'a, AppMessage> {
     let send = |m: Message| AppMessage::Smart(m);
     let mut rows: Column<'a, AppMessage> = column![];
@@ -627,7 +631,11 @@ pub fn settings_section<'a>(
         None => {}
         Some(Load::Loading) => rows = rows.push(widgets::secondary("Loading OpenRouter's models…")),
         Some(Load::Failed(error)) => {
-            rows = rows.push(text(format!("The models couldn't be loaded: {error}")).size(13));
+            rows = rows.push(widgets::failure(
+                error,
+                Some(send(Message::ShowModels)),
+                details,
+            ));
         }
         Some(Load::Ready(models)) => {
             let found = matching(models, typed, LISTED);

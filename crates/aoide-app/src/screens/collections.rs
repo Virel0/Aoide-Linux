@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use super::{Ctx, Load, PageMsg, Section, View, fetch};
 use crate::app::{App, Message as AppMessage};
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
 use crate::{theme, widgets};
@@ -145,15 +146,15 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Filters(Result<QueryFilters, String>),
+    Filters(Result<QueryFilters, Failure>),
     Saved(Option<SavedFilter>),
     Kind(Kind),
     Genre(String, String),
     Year(i32),
     Tag(String),
     Favourites(bool),
-    Songs(Result<Vec<Item>, String>),
-    Albums(Result<Vec<Item>, String>),
+    Songs(Result<Vec<Item>, Failure>),
+    Albums(Result<Vec<Item>, Failure>),
     Name(String),
     Save,
     Delete,
@@ -342,7 +343,7 @@ impl State {
         .spacing(14);
         match &self.filters {
             Load::Loading => body = body.push(widgets::loading()),
-            Load::Failed(error) => body = body.push(widgets::failure(error)),
+            Load::Failed(error) => body = body.push(view.failure(error)),
             Load::Ready(filters) => {
                 let group = |label: &'a str, chips: Vec<Element<'a, AppMessage>>| {
                     column![
@@ -454,7 +455,7 @@ impl State {
         body = body.push(match self.filter.kind {
             Kind::Songs => match &self.songs {
                 Load::Loading => widgets::loading(),
-                Load::Failed(error) => widgets::failure(error),
+                Load::Failed(error) => view.failure(error),
                 Load::Ready(songs) if songs.is_empty() => {
                     widgets::empty("Nothing matches this filter.")
                 }
@@ -475,7 +476,7 @@ impl State {
             },
             Kind::Albums => match &self.albums {
                 Load::Loading => widgets::loading(),
-                Load::Failed(error) => widgets::failure(error),
+                Load::Failed(error) => view.failure(error),
                 Load::Ready(tiles) if tiles.is_empty() => {
                     widgets::empty("Nothing matches this filter.")
                 }

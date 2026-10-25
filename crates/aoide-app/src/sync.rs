@@ -107,6 +107,8 @@ pub async fn run(engine: Engine) -> Result<SyncReport, String> {
         if error.is_sidecar_absent() {
             "This server has no Aoide sidecar; playlists and history stay on this computer."
                 .to_owned()
+        } else if let aoide_sidecar::SyncError::Transport(error) = &error {
+            format!("Sync didn't finish. {}", crate::failure::sidecar(error))
         } else {
             format!("Sync didn't finish: {error}")
         }

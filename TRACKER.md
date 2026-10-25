@@ -184,7 +184,10 @@ earlier. Each is his to make; nothing here is built yet.
 - **The Flatpak's keyring access**: `--talk-name=org.freedesktop.secrets`
   reaches the whole unlocked keyring. The Secret portal would scope it to
   the app, but needs another keyring library (oo7) in place of keyring 3.6.
-- **Error messages**: they show raw transport errors and have no Retry.
+- **Sign-in errors** still carry the transport's text ("… (tcp connect
+  error …)"): they are worded in `session.rs`, which was being changed in
+  another branch; switching its `describe` to `failure::describe` finishes
+  the job. Every screen's load error is already in words with Retry.
 - **Replay**: all-caps tile labels, and "0 HOURS" under an hour.
 - **Album rows** repeat the album artist; **artist tiles** are square and
   grey; the album's "…" sits mid-row rather than last.

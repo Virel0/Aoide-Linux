@@ -13,6 +13,7 @@ use iced::{Element, Fill, Task};
 use super::{Ctx, Load, PageMsg, Route, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::library::{self, Tile};
 use crate::{theme, widgets};
 
@@ -38,12 +39,12 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Added(Result<Vec<Item>, String>),
-    Played(Result<Vec<Item>, String>),
-    Most(Result<Vec<Item>, String>),
-    Released(Result<Vec<Item>, String>),
-    Random(Result<Vec<Item>, String>),
-    Genres(Result<Vec<Item>, String>),
+    Added(Result<Vec<Item>, Failure>),
+    Played(Result<Vec<Item>, Failure>),
+    Most(Result<Vec<Item>, Failure>),
+    Released(Result<Vec<Item>, Failure>),
+    Random(Result<Vec<Item>, Failure>),
+    Genres(Result<Vec<Item>, Failure>),
     Resume(Vec<crate::handoff::Card>),
     Discover(Option<usize>),
 }
@@ -51,7 +52,7 @@ pub enum Message {
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
     let key = ctx.key;
     let library = ctx.library.map(str::to_owned);
-    let wrap = |m: fn(Result<Vec<Item>, String>) -> self::Message| move |r| PageMsg::Home(m(r));
+    let wrap = |m: fn(Result<Vec<Item>, Failure>) -> self::Message| move |r| PageMsg::Home(m(r));
     let albums = |sort: Sort, order: SortOrder| ListQuery {
         parent_id: library.clone(),
         sort,
@@ -125,7 +126,7 @@ pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
     )
 }
 
-fn album_tiles(result: Result<Vec<Item>, String>) -> Load<Vec<Tile>> {
+fn album_tiles(result: Result<Vec<Item>, Failure>) -> Load<Vec<Tile>> {
     Load::from(result.map(|items| items.iter().map(Tile::album).collect()))
 }
 
@@ -202,7 +203,7 @@ impl State {
         for (title, shelf) in self.shelves() {
             match shelf {
                 Load::Loading => body = body.push(widgets::loading()),
-                Load::Failed(error) => body = body.push(widgets::failure(error)),
+                Load::Failed(error) => body = body.push(view.failure(error)),
                 Load::Ready(tiles) if tiles.is_empty() => {}
                 Load::Ready(tiles) => {
                     body = body.push(widgets::shelf(title, tiles, view.artwork, open_album));
@@ -211,7 +212,7 @@ impl State {
         }
         match &self.genres {
             Load::Ready(genres) if !genres.is_empty() => body = body.push(genre_shelf(genres)),
-            Load::Failed(error) => body = body.push(widgets::failure(error)),
+            Load::Failed(error) => body = body.push(view.failure(error)),
             _ => {}
         }
         let empty = self

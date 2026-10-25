@@ -11,6 +11,7 @@ use iced::{Element, Fill, Task};
 use super::{Ctx, Load, PageMsg, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::playback::tracks::TrackMeta;
 use crate::{theme, widgets};
 
@@ -26,7 +27,7 @@ pub struct State {
 pub enum Message {
     Period(ReplayPeriod),
     Recap(ReplayPeriod, Result<Box<Recap>, String>),
-    Top(ReplayPeriod, Result<Vec<Item>, String>),
+    Top(ReplayPeriod, Result<Vec<Item>, Failure>),
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
@@ -181,7 +182,7 @@ impl State {
         let mut body = column![widgets::title_bar("Replay", view.can_go_back), periods].spacing(24);
         let recap = match &self.recap {
             Load::Loading => return widgets::page(body.push(widgets::loading())),
-            Load::Failed(error) => return widgets::page(body.push(widgets::failure(error))),
+            Load::Failed(error) => return widgets::page(body.push(view.failure(error))),
             Load::Ready(recap) => recap,
         };
         if recap.is_empty() {

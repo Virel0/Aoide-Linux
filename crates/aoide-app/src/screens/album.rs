@@ -8,6 +8,7 @@ use iced::{Element, Length, Task};
 use super::{Ctx, Load, PageMsg, Route, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::playback::tracks::TrackMeta;
 use crate::theme;
 use crate::widgets::{self, ListStyle};
@@ -25,8 +26,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Album(Result<Vec<Item>, String>),
-    Tracks(Result<Vec<Item>, String>),
+    Album(Result<Vec<Item>, Failure>),
+    Tracks(Result<Vec<Item>, Failure>),
     Finish(Option<String>),
 }
 
@@ -160,7 +161,7 @@ impl State {
         }
         body = body.push(match &self.tracks {
             Load::Loading => widgets::loading(),
-            Load::Failed(error) => widgets::failure(error),
+            Load::Failed(error) => view.failure(error),
             Load::Ready(tracks) => widgets::track_list_with_headings(
                 tracks,
                 view,

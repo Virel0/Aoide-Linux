@@ -128,7 +128,9 @@ pub fn refusal(error: &SidecarError, call: Call) -> String {
             "Only the playlist's owner, or the person it was shared with, can end a share."
                 .to_owned()
         }
-        (error, _) => error.server_text().unwrap_or_else(|| error.to_string()),
+        (error, _) => error
+            .server_text()
+            .unwrap_or_else(|| crate::failure::sidecar(error).to_string()),
     }
 }
 
@@ -327,7 +329,7 @@ impl State {
         .spacing(16);
         let snapshot = match &self.snapshot {
             Load::Loading => return widgets::page(body.push(widgets::loading())),
-            Load::Failed(error) => return widgets::page(body.push(widgets::failure(error))),
+            Load::Failed(error) => return widgets::page(body.push(view.failure(error))),
             Load::Ready(snapshot) => snapshot,
         };
         let known = self.known();
@@ -453,7 +455,7 @@ impl State {
         if let Some(note) = &self.note {
             body = body.push(match note {
                 Ok(note) => widgets::secondary(note.as_str()).size(13).into(),
-                Err(error) => widgets::failure(error),
+                Err(error) => widgets::plain_failure(error),
             });
         }
         if !snapshot.held.is_empty() {

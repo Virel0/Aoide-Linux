@@ -87,7 +87,7 @@ pub async fn tune(
     let items = client
         .instant_mix_from(&seed, LENGTH)
         .await
-        .map_err(|e| crate::session::describe(&e))?;
+        .map_err(|e| crate::failure::describe(&e).to_string())?;
     let ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
     let hidden = store
         .call(move |w| w.store.not_interested(&ids).unwrap_or_default())

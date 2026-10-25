@@ -404,7 +404,7 @@ impl State {
             );
         }
         if let Some(error) = &self.error {
-            body = body.push(widgets::failure(error));
+            body = body.push(widgets::plain_failure(error));
         }
 
         let children = folders.children(shown);

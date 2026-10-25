@@ -8,6 +8,7 @@ use iced::{Center, Element, Fill, Task};
 
 use super::{Ctx, PageMsg, View, fetch};
 use crate::app::Message as App;
+use crate::failure::Failure;
 use crate::library::Tile;
 use crate::widgets;
 
@@ -58,14 +59,14 @@ pub struct State {
     pub total: Option<u32>,
     pub sort: AlbumSort,
     loading: bool,
-    error: Option<String>,
+    error: Option<Failure>,
     /// Bumped on every re-sort, so a page for the old order is dropped.
     generation: u32,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Loaded(u32, Result<ItemPage<Item>, String>),
+    Loaded(u32, Result<ItemPage<Item>, Failure>),
     More,
     Sort(AlbumSort),
 }
@@ -159,7 +160,7 @@ impl State {
         ]
         .spacing(20);
         if let Some(error) = &self.error {
-            body = body.push(widgets::failure(error));
+            body = body.push(view.failure(error));
         } else if self.total.is_none_or(|t| (self.tiles.len() as u32) < t) {
             body = body.push(
                 sensor(widgets::loading())
