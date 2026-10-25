@@ -145,7 +145,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Synced lyrics from Jellyfin, follow along, tap to seek | 1 | ✅ | |
 | Lyric timing offset | 1 | ✅ | The Settings slider (±1.5 s); applied to line selection and to click-to-seek |
 | Internet lyrics (LRCLIB, NetEase, Genius, SimpMusic), on by default, can be turned off | 2 | ⬜ | |
-| Lyric translation | 3 | ⬜ | The iOS app does it on-device; needs a local option on Linux |
+| Lyric translation | 3 | 🟨 | Library done; UI pending. `aoide_integrations::translate`: the lyrics' language by whatlang and the listener's from the locale, offered only when they differ; with the `local-translation` feature (off by default), `LocalTranslator` translates on this machine with Firefox Translations' models through `fxtranslate` (pure Rust, MPL-2.0), each pair's model (about 20 to 40 MB) downloaded on first use to the cache dir, through English when there is no direct model. Lyrics never leave the machine. Not yet run with a real model (the test for it is ignored and needs a downloaded model); fxtranslate 0.5.0 has a decoder fix waiting in its next release, and Mozilla's model hosting is meant for Firefox, so a mirror (`ModelSource::Mirror`) is worth setting up |
 | Furigana and romaji | 3 | ⬜ | |
 
 ## Settings shown in round 1

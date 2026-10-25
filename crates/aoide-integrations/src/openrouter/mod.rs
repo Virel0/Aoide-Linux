@@ -28,7 +28,7 @@ pub mod smart_rules;
 pub mod smart_search;
 
 use std::fmt;
-use std::sync::{Mutex, Once, PoisonError};
+use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use reqwest::Url;
@@ -168,15 +168,6 @@ pub struct MixOutcome {
     pub reason: Option<String>,
 }
 
-/// rustls with the ring provider: reqwest is built without one. An app
-/// that installed its own first keeps it.
-fn install_crypto() {
-    static ONCE: Once = Once::new();
-    ONCE.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
-
 /// The OpenRouter client. Cheap to clone.
 #[derive(Debug, Clone)]
 pub struct OpenRouter {
@@ -192,7 +183,7 @@ impl OpenRouter {
 
     /// A client for another address with OpenRouter's API (tests).
     pub fn with_base_url(base: &str) -> Result<Self, OpenRouterError> {
-        install_crypto();
+        crate::install_crypto();
         let mut base = Url::parse(base).map_err(|e| OpenRouterError::Unreachable(e.to_string()))?;
         if !base.path().ends_with('/') {
             let path = format!("{}/", base.path());
