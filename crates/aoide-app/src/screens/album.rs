@@ -138,7 +138,9 @@ impl State {
                     self.title.clone(),
                 )),
             ]
-            .spacing(10),
+            .spacing(10)
+            .wrap()
+            .vertical_spacing(10),
         );
 
         let mut body = column![

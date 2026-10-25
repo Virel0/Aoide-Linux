@@ -453,7 +453,9 @@ impl State {
                     self.name.clone(),
                 )),
             ]
-            .spacing(10),
+            .spacing(10)
+            .wrap()
+            .vertical_spacing(10),
             tools,
         ]
         .spacing(10)
