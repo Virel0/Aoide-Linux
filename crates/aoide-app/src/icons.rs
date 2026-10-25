@@ -37,6 +37,8 @@ pub enum Icon {
     Down,
     Remove,
     Plus,
+    /// Mixes: a sparkle.
+    Mix,
 }
 
 /// How an icon is tinted.
@@ -121,11 +123,14 @@ fn source(icon: Icon) -> String {
         Icon::Down => format!(r#"<path d="M6 9l6 6 6-6" {STROKE}/>"#),
         Icon::Remove => format!(r#"<path d="M6 12h12" {STROKE}/>"#),
         Icon::Plus => format!(r#"<path d="M12 6v12M6 12h12" {STROKE}/>"#),
+        Icon::Mix => format!(
+            r#"<path d="M10 3.5l1.6 4.4L16 9.5l-4.4 1.6L10 15.5l-1.6-4.4L4 9.5l4.4-1.6zM17.5 14l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" {STROKE}/>"#
+        ),
     };
     format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>"#)
 }
 
-const ALL: [Icon; 29] = [
+const ALL: [Icon; 30] = [
     Icon::Play,
     Icon::Pause,
     Icon::Next,
@@ -155,6 +160,7 @@ const ALL: [Icon; 29] = [
     Icon::Down,
     Icon::Remove,
     Icon::Plus,
+    Icon::Mix,
 ];
 
 /// One handle per icon, made once: a handle's id is what the renderer caches on.

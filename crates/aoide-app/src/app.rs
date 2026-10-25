@@ -161,6 +161,7 @@ pub enum Message {
     Tray(crate::tray::Message),
     Discord(crate::discord::Message),
     Smart(crate::smart::Message),
+    Mixes(crate::mixes::Request),
 }
 
 /// The player bar's controls.
@@ -465,6 +466,7 @@ impl App {
             Message::Tray(message) => self.tray_message(message),
             Message::Discord(message) => self.discord_message(message),
             Message::Smart(message) => self.smart_message(message),
+            Message::Mixes(request) => self.mix_request(request),
         }
     }
 

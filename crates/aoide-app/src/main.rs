@@ -10,6 +10,7 @@ mod icons;
 mod integration;
 mod library;
 mod lyrics_panel;
+mod mixes;
 mod nav;
 mod now_playing;
 mod playback;
