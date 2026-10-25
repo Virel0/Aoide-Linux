@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use aoide_jellyfin::{JellyfinClient, LyricLine, LyricWord, Lyrics};
 use aoide_lyrics::{LyricsFinder, TrackQuery};
-use iced::widget::{column, toggler};
-use iced::{Element, Fill};
+use iced::Element;
+use iced::widget::column;
 use serde::{Deserialize, Serialize};
 
 use crate::app::Message;
@@ -252,15 +252,15 @@ pub fn finder() -> Option<Arc<LyricsFinder>> {
 pub fn settings_row<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> {
     let interface = extras.config.interface.clone();
     column![
-        toggler(interface.internet_lyrics)
-            .label("Find lyrics on the internet")
-            .width(Fill)
-            .style(crate::theme::switch)
-            .on_toggle(move |on| {
+        crate::widgets::switch(
+            "Find lyrics on the internet",
+            interface.internet_lyrics,
+            move |on| {
                 let mut change = interface.clone();
                 change.internet_lyrics = on;
                 Message::Listening(Msg::Interface(change))
-            }),
+            }
+        ),
         crate::widgets::secondary(
             "When your server has no lyrics for a song, Aoide asks LRCLIB (lrclib.net) with the \
              song's title, artist, album and length, and keeps what it says on this computer for \

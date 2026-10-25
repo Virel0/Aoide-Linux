@@ -11,7 +11,7 @@
 use std::time::{Duration, SystemTime};
 
 use aoide_integrations::update::{Release, UpdateCheck, UpdateChecker, UpdateState, tag_version};
-use iced::widget::{Column, button, column, container, row, scrollable, text, toggler};
+use iced::widget::{Column, button, column, container, row, scrollable, text};
 use iced::{Center, Element, Fill, Subscription, Task};
 use serde::{Deserialize, Serialize};
 
@@ -367,11 +367,9 @@ pub fn settings_section<'a>(
 ) -> Element<'a, AppMessage> {
     let send = |m: Message| AppMessage::Update(m);
     let mut rows = column![
-        toggler(settings.check)
-            .style(theme::switch)
-            .label("Check for updates")
-            .width(Fill)
-            .on_toggle(|on| AppMessage::Update(Message::Check(on))),
+        widgets::switch("Check for updates", settings.check, |on| {
+            AppMessage::Update(Message::Check(on))
+        }),
         widgets::secondary(format!("This is Aoide for Linux {CURRENT}.")).size(13),
     ];
     if settings.check {

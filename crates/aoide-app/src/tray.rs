@@ -18,8 +18,8 @@ use std::time::Duration;
 
 use aoide_mpris::{Bus, Pixmap, TrayCommand, TrayIcon, TrayState};
 use iced::futures::{Stream, StreamExt};
-use iced::widget::{column, toggler};
-use iced::{Element, Fill, Subscription, Task, window};
+use iced::widget::column;
+use iced::{Element, Subscription, Task, window};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -495,11 +495,7 @@ pub fn settings_section<'a>(
     status: &'a Status,
 ) -> Element<'a, AppMessage> {
     let switch = |label: &'a str, value: bool, message: fn(bool) -> Message| {
-        toggler(value)
-            .style(crate::theme::switch)
-            .label(label)
-            .width(Fill)
-            .on_toggle(move |on| AppMessage::Tray(message(on)))
+        crate::widgets::switch(label, value, move |on| AppMessage::Tray(message(on)))
     };
     let mut rows = column![switch("Show in tray", settings.show, Message::Show)];
     if settings.show {

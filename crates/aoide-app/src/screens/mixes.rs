@@ -7,7 +7,7 @@ use aoide_store::PlaySource;
 use iced::widget::{button, column, row, text, text_input};
 use iced::{Center, Element, Task};
 
-use super::{Load, PageMsg, Section, View};
+use super::{Load, PageMsg, View};
 use crate::actions::PlayRequest;
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
@@ -124,7 +124,7 @@ impl State {
                         button(text("Open settings").size(13))
                             .style(theme::tonal)
                             .padding([6, 12])
-                            .on_press(App::Section(Section::Settings)),
+                            .on_press(App::OpenSettings(super::settings::Category::SmartSearch,)),
                     ]
                     .spacing(10),
                 ),

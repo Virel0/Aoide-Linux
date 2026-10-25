@@ -220,20 +220,19 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     let page = match &entry.page {
         Page::Settings(state) => screens::settings::view(
             state,
-            &app.config.settings,
-            app.config.account.as_ref(),
             crate::sync::Status {
                 available: signed.sync.is_some(),
                 running: signed.throttle.is_running(),
                 last: signed.sync_status.as_ref(),
             },
             &view,
-            crate::system::settings_sections(app),
+            app,
             crate::listening::SettingsExtras {
                 config: &app.config,
                 listening: &app.listening,
                 device_fell_back: app.playback.device_fell_back(),
             },
+            content_width(app, signed) >= screens::settings::WIDE_ENOUGH,
         ),
         Page::Equalizer(state) => {
             screens::equalizer::view(state, &app.config.sound, app.playback.sample_rate(), &view)
@@ -245,6 +244,16 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         .height(Fill)
         .style(theme::page)
         .into()
+}
+
+/// The width the page has: the window's, less the sidebar and the panel.
+fn content_width(app: &App, signed: &Signed) -> f32 {
+    let panel = if signed.panel.is_some() {
+        now_playing::WIDTH + 1.0
+    } else {
+        0.0
+    };
+    app.config.window.width - SIDEBAR_WIDTH - panel
 }
 
 /// A line across the top of the content: something to know, with a way to

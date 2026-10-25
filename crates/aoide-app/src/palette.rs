@@ -17,6 +17,7 @@ use crate::actions::PlayRequest;
 use crate::app::{App, Message as AppMessage, Panel, Transport};
 use crate::playback::tracks::TrackMeta;
 use crate::screens::search::Debouncer;
+use crate::screens::settings::Category;
 use crate::screens::{PlaylistSummary, Route, Section};
 use crate::theme;
 use crate::widgets;
@@ -71,6 +72,13 @@ pub fn commands(playlists: &[PlaylistSummary]) -> Vec<Entry> {
         player("Show queue", Transport::Panel(Panel::Queue)),
         player("Show lyrics", Transport::Panel(Panel::Lyrics)),
     ]);
+    all.extend(Category::ALL.into_iter().map(|category| {
+        Entry::new(
+            "Settings",
+            category.title(),
+            AppMessage::OpenSettings(category),
+        )
+    }));
     all.extend(playlists.iter().map(|p| {
         Entry::new(
             "Playlist",
@@ -421,6 +429,29 @@ mod tests {
         assert!(
             all.iter()
                 .any(|e| matches!(e.action, AppMessage::Player(Transport::Toggle)))
+        );
+        for category in Category::ALL {
+            assert!(
+                all.iter().any(|e| e.kind == "Settings"
+                    && matches!(e.action, AppMessage::OpenSettings(c) if c == category)),
+                "{category:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_settings_category_is_found_by_its_name_or_by_settings() {
+        let found = matching(commands(&[]), "playback");
+        assert!(
+            found
+                .iter()
+                .any(|e| matches!(e.action, AppMessage::OpenSettings(Category::Playback)))
+        );
+        let found = matching(commands(&[]), "settings sync");
+        assert!(
+            found
+                .iter()
+                .any(|e| matches!(e.action, AppMessage::OpenSettings(Category::Sync)))
         );
     }
 

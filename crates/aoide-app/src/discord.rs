@@ -15,7 +15,7 @@ use aoide_integrations::discord::{
 };
 use aoide_jellyfin::{JellyfinClient, Url};
 use iced::futures::{Stream, StreamExt};
-use iced::widget::{column, pick_list, row, text, toggler};
+use iced::widget::{column, pick_list, row, text};
 use iced::{Center, Element, Fill, Subscription, Task};
 use tokio::sync::watch;
 
@@ -231,11 +231,7 @@ pub fn settings_section<'a>(
     status: PresenceStatus,
 ) -> Element<'a, AppMessage> {
     let switch = |label: &'a str, value: bool, message: fn(bool) -> Message| {
-        toggler(value)
-            .style(crate::theme::switch)
-            .label(label)
-            .width(Fill)
-            .on_toggle(move |on| AppMessage::Discord(message(on)))
+        crate::widgets::switch(label, value, move |on| AppMessage::Discord(message(on)))
     };
     let mut rows = column![switch("Rich Presence", options.enabled, Message::Enabled)];
     if options.enabled {

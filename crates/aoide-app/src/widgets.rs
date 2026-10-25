@@ -3,8 +3,8 @@
 
 use aoide_store::PlaySource;
 use iced::widget::{
-    Column, button, column, container, grid, image, mouse_area, row, scrollable, space, text,
-    text_input,
+    Column, Row, button, column, container, grid, image, mouse_area, row, scrollable, space, text,
+    text_input, toggler,
 };
 use iced::{Center, ContentFit, Element, Fill, Font, Length, Shrink, font};
 
@@ -57,6 +57,21 @@ pub fn secondary<'a>(content: impl text::IntoFragment<'a>) -> text::Text<'a> {
     text(content).style(|t| text::Style {
         color: Some(theme::secondary(t)),
     })
+}
+
+/// A setting's switch: the label on the left and the switch on the right,
+/// as macOS lays them out.
+pub fn switch<'a>(
+    label: impl text::IntoFragment<'a>,
+    on: bool,
+    toggle: impl Fn(bool) -> Message + 'a,
+) -> Row<'a, Message> {
+    row![
+        text(label).width(Fill),
+        toggler(on).style(theme::switch).on_toggle(toggle),
+    ]
+    .spacing(12)
+    .align_y(Center)
 }
 
 /// A cover at `size`, or a quiet square where there is none yet.

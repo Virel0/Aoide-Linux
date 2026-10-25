@@ -152,6 +152,8 @@ pub enum Message {
     Synced(Result<SyncReport, String>),
     Libraries(Result<Vec<Item>, String>),
     Section(Section),
+    /// Settings, at one category: the command palette's way in.
+    OpenSettings(screens::settings::Category),
     Open(Route),
     Back,
     Page(u64, PageMsg),
@@ -485,6 +487,19 @@ impl App {
                 self.show_section(section)
             }
             Message::Section(section) => self.show_section(section),
+            Message::OpenSettings(category) => {
+                let task = self.show_section(Section::Settings);
+                if let Some(Page::Settings(state)) = self
+                    .session
+                    .as_mut()
+                    .and_then(|s| s.nav.as_mut())
+                    .and_then(|nav| nav.iter_mut().last())
+                    .map(|e| &mut e.page)
+                {
+                    state.category = category;
+                }
+                task
+            }
             Message::Open(route) => self.open(route),
             Message::Back => {
                 if let Some(nav) = self.session.as_mut().and_then(|s| s.nav.as_mut()) {
@@ -927,6 +942,11 @@ impl App {
                 )
                 .chain(reload);
             }
+            // Another pane starts at its top.
+            S::Category(_) => iced::widget::operation::snap_to(
+                crate::widgets::PAGE,
+                iced::widget::scrollable::RelativeOffset::START,
+            ),
             _ => Task::none(),
         };
         if let Some(Page::Settings(state)) = self

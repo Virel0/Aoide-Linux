@@ -6,7 +6,7 @@
 
 use aoide_jellyfin::{Item, ItemKind, ListQuery, QueryFilters, Sort, SortOrder};
 use aoide_store::PlaySource;
-use iced::widget::{Column, button, column, row, text, text_input, toggler};
+use iced::widget::{Column, button, column, row, text, text_input};
 use iced::{Center, Element, Fill, Task};
 use serde::{Deserialize, Serialize};
 
@@ -402,10 +402,10 @@ impl State {
             }
         }
         body = body.push(
-            toggler(self.filter.favourites_only)
-                .style(theme::switch)
-                .label("Only favourites")
-                .on_toggle(move |on| message(Message::Favourites(on))),
+            widgets::switch("Only favourites", self.filter.favourites_only, move |on| {
+                message(Message::Favourites(on))
+            })
+            .width(iced::Length::Fixed(260.0)),
         );
         let ready = !self.name.trim().is_empty();
         let mut save = row![

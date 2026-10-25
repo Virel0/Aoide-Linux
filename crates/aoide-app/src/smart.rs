@@ -664,7 +664,7 @@ pub fn settings_section<'a>(
     }
 
     crate::screens::settings::section(
-        "Smart search",
+        "",
         rows,
         "Search by description and Mixes ask a language model on OpenRouter to turn your words \
          into filters; your server then finds the songs. Only the words you typed and your \

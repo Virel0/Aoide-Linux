@@ -370,11 +370,9 @@ pub fn transcode_rows<'a>(transcode: &crate::sound::Transcode) -> Element<'a, Me
             .to_owned()
     };
     let mut rows = column![
-        iced::widget::toggler(t.enabled)
-            .style(theme::switch)
-            .label("Transcode streams")
-            .width(Fill)
-            .on_toggle(move |enabled| set(Transcode { enabled, ..t })),
+        crate::widgets::switch("Transcode streams", t.enabled, move |enabled| set(
+            Transcode { enabled, ..t }
+        )),
         crate::widgets::secondary(note).size(13),
     ]
     .spacing(8);
