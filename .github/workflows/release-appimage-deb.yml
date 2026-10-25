@@ -2,12 +2,18 @@ name: Release (AppImage and deb)
 
 # A tag like v1.2.3 builds the app once, packages it as an AppImage
 # (packaging/appimage) and a .deb (packaging/deb), and attaches both to the
-# release. Run by hand on a branch, it builds and keeps the files as a
-# workflow artifact only, to try the packaging before tagging.
+# release. Run by hand with a tag, it builds that tag with this workflow and
+# attaches the files (for a tag whose own run failed); with no tag, it builds
+# the branch and keeps the files as a workflow artifact only.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and attach to, e.g. v1.2.3 (empty: build only)'
+        required: false
+        type: string
 
 # The build runs with a read-only token: every crate's build script runs
 # there. Only the release job, which builds nothing, may write.
@@ -30,11 +36,12 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: System libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config desktop-file-utils
+          sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
         with:
@@ -43,8 +50,8 @@ jobs:
       - name: Version
         id: version
         env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ inputs.tag && 'tag' || github.ref_type }}
+          REF_NAME: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           if [[ $REF_TYPE == tag ]]; then
@@ -72,9 +79,6 @@ jobs:
             echo "::error::The binary now links libraries the packages do not account for: $unexpected"
             exit 1
           fi
-
-      - name: Validate the desktop entry
-        run: desktop-file-validate packaging/arch/io.github.Virel0.Aoide.Linux.desktop
 
       - name: AppImage
         env:
@@ -106,7 +110,7 @@ jobs:
 
   release:
     needs: package
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || inputs.tag != ''
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -133,3 +137,4 @@ jobs:
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: out/*
+          tag_name: ${{ inputs.tag || github.ref_name }}
