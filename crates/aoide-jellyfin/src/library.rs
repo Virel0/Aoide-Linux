@@ -74,6 +74,11 @@ pub struct ListQuery {
     /// Only items in any of these genres (Jellyfin's `genreIds`, by genre
     /// item id); empty is every genre.
     pub genre_ids: Vec<String>,
+    /// Only the signed-in user's favourites (Jellyfin's `isFavorite=true`). Works
+    /// for every list: [`songs`](JellyfinClient::songs),
+    /// [`albums`](JellyfinClient::albums), [`artists`](JellyfinClient::artists),
+    /// [`album_artists`](JellyfinClient::album_artists), and the rest.
+    pub favorites_only: bool,
     pub sort: Sort,
     pub order: SortOrder,
     pub start_index: u32,
@@ -341,6 +346,9 @@ impl JellyfinClient {
         }
         if !list.genre_ids.is_empty() {
             query.push(("genreIds", list.genre_ids.join(",")));
+        }
+        if list.favorites_only {
+            query.push(("isFavorite", "true".to_owned()));
         }
         if let Some(limit) = list.limit {
             query.push(("limit", limit.to_string()));

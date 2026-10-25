@@ -1159,3 +1159,68 @@ async fn similar_items_albums_and_artists() {
     let artists = client.similar_artists("ar1", 12).await.unwrap();
     assert_eq!(artists[0].kind, ItemKind::MusicArtist);
 }
+
+// MARK: - Favourites
+
+#[tokio::test]
+async fn favourite_songs_albums_and_artists_are_lists_with_is_favorite() {
+    let server = MockServer::start().await;
+    for kinds in ["Audio", "MusicAlbum"] {
+        Mock::given(method("GET"))
+            .and(path("/Items"))
+            .and(query_param("includeItemTypes", kinds))
+            .and(query_param("isFavorite", "true"))
+            .and(query_param("userId", USER))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(page(vec![item(kinds, "F", kinds)])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/Artists"))
+        .and(query_param("isFavorite", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![item(
+            "ar1",
+            "F",
+            "MusicArtist",
+        )])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // Without the flag nothing about favourites is sent.
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(|request: &Request| query_value(request, "isFavorite").is_none())
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![])))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    let favourites = ListQuery {
+        favorites_only: true,
+        ..ListQuery::default()
+    };
+    assert_eq!(
+        client.songs(&favourites).await.unwrap().items[0].id,
+        "Audio"
+    );
+    assert_eq!(
+        client.albums(&favourites).await.unwrap().items[0].id,
+        "MusicAlbum"
+    );
+    assert_eq!(
+        client.artists(&favourites).await.unwrap().items[0].id,
+        "ar1"
+    );
+    assert!(
+        client
+            .songs(&ListQuery::default())
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+}
