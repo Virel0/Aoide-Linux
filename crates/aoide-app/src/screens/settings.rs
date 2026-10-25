@@ -322,10 +322,30 @@ pub fn view<'a>(
             sound,
             lyrics,
             hidden,
-            account
+            account,
+            server_section(),
         ]
         .spacing(24)
         .max_width(720),
+    )
+}
+
+/// The server's own maintenance: what an administrator can start from here.
+fn server_section<'a>() -> Element<'a, App> {
+    section(
+        "Server",
+        column![
+            row![
+                text("Rescan Library").width(Fill),
+                button(text("Rescan"))
+                    .style(theme::tonal)
+                    .padding([6, 14])
+                    .on_press(App::Rescan(crate::rescan::Msg::Start)),
+            ]
+            .align_y(Center),
+        ],
+        "Asks the server to look for new and changed music now, rather than at its next \
+         scheduled scan. Only a server administrator can.",
     )
 }
 

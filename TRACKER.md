@@ -16,7 +16,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Sign out (never blocks on the network) | 1 | ✅ | The screen leaves at once; the last report and `/Sessions/Logout` go afterwards inside a 5 s grace period. Exercised in the app against a local stand-in server, not yet a real Jellyfin. |
 | Token stored in the system keyring | 1 | 🟨 | Behind a `CredentialStore` trait (keyring crate). Seen working with the macOS Keychain; Secret Service on Linux not yet run |
 | One account per local store; another account erases it on sign-in | 1 | 🟨 | `adopt_account` runs before anything reads the store; a store whose owner can't be known asks Keep or Erase. The erase path is the store's own tests, not yet seen in the app |
-| Rescan library (Jellyfin scheduled task) | 3 | 🟨 | library done; UI pending. `refresh_library` starts the RefreshLibrary scheduled task (not `/Library/Refresh`, which holds the request for the whole scan); `refresh_item` for one item. Administrators only |
+| Rescan library (Jellyfin scheduled task) | 3 | ✅ | Settings → Server → Rescan: `refresh_library` starts the RefreshLibrary scheduled task (not `/Library/Refresh`, which holds the request for the whole scan) and says so; a plain user is told "Only an administrator of this Jellyfin server can rescan its library" with the 403. Seen against the stand-in server both ways. `refresh_item` for one item not offered yet |
 
 ## Screens
 

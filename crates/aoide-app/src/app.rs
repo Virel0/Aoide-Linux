@@ -172,6 +172,7 @@ pub enum Message {
     ImportMatch(u64, Box<aoide_sidecar::ImportedPlaylist>),
     Collections(crate::screens::collections::Msg),
     Info(crate::info::Msg),
+    Rescan(crate::rescan::Msg),
 }
 
 /// The player bar's controls.
@@ -480,6 +481,7 @@ impl App {
             Message::ImportMatch(key, playlist) => self.import_match(key, *playlist),
             Message::Collections(message) => self.collections(message),
             Message::Info(message) => self.info(message),
+            Message::Rescan(message) => self.rescan(message),
         }
     }
 
