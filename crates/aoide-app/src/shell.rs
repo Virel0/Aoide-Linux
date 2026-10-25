@@ -24,6 +24,9 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         None => main,
     };
     let window = column![main, player_bar::view(app, signed)];
+    if let Some(popover) = crate::player_menu::overlay(app) {
+        return stack![window, popover].into();
+    }
     match signed.menu.as_ref().filter(|m| m.collection.is_some()) {
         Some(menu) => stack![window, collection_menu(app, signed, menu)].into(),
         None => window.into(),
@@ -185,7 +188,13 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
                 last: signed.sync_status.as_ref(),
             },
             &view,
+            crate::listening::SettingsExtras {
+                config: &app.config,
+            },
         ),
+        Page::Equalizer(state) => {
+            screens::equalizer::view(state, &app.config.sound, app.playback.sample_rate(), &view)
+        }
         page => page.view(&view),
     };
     container(body.push(page))

@@ -26,6 +26,29 @@ impl Playback {
         self.apply_measurements(&ids, |id| tracks::applied(id, measures, settings))
     }
 
+    /// The equaliser and the compressor as the settings have them: each
+    /// off unless switched on.
+    pub fn apply_sound(&mut self, sound: &crate::sound::SoundSettings) -> Result<(), String> {
+        let Some(player) = self.player.as_ref() else {
+            return Ok(());
+        };
+        let engine = player.engine();
+        engine
+            .set_equalizer(sound.equalizer.active())
+            .map_err(|e| e.to_string())?;
+        engine
+            .set_compressor(sound.compressor.active())
+            .map_err(|e| e.to_string())
+    }
+
+    /// The engine's sample rate, which the equaliser's curve is drawn at;
+    /// 48 kHz when nothing can play.
+    pub fn sample_rate(&self) -> u32 {
+        self.player
+            .as_ref()
+            .map_or(48_000, |p| p.engine().config().sample_rate)
+    }
+
     /// The switch alone: at launch, before anything is queued.
     pub fn set_level_volume(&mut self, on: bool) -> Result<(), String> {
         match self.player.as_mut() {
@@ -137,6 +160,26 @@ mod tests {
         settings.level_volume = false;
         playback.switch_level_volume(&settings, &measures).unwrap();
         assert_eq!(gains(&playback), [None, None]);
+    }
+
+    #[test]
+    fn sound_settings_reach_the_engine() {
+        let (_engine, handle, _events) = aoide_audio::Engine::new(EngineConfig {
+            sample_rate: 44_100,
+            channels: 2,
+            decode: aoide_audio::DecodeMode::Inline,
+        });
+        let mut playback = Playback::on_engine(handle);
+        assert_eq!(playback.sample_rate(), 44_100);
+        let mut sound = crate::sound::SoundSettings::default();
+        playback.apply_sound(&sound).unwrap();
+        sound.equalizer.enabled = true;
+        sound.equalizer.choose("Rock");
+        sound.compressor.enabled = true;
+        playback.apply_sound(&sound).unwrap();
+        // A curve the engine refuses comes back as an error, not a panic.
+        sound.equalizer.curve.bands = vec![aoide_audio::EqBand::peaking(100.0, 1.0, 1.0); 11];
+        assert!(playback.apply_sound(&sound).is_err());
     }
 
     #[test]

@@ -142,6 +142,7 @@ pub fn view<'a>(
     account: Option<&'a Account>,
     sync: crate::sync::Status<'a>,
     view: &View<'a>,
+    extras: crate::listening::SettingsExtras<'a>,
 ) -> Element<'a, App> {
     let key = view.key;
     let message = move |m: Message| App::Page(key, PageMsg::Settings(m));
@@ -162,6 +163,7 @@ pub fn view<'a>(
                 Toggle::KeepAlbumsWhole
             ),
             switch("Infinity", settings.infinity, Toggle::Infinity),
+            crate::screens::equalizer::settings_row(&extras.config.sound),
         ],
         "Crossfade fades one song into the next instead of stopping between them, longer when \
          the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album \

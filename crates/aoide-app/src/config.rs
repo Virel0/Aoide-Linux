@@ -164,6 +164,8 @@ pub struct Config {
     pub settings: Settings,
     /// Master volume, 0 to 1.
     pub volume: f32,
+    /// The equaliser and the compressor.
+    pub sound: crate::sound::SoundSettings,
 }
 
 impl Default for Config {
@@ -175,6 +177,7 @@ impl Default for Config {
             window: WindowGeometry::default(),
             settings: Settings::default(),
             volume: 1.0,
+            sound: crate::sound::SoundSettings::default(),
         }
     }
 }
@@ -199,6 +202,7 @@ impl Config {
             config.volume = 1.0;
         }
         config.volume = config.volume.clamp(0.0, 1.0);
+        config.sound = config.sound.sanitised();
         config
     }
 
@@ -256,6 +260,13 @@ mod tests {
                 lyric_offset_ms: -250,
             },
             volume: 0.5,
+            sound: {
+                let mut sound = crate::sound::SoundSettings::default();
+                sound.equalizer.enabled = true;
+                sound.equalizer.choose("Loudness");
+                sound.compressor.enabled = true;
+                sound
+            },
         };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);

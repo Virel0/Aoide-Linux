@@ -52,6 +52,9 @@ pub struct App {
     phase: Phase,
     login: login::State,
     pub(crate) session: Option<Signed>,
+    /// The player bar's menus, the sleep timer, private listening, the
+    /// full-screen player.
+    pub(crate) listening: crate::listening::State,
 }
 
 /// An open page and its place in the stack.
@@ -154,6 +157,7 @@ pub enum Message {
     Notice(String),
     Dismiss,
     Ignore,
+    Listening(crate::listening::Msg),
 }
 
 /// The player bar's controls.
@@ -201,6 +205,9 @@ impl App {
         let mut playback = Playback::start(config.volume);
         let _ = playback.set_settings(config.settings.player());
         let _ = playback.set_level_volume(config.settings.level_volume);
+        if let Err(error) = playback.apply_sound(&config.sound) {
+            notice = Some(format!("The equaliser couldn't be set: {error}"));
+        }
         // A development build can keep the token in memory instead, so a
         // rebuilt binary doesn't meet the Keychain's "allow this app" prompt.
         let keyring: Arc<dyn CredentialStore> =
@@ -238,6 +245,7 @@ impl App {
             clock: Instant::now(),
             phase,
             session: None,
+            listening: crate::listening::State::default(),
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
         (app, Task::batch([theme, restore]))
@@ -449,6 +457,7 @@ impl App {
                 Task::none()
             }
             Message::Ignore => Task::none(),
+            Message::Listening(msg) => self.listening(msg),
         }
     }
 
@@ -716,6 +725,9 @@ impl App {
     fn page_message(&mut self, key: u64, message: PageMsg) -> Task<Message> {
         if let PageMsg::Settings(message) = message {
             return self.settings_message(key, message);
+        }
+        if let PageMsg::Equalizer(message) = message {
+            return self.equalizer_message(key, message);
         }
         let store = self.store.clone();
         let Some(signed) = self.session.as_mut() else {

@@ -88,7 +88,7 @@ fn tile_menu(tile: &Tile, route: &Route) -> Option<Message> {
         Route::Album { id, .. } => Collection::Album(id.clone()),
         Route::Artist { id, .. } => Collection::Artist(id.clone()),
         Route::Playlist { id } => Collection::Playlist(id.clone()),
-        Route::Genre { .. } => return None,
+        Route::Genre { .. } | Route::Equalizer => return None,
     };
     Some(Message::Row(RowAction::OpenCollection {
         anchor: format!("tile:{}", tile.id),

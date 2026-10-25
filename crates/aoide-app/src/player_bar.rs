@@ -148,10 +148,15 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         .step(0.01_f32)
         .width(100)
         .style(theme::scrubber),
+        crate::player_menu::menu_button(
+            Icon::More,
+            app.listening.menu == Some(crate::listening::BarMenu::More),
+            crate::listening::BarMenu::More
+        ),
     ]
     .spacing(6)
     .align_y(Center)
-    .width(Length::Fixed(320.0));
+    .width(Length::Fixed(360.0));
 
     container(
         row![now, container(middle).center_x(Fill), tools]

@@ -23,8 +23,9 @@ aoide-store = { path = "../aoide-store" }
 # Per-user config, data and cache directories (XDG on Linux).
 directories = "6"
 # `tokio` runs every Task on the runtime the Jellyfin client needs; `image` without
-# its codec bundle, the three artwork formats are picked below; `svg` for the icons.
-iced = { version = "0.14", features = ["tokio", "image-without-codecs", "svg"] }
+# its codec bundle, the three artwork formats are picked below; `svg` for the icons;
+# `canvas` for the equaliser's curve and the visualizer.
+iced = { version = "0.14", features = ["tokio", "image-without-codecs", "svg", "canvas"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # Artwork downloads. The same TLS stack as every other crate: rustls on ring, never
 # reqwest's `rustls` feature (aws-lc-rs).
