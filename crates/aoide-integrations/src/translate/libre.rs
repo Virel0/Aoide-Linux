@@ -24,6 +24,9 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// Lines per request: well under the batch limit an administrator might set.
 const LINES_PER_REQUEST: usize = 32;
 
+/// Most an answer may be: a song's lines, or the language list.
+const MAX_BODY: usize = 4 << 20;
+
 /// What a server answered in words, cut to this many characters.
 const MESSAGE_CHARS: usize = 140;
 
@@ -112,10 +115,7 @@ impl LibreTranslate {
             .await
             .map_err(|e| LibreError::Unreachable(e.without_url().to_string()))?;
         let response = checked(response, true).await?;
-        response
-            .json()
-            .await
-            .map_err(|e| LibreError::Unreadable(e.without_url().to_string()))
+        json(response).await
     }
 
     /// `lines` in `target` (ISO 639-1, as the locale gives it), in order;
@@ -168,10 +168,7 @@ impl LibreTranslate {
             .await
             .map_err(|e| LibreError::Unreachable(e.without_url().to_string()))?;
         let response = checked(response, self.key.is_some()).await?;
-        let body: Translated = response
-            .json()
-            .await
-            .map_err(|e| LibreError::Unreadable(e.without_url().to_string()))?;
+        let body: Translated = json(response).await?;
         Ok(body.translated_text)
     }
 }
@@ -192,6 +189,28 @@ pub fn server_code(code: &str, languages: &[Language]) -> Option<String> {
             })
         })
         .map(|l| l.code.clone())
+}
+
+/// The answer as JSON, read no further than [`MAX_BODY`].
+async fn json<T: serde::de::DeserializeOwned>(
+    mut response: reqwest::Response,
+) -> Result<T, LibreError> {
+    let unreadable = |e: reqwest::Error| LibreError::Unreadable(e.without_url().to_string());
+    let too_long = || LibreError::Unreadable("the answer is too long".to_owned());
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_BODY as u64)
+    {
+        return Err(too_long());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(unreadable)? {
+        if body.len() + chunk.len() > MAX_BODY {
+            return Err(too_long());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&body).map_err(|e| LibreError::Unreadable(e.to_string()))
 }
 
 /// Redirects only within the server's own origin (scheme, host and port):

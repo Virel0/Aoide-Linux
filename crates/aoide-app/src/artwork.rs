@@ -187,8 +187,22 @@ pub async fn fetch(url: String, dir: Option<PathBuf>, key: ArtKey) -> Option<Vec
     if !is_image {
         return None;
     }
-    let bytes = response.bytes().await.ok()?.to_vec();
-    if bytes.is_empty() || bytes.len() > MAX_BYTES {
+    // Stopped at the limit rather than read whole and then measured.
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_BYTES as u64)
+    {
+        return None;
+    }
+    let mut response = response;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.ok()? {
+        if bytes.len() + chunk.len() > MAX_BYTES {
+            return None;
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if bytes.is_empty() {
         return None;
     }
     if let (Some(path), Some(dir)) = (path, dir) {

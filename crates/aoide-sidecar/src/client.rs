@@ -359,11 +359,14 @@ impl SidecarClient {
             .await
             .map_err(|error| network(path, &error))?;
         let status = response.status().as_u16();
-        let body = response
-            .bytes()
+        let body = read_capped(response, MAX_BODY)
             .await
-            .map_err(|error| network(path, &error))?;
-        Ok((status, body.to_vec()))
+            .map_err(|error| network(path, &error))?
+            .ok_or_else(|| SidecarError::Decode {
+                path: path.to_owned(),
+                detail: "the answer is larger than any sidecar answer".to_owned(),
+            })?;
+        Ok((status, body))
     }
 }
 
@@ -429,4 +432,49 @@ fn same_origin_redirects() -> reqwest::redirect::Policy {
             attempt.follow()
         }
     })
+}
+
+/// Most an answer may be: a cover image, or a page of sync operations.
+const MAX_BODY: usize = 64 << 20;
+
+/// The body, or `None` once it passes `limit` bytes (by its declared length,
+/// or while reading): a broken or hostile server can't fill memory.
+pub(crate) async fn read_capped(
+    mut response: reqwest::Response,
+    limit: usize,
+) -> std::result::Result<Option<Vec<u8>>, reqwest::Error> {
+    if response.content_length().is_some_and(|n| n > limit as u64) {
+        return Ok(None);
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if body.len() + chunk.len() > limit {
+            return Ok(None);
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(Some(body))
+}
+
+#[cfg(test)]
+mod capped_tests {
+    use super::read_capped;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn a_body_past_the_limit_is_refused() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![7u8; 100]))
+            .mount(&server)
+            .await;
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let get = || async { reqwest::get(server.uri()).await.unwrap() };
+        assert_eq!(
+            read_capped(get().await, 100).await.unwrap(),
+            Some(vec![7u8; 100])
+        );
+        assert_eq!(read_capped(get().await, 99).await.unwrap(), None);
+    }
 }

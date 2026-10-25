@@ -29,6 +29,10 @@ const RESTART_DISTANCE: u64 = 512 * 1024;
 /// How long a read waits for bytes before it gives up.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const CHUNK: usize = 64 * 1024;
+/// Most a stream is kept to in its temporary file: past any real track (a
+/// long hi-res FLAC is a few GB), short of filling the disk for a server
+/// that never stops sending.
+const MAX_STREAM_BYTES: u64 = 4 << 30;
 
 /// One remote file. Readers open at the same time share one download;
 /// nothing is fetched until the first [`HttpSource::open`], and the download
@@ -469,6 +473,9 @@ fn run(
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error) => return Err(format!("the download broke off: {}", error.kind())),
         };
+        if at + read as u64 > MAX_STREAM_BYTES {
+            return Err("the stream is larger than any song".to_owned());
+        }
         file.write_all_at(&buf[..read], at)
             .map_err(|error| error.to_string())?;
         let mut state = shared.lock();
