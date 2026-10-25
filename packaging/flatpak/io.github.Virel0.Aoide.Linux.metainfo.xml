@@ -72,9 +72,9 @@
   <!-- Newest first. Add one for each tag before tagging it; the date is the
        release's. -->
   <releases>
-    <release version="0.1.0" date="2026-10-24" type="development">
+    <release version="0.1.0" date="2026-10-25" type="development">
       <description>
-        <p>The first release: browsing, playback, queue, sync, MPRIS.</p>
+        <p>The first release, for testing beside the Electron app: browsing, gapless playback, the queue, sync with the Aoide plugin, Infinity and Discover, synced lyrics with translation by your own LibreTranslate server, the equaliser, media keys and the tray.</p>
       </description>
     </release>
   </releases>
