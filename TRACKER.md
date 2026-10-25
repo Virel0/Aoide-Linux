@@ -188,7 +188,6 @@ earlier. Each is his to make; nothing here is built yet.
   error …)"): they are worded in `session.rs`, which was being changed in
   another branch; switching its `describe` to `failure::describe` finishes
   the job. Every screen's load error is already in words with Retry.
-- **Artist tiles** are square and grey.
 - **Light theme** greys (#dedede cards) are heavy.
 - iced 0.14 limits: no keyboard focus on buttons and tiles (Ctrl+K reaches
   everything), no ellipsis on clipped titles, no screen-reader tree.

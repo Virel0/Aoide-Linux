@@ -3,8 +3,8 @@
 
 use aoide_store::PlaySource;
 use iced::widget::{
-    Column, Row, button, column, container, grid, image, mouse_area, row, scrollable, space, text,
-    text_input, toggler,
+    Column, Row, button, column, container, grid, image, mouse_area, responsive, row, scrollable,
+    space, text, text_input, toggler,
 };
 use iced::{Center, ContentFit, Element, Fill, Font, Length, font};
 
@@ -97,6 +97,44 @@ pub fn art<'a>(
     }
 }
 
+/// An artist's picture, round and centred in the space it is given; a round
+/// placeholder with the artist glyph where there is no picture yet.
+pub fn round_art<'a>(key: Option<&'a ArtKey>, artwork: &'a Artwork) -> Element<'a, Message> {
+    responsive(move |space| {
+        let side = space.width.min(space.height).max(0.0);
+        let picture: Element<'a, Message> = match key.and_then(|key| artwork.get(key)) {
+            Some(handle) => image(handle.clone())
+                .width(side)
+                .height(side)
+                .content_fit(ContentFit::Cover)
+                .border_radius(side / 2.0)
+                .into(),
+            None => container(icon(Icon::Artist, (side * 0.4).max(1.0), Tone::Secondary))
+                .center(side)
+                .style(move |t| {
+                    let mut style = theme::placeholder(t);
+                    style.border.radius = (side / 2.0).into();
+                    style
+                })
+                .into(),
+        };
+        container(picture).center(Fill).into()
+    })
+    .into()
+}
+
+/// A tile's picture: an artist's round, anything else's square.
+fn tile_art<'a>(tile: &'a Tile, artwork: &'a Artwork, size: Length) -> Element<'a, Message> {
+    if tile.round {
+        container(round_art(tile.art.as_ref(), artwork))
+            .width(size)
+            .height(size)
+            .into()
+    } else {
+        art(tile.art.as_ref(), artwork, size, 8.0)
+    }
+}
+
 /// What a tile's `…` (or a right click on it) opens: the album's or
 /// artist's actions.
 fn tile_menu(tile: &Tile, route: &Route) -> Option<Message> {
@@ -164,12 +202,9 @@ fn tile_body<'a>(
     art_size: Length,
     menu: Option<Message>,
 ) -> Column<'a, Message> {
-    column![
-        art(tile.art.as_ref(), artwork, art_size, 8.0),
-        tile_caption(tile, menu),
-    ]
-    .spacing(4)
-    .clip(true)
+    column![tile_art(tile, artwork, art_size), tile_caption(tile, menu),]
+        .spacing(4)
+        .clip(true)
 }
 
 /// A grid of tiles that fills the width, a few columns or many.
@@ -182,7 +217,7 @@ pub fn tile_grid<'a>(
         let route = open(tile);
         let menu = tile_menu(tile, &route);
         let body = column![
-            container(art(tile.art.as_ref(), artwork, Fill, 8.0)).height(Fill),
+            container(tile_art(tile, artwork, Fill)).height(Fill),
             tile_caption(tile, menu.clone()),
         ]
         .spacing(4)
