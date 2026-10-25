@@ -1,0 +1,4 @@
+#!/bin/sh
+# The AppImage runtime mounts the image and runs this from inside it.
+here="$(dirname -- "$(readlink -f -- "$0")")"
+exec "$here/usr/bin/aoide-linux" "$@"
