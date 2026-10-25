@@ -2,6 +2,8 @@
 //! independent of the others and of the UI:
 //!
 //! - [`discord`]: Discord Rich Presence over Discord's local socket.
+//! - [`openrouter`]: search by description and mixes from a mood, through
+//!   OpenRouter; the model only translates words into filters and rules.
 //!
 //! Nothing here knows about iced or the other Aoide crates. Async parts run
 //! on the caller's tokio runtime.
@@ -14,3 +16,4 @@
 
 pub mod discord;
 mod links;
+pub mod openrouter;

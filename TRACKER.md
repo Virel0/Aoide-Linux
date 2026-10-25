@@ -32,7 +32,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Favourites | 2 | ⬜ | |
 | Collections (saved filters) | 3 | ⬜ | |
 | Search: plain Jellyfin search, songs and albums | 1 | ✅ | Songs, albums and artists as you type, 300 ms debounce |
-| Search by description (OpenRouter → filters) | 3 | ⬜ | Model only translates to filters; Jellyfin selects |
+| Search by description (OpenRouter → filters) | 3 | 🟨 | Library done; UI pending. `aoide_integrations::openrouter`: `translate_search` (prompt, parsing and checks ported from the Electron app with its test cases; the iOS app's sort directions), model picked by id from `models()` with prices, the key passed by the caller and kept in the keyring through `ApiKeyStore`. Only the phrase and the genre names are sent; the model only translates to filters, Jellyfin selects. Tested against a local stand-in, not yet against OpenRouter |
 | Command palette | 3 | ⬜ | |
 | Now Playing column: artwork, controls, Queue/Lyrics tabs | 1 | ✅ | Cover, Queue and Lyrics tabs; the transport is the player bar's |
 | Full-screen player | 2 | ⬜ | |
@@ -106,7 +106,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Infinity albums mode | 3 | ⬜ | |
 | Track, album and artist radio (Instant Mix) | 2 | ⬜ | |
 | Taste flags: Not Interested, Don't Count Plays; "Hidden from mixes" list | 1 | ✅ | Set from the action strip; Hidden from mixes lists them in Settings with Clear |
-| Mixes (describe a mood → smart rules via OpenRouter) | 3 | ⬜ | |
+| Mixes (describe a mood → smart rules via OpenRouter) | 3 | 🟨 | Library done; UI pending. `describe_mix` returns rules in the phone's `smartRules` JSON (byte for byte, illegal field/operator pairs refused with a reason) and the names the mood mentioned; `mix_plan` has the genre matching ("rock" takes Hard Rock, not Rockabilly), name-first ordering and the summary line, ported from the Electron app. Evaluating the history rules against the local store is the app's (aoide-store). Tested against a local stand-in, not yet against OpenRouter |
 | Discover | 2 | ⬜ | |
 
 ## Playlists
