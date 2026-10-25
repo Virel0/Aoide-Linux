@@ -563,9 +563,11 @@ pub fn play_buttons<'a>(
     source: PlaySource,
 ) -> Element<'a, Message> {
     let enabled = !tracks.is_empty();
+    // Icons don't fade with a disabled button's label: quiet them here.
+    let tone = |on: Tone| if enabled { on } else { Tone::Secondary };
     row![
         button(
-            row![icon(Icon::Play, 14.0, Tone::OnAccent), text("Play")]
+            row![icon(Icon::Play, 14.0, tone(Tone::OnAccent)), text("Play")]
                 .spacing(6)
                 .align_y(Center)
         )
@@ -573,16 +575,19 @@ pub fn play_buttons<'a>(
         .padding([8, 18])
         .on_press_maybe(enabled.then(|| Message::Play(PlayRequest::from(tracks, 0, source)))),
         button(
-            row![icon(Icon::Shuffle, 14.0, Tone::Accent), text("Shuffle")]
-                .spacing(6)
-                .align_y(Center)
+            row![
+                icon(Icon::Shuffle, 14.0, tone(Tone::Accent)),
+                text("Shuffle")
+            ]
+            .spacing(6)
+            .align_y(Center)
         )
         .style(theme::tonal)
         .padding([8, 18])
         .on_press_maybe(
             enabled.then(|| Message::Play(PlayRequest::shuffled(tracks, PlaySource::Shuffle)))
         ),
-        button(icon(Icon::More, 18.0, Tone::Accent))
+        button(icon(Icon::More, 18.0, tone(Tone::Accent)))
             .style(theme::tonal)
             .padding([8, 10])
             .on_press_maybe(enabled.then(|| {

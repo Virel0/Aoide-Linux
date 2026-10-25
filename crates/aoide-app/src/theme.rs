@@ -203,7 +203,7 @@ pub fn tonal(theme: &Theme, status: button::Status) -> button::Style {
     };
     button::Style {
         background: Some(Background::Color(background)),
-        text_color: palette.primary.base.color,
+        text_color: unless_disabled(palette.primary.base.color, status),
         border: Border {
             radius: 8.0.into(),
             ..Border::default()
@@ -215,8 +215,18 @@ pub fn tonal(theme: &Theme, status: button::Status) -> button::Style {
 
 pub fn destructive(theme: &Theme, status: button::Status) -> button::Style {
     let mut style = tonal(theme, status);
-    style.text_color = theme.palette().danger;
+    style.text_color = unless_disabled(theme.palette().danger, status);
     style
+}
+
+/// A label's colour, faded by half when its button can't be pressed, as
+/// iced fades its own buttons.
+fn unless_disabled(colour: Color, status: button::Status) -> Color {
+    if let button::Status::Disabled = status {
+        colour.scale_alpha(0.5)
+    } else {
+        colour
+    }
 }
 
 /// The edge of a control that has no fill of its own to show where it is:
