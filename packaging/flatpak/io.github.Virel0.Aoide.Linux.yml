@@ -1,0 +1,131 @@
+# Aoide for Linux as a Flatpak.
+#
+# Built from source with cargo, offline, as flatpak-builder requires. The
+# crates come from a `cargo vendor` of Cargo.lock made just before the build,
+# not from a generated cargo-sources.json:
+#
+#   - It needs nothing but cargo. flatpak-cargo-generator is a Python script
+#     (plus aiohttp and tomlkit) fetched from another repository, one more
+#     thing to pin and vet, and its output would not be committed here anyway.
+#   - Nothing is trusted that cargo would not trust: a vendored crate is
+#     checked against the checksum Cargo.lock records for it, and --locked
+#     refuses a Cargo.lock that is out of date.
+#   - What it costs: this manifest is not one Flathub would take, since Flathub
+#     wants every source listed in the manifest. Submitting there means
+#     generating cargo-sources.json with flatpak-cargo-generator, committing it,
+#     and swapping the vendor source below for it.
+#
+# To build it on a Linux machine, from the repository root:
+#
+#   cargo vendor --locked target/flatpak-vendor
+#   flatpak-builder --user --install --install-deps-from=flathub --force-clean \
+#       --state-dir=/tmp/aoide-linux-flatpak-state /tmp/aoide-linux-flatpak \
+#       packaging/flatpak/io.github.Virel0.Aoide.Linux.yml
+#
+# CI does the same (.github/workflows/release-flatpak.yml) and bundles the
+# result as aoide-linux.flatpak.
+#
+# The id is io.github.Virel0.Aoide.Linux so it installs beside the Electron
+# app's Flatpak, io.github.Virel0.Aoide; they keep separate data.
+id: io.github.Virel0.Aoide.Linux
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: aoide-linux
+separate-locales: false
+
+finish-args:
+  # A window: Wayland, or X11 where there is no Wayland. The GPU for wgpu;
+  # without it iced draws in software.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Sound. cpal speaks ALSA only, and the runtime's ALSA goes to the
+  # PulseAudio socket, which on a PipeWire desktop is pipewire-pulse. Nothing
+  # here speaks PipeWire's own protocol, so its socket stays closed.
+  - --socket=pulseaudio
+  # The Jellyfin server, the sidecar, lyrics, the update check.
+  - --share=network
+  # Media keys and the shell's media controls (aoide-mpris MPRIS_BUS_NAME).
+  - --own-name=org.mpris.MediaPlayer2.aoide
+  # The name a second launch calls Raise on (aoide-mpris APP_BUS_NAME). A
+  # Flatpak may own its own id without asking, but this name is the id
+  # without ".Linux", so it has to be granted.
+  - --own-name=io.github.Virel0.Aoide
+  # The tray icon: it registers with the panel's watcher, under a name of the
+  # form org.kde.StatusNotifierItem-<pid>-<n>. Flatpak cannot grant a pattern
+  # like that, but inside the sandbox the app is always pid 2 (bubblewrap is
+  # pid 1) and the first tray is n=1, so the name is fixed.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+  # The access token lives in the keyring (GNOME Keyring, KWallet, KeePassXC).
+  - --talk-name=org.freedesktop.secrets
+  # Discord Rich Presence: the socket of a Discord installed natively, and the
+  # directories the Discord Flatpaks put theirs in (the places
+  # aoide_integrations::discord looks). The native socket is bound only if
+  # Discord is running when Aoide starts; ":create" is not used on it because
+  # Flatpak would make a directory of that name and Discord could no longer
+  # make its socket there. The Flatpak directories are created if missing, as
+  # the Discord Flatpak's own documentation suggests, so a Discord started
+  # later is still found.
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/app/com.discordapp.DiscordCanary:create
+  - --filesystem=xdg-run/.flatpak/dev.vencord.Vesktop/xdg-run
+  - --filesystem=xdg-run/snap.discord
+  # Portals need no permission: org.freedesktop.portal.Desktop is open to
+  # every Flatpak. Sleep inhibit uses its Inhibit interface (the
+  # org.freedesktop.ScreenSaver fallback is not granted, the portal is always
+  # there in a Flatpak); global shortcuts and file choosing go through its
+  # GlobalShortcuts and FileChooser interfaces when the app uses them.
+
+modules:
+  - name: aoide-linux
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/aoide-linux/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      # Point cargo at the vendored crates (the snippet `cargo vendor` prints).
+      - mkdir -p .cargo
+      - |
+        cat > .cargo/config.toml <<'EOF'
+        [source.crates-io]
+        replace-with = "vendored-sources"
+
+        [source.vendored-sources]
+        directory = "vendor"
+        EOF
+      - cargo build --offline --locked --release -p aoide-app
+      - install -Dm755 target/release/aoide /app/bin/aoide-linux
+      # The desktop entry and icons are the ones the Arch package installs.
+      - install -Dm644 packaging/arch/io.github.Virel0.Aoide.Linux.desktop
+        /app/share/applications/io.github.Virel0.Aoide.Linux.desktop
+      - install -Dm644 packaging/flatpak/io.github.Virel0.Aoide.Linux.metainfo.xml
+        /app/share/metainfo/io.github.Virel0.Aoide.Linux.metainfo.xml
+      - |
+        for size in 16 32 48 64 128 256 512; do
+          install -Dm644 "packaging/arch/icons/${size}x${size}.png" \
+            "/app/share/icons/hicolor/${size}x${size}/apps/io.github.Virel0.Aoide.Linux.png"
+        done
+      - install -Dm644 LICENSE /app/share/licenses/io.github.Virel0.Aoide.Linux/LICENSE
+      - install -Dm644 crates/aoide-app/fonts/Inter-LICENSE.txt
+        /app/share/licenses/io.github.Virel0.Aoide.Linux/Inter-LICENSE.txt
+    sources:
+      # The checkout this manifest sits in, without build output or history.
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - target
+          - .flatpak-builder
+          - packaging/flatpak/.flatpak-builder
+      # `cargo vendor --locked target/flatpak-vendor`, run first.
+      - type: dir
+        path: ../../target/flatpak-vendor
+        dest: vendor

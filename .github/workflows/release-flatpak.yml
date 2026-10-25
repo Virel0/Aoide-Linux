@@ -1,0 +1,131 @@
+name: Release (Flatpak)
+
+# Builds packaging/flatpak/io.github.Virel0.Aoide.Linux.yml into a single-file
+# bundle, aoide-linux.flatpak. This is the only place the manifest is built,
+# so it also runs when the Flatpak packaging changes, to find a broken
+# manifest before a release does.
+#
+# A release is finished by running this by hand with the tag (one click on
+# the Actions page), as for the Electron app: the release itself is made by
+# the tag workflows, and a release made with their token starts no workflow.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/flatpak/**'
+      - 'packaging/arch/io.github.Virel0.Aoide.Linux.desktop'
+      - '.github/workflows/release-flatpak.yml'
+  pull_request:
+    paths:
+      - 'packaging/flatpak/**'
+      - 'packaging/arch/io.github.Virel0.Aoide.Linux.desktop'
+      - '.github/workflows/release-flatpak.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and attach the bundle to, e.g. v1.2.3 (empty: build only)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # flatpak-builder builds offline, so the crates are fetched first, here,
+  # with the same Cargo.lock. See the manifest's header for why this and not
+  # a generated cargo-sources.json.
+  vendor:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Vendor the crates
+        run: |
+          set -euo pipefail
+          cargo vendor --locked target/flatpak-vendor > /dev/null
+          tar -C target -cf flatpak-vendor.tar flatpak-vendor
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-vendor
+          path: flatpak-vendor.tar
+          retention-days: 1
+
+  flatpak:
+    needs: vendor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    # Flathub's own build image: Flatpak, flatpak-builder and the 25.08
+    # runtime. bubblewrap needs --privileged inside a container.
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: flatpak-vendor
+
+      - name: Unpack the vendored crates
+        run: |
+          set -euo pipefail
+          mkdir -p target
+          tar -C target -xf flatpak-vendor.tar
+          rm flatpak-vendor.tar
+
+      - name: Build the Flatpak
+        run: |
+          set -euo pipefail
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          # FUSE is not available in the container, hence no rofiles-fuse.
+          flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse \
+              --force-clean --repo=/tmp/aoide-linux-repo \
+              --state-dir=/tmp/aoide-linux-flatpak-state \
+              /tmp/aoide-linux-flatpak-build \
+              packaging/flatpak/io.github.Virel0.Aoide.Linux.yml
+
+      # With the SDK's own tools, which the build has just installed.
+      - name: Validate the desktop entry and AppStream data
+        run: |
+          set -euo pipefail
+          sdk() {
+              flatpak run --filesystem="$PWD":ro --command="$1" org.freedesktop.Sdk//25.08 "${@:2}"
+          }
+          sdk desktop-file-validate "$PWD/packaging/arch/io.github.Virel0.Aoide.Linux.desktop"
+          sdk appstreamcli validate --no-net "$PWD/packaging/flatpak/io.github.Virel0.Aoide.Linux.metainfo.xml"
+
+      - name: Bundle it
+        run: |
+          set -euo pipefail
+          flatpak build-bundle /tmp/aoide-linux-repo aoide-linux.flatpak \
+              io.github.Virel0.Aoide.Linux \
+              --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+          ls -lh aoide-linux.flatpak
+
+      - name: Keep it for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: aoide-linux-flatpak
+          path: aoide-linux.flatpak
+
+      - name: Attach it to the release
+        if: inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          files: aoide-linux.flatpak
+          tag_name: ${{ inputs.tag }}
