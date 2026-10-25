@@ -4,6 +4,20 @@
 //! the same token. [`SidecarClient`] speaks its HTTP contract; [`SyncEngine`] joins it
 //! to the local [`aoide_store::Store`]: covers first, then push, then pull, with the
 //! store's merge rules applied to every pulled page.
+//!
+//! What the app builds on, by feature:
+//!
+//! - **Handoff**: [`aoide_store::QueueBroadcast`] writes this device's queue,
+//!   [`SyncEngine::publish_queue`] pushes it, [`resumable_queues`] lists the others
+//!   (server first, op log after), [`aoide_store::ResumableQueue::pick_up`] plays one.
+//! - **Covers**: [`aoide_store::Store::playlist_covers`] says what to draw,
+//!   [`cover_bytes`] fetches a hash's bytes at draw time.
+//! - **Sharing**: [`SidecarClient::list_shares`], [`SidecarClient::share_playlist`],
+//!   [`SidecarClient::revoke_share`]; [`SyncEngine::blocked_edits`] for edits held
+//!   because a share was revoked.
+//! - **Import**: [`fetch_spotify_playlist`], [`parse_playlist_csv`], then
+//!   [`match_playlist`] over the app's [`JellyfinSearch`].
+//! - **Status**: [`SyncEngine::overview`].
 
 mod client;
 mod covers;
