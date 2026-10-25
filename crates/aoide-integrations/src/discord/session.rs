@@ -66,6 +66,9 @@ async fn connect(endpoint: &Endpoint) -> Option<UnixStream> {
 }
 
 async fn handshake(path: &Path) -> Option<UnixStream> {
+    if !ours(path) {
+        return None;
+    }
     let mut stream = UnixStream::connect(path).await.ok()?;
     let hello = json!({ "v": 1, "client_id": APPLICATION_ID });
     write_frame(&mut stream, HANDSHAKE, &hello).await.ok()?;
@@ -74,6 +77,13 @@ async fn handshake(path: &Path) -> Option<UnixStream> {
         .ok()?
         .ok()?;
     (opcode == FRAME && reply.get("evt").and_then(Value::as_str) == Some("READY")).then_some(stream)
+}
+
+/// Whether the socket at `path` belongs to this user: another user's socket
+/// in a shared directory would be told what plays.
+fn ours(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(path).is_ok_and(|m| m.uid() == rustix::process::getuid().as_raw())
 }
 
 async fn set_activity(
@@ -161,6 +171,26 @@ async fn serve(
                 Some(_) => {}
             },
             () = tokio::time::sleep_until(wait.unwrap_or_else(Instant::now)), if wait.is_some() => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ours;
+
+    #[test]
+    fn only_this_users_sockets_are_spoken_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("discord-ipc-0");
+        let _listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        assert!(ours(&path));
+        assert!(!ours(&dir.path().join("discord-ipc-1")));
+        // Another user's socket can't be made here; a root-owned file stands
+        // in for it where there is one.
+        let root_owned = std::path::Path::new("/etc/hosts");
+        if root_owned.exists() && rustix::process::getuid().as_raw() != 0 {
+            assert!(!ours(root_owned));
         }
     }
 }

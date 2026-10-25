@@ -35,15 +35,21 @@ const SUBDIRS: &[&str] = &[
 ];
 
 /// Every place Discord's socket may be, in the order to try them:
-/// `discord-ipc-0` to `-9` under `XDG_RUNTIME_DIR` (then `TMPDIR`, `TMP`,
-/// `TEMP` and `/tmp`, where macOS and some setups put it), each also under
-/// the Flatpak and snap subdirectories. `env` reads an environment variable.
+/// `discord-ipc-0` to `-9` under `XDG_RUNTIME_DIR`, each also under the
+/// Flatpak and snap subdirectories. Only without a runtime directory (macOS,
+/// some setups) under `TMPDIR`, `TMP`, `TEMP` and `/tmp`: those can be
+/// shared with other users, who could otherwise put a socket there first
+/// and be told what plays. `env` reads an environment variable.
 pub fn socket_candidates(env: impl Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
-    let mut bases: Vec<PathBuf> = ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"]
-        .into_iter()
-        .filter_map(|name| env(name).filter(|v| !v.is_empty()).map(PathBuf::from))
-        .collect();
-    bases.push(PathBuf::from("/tmp"));
+    let read = |name: &str| env(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let bases: Vec<PathBuf> = match read("XDG_RUNTIME_DIR") {
+        Some(runtime) => vec![runtime],
+        None => ["TMPDIR", "TMP", "TEMP"]
+            .into_iter()
+            .filter_map(read)
+            .chain([PathBuf::from("/tmp")])
+            .collect(),
+    };
     let mut seen = Vec::new();
     let mut candidates = Vec::new();
     for base in bases {
@@ -122,12 +128,13 @@ mod tests {
             "/run/user/1000/app/com.discordapp.Discord/discord-ipc-0",
             "/run/user/1000/.flatpak/dev.vencord.Vesktop/xdg-run/discord-ipc-3",
             "/run/user/1000/snap.discord/discord-ipc-0",
-            "/tmp/discord-ipc-0",
         ] {
             assert!(all.contains(&PathBuf::from(expected)), "{expected}");
         }
-        // Two bases (the runtime dir and /tmp), six places, ten numbers.
-        assert_eq!(all.len(), 2 * 6 * 10);
+        // The runtime dir alone, six places, ten numbers: never /tmp, which
+        // other users can write to.
+        assert_eq!(all.len(), 6 * 10);
+        assert!(!all.iter().any(|p| p.starts_with("/tmp")));
     }
 
     #[test]
