@@ -265,6 +265,7 @@ impl App {
             iced::system::theme_changes().map(Message::ThemeChanged),
             window::events().map(|(id, event)| Message::Window(id, event)),
             integration::commands(&self.desktop).map(Message::Desktop),
+            self.listening_subscription(),
         ])
     }
 
@@ -803,7 +804,7 @@ impl App {
     /// A setting changed: saved, and handed to whatever it governs.
     fn settings_changed(&mut self, which: screens::settings::Toggle) -> Task<Message> {
         self.save_config();
-        let _ = self.playback.set_settings(self.config.settings.player());
+        let _ = self.playback.set_settings(self.player_settings());
         match which {
             screens::settings::Toggle::Infinity => self.infinity_switched(),
             screens::settings::Toggle::LevelVolume => {

@@ -418,6 +418,7 @@ impl App {
             }
             EngineEvent::DeviceError { .. } | EngineEvent::DeviceRestored => {}
         }
+        tasks.push(self.sleep_on_event(&event));
         Task::batch(tasks)
     }
 

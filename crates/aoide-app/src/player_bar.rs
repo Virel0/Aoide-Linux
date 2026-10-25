@@ -47,6 +47,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
                 .size(12)
                 .wrapping(text::Wrapping::None),
         ]
+        .extend(crate::player_menu::status_line(app))
         .spacing(2)
         .clip(true),
     ]

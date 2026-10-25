@@ -1,12 +1,15 @@
 //! The player bar's popovers: drawn over the window just above the bar, at
 //! its right-hand end; a click anywhere else closes them.
 
-use iced::widget::{Column, button, column, container, mouse_area, opaque, pick_list, row, text};
+use iced::widget::{
+    Column, button, column, container, mouse_area, opaque, pick_list, row, rule, text, text_input,
+};
 use iced::{Center, Element, Fill, Length, Padding};
 
 use crate::app::{App, Message};
 use crate::icons::{Icon, Tone, icon};
 use crate::listening::{BarMenu, Msg};
+use crate::playback::sleep_timer::{Choice, SleepTimer};
 use crate::theme;
 
 /// How far above the window's bottom edge a popover sits: the bar and a gap.
@@ -52,14 +55,100 @@ pub fn item<'a>(
         .into()
 }
 
-fn more(_app: &App) -> Element<'_, Message> {
-    column![item(
-        Some(Icon::Equalizer),
-        "Equaliser…",
-        Message::Listening(Msg::OpenEqualizer)
-    ),]
-    .spacing(2)
-    .into()
+fn more(app: &App) -> Element<'_, Message> {
+    let sleep = |choice: Choice| Message::Listening(Msg::Sleep(choice));
+    let mut list = column![
+        item(
+            Some(Icon::Equalizer),
+            "Equaliser…",
+            Message::Listening(Msg::OpenEqualizer)
+        ),
+        rule::horizontal(1),
+        heading("Sleep Timer"),
+    ]
+    .spacing(2);
+    if let Some(timer) = &app.listening.sleep {
+        let left = match timer {
+            SleepTimer::At { .. } => format!("{} left", timer.label(app.now())),
+            _ => timer.label(app.now()),
+        };
+        list = list.push(item(
+            Some(Icon::Close),
+            format!("Turn Off ({left})"),
+            Message::Listening(Msg::SleepCancel),
+        ));
+    }
+    let armed = app.listening.sleep.as_ref();
+    let playing = app.playback.current().is_some();
+    list = list
+        .push(check_item(
+            matches!(armed, Some(SleepTimer::EndOfSong { .. })),
+            "End of Song",
+            sleep(Choice::EndOfSong),
+        ))
+        .push(check_item(
+            matches!(armed, Some(SleepTimer::EndOfAlbum { .. })),
+            "End of Album",
+            sleep(Choice::EndOfAlbum),
+        ));
+    if !playing {
+        list = list.push(
+            container(
+                crate::widgets::secondary("Nothing is playing, so neither end is near.").size(12),
+            )
+            .padding([0, 10]),
+        );
+    }
+    for minutes in Choice::PRESETS {
+        list = list.push(check_item(
+            false,
+            format!("{minutes} Minutes"),
+            sleep(Choice::Minutes(minutes)),
+        ));
+    }
+    let typed = &app.listening.sleep_minutes;
+    let valid = crate::playback::sleep_timer::parse_minutes(typed).is_some();
+    list = list.push(
+        container(
+            row![
+                text_input("Minutes", typed)
+                    .on_input(|s| Message::Listening(Msg::SleepMinutes(s)))
+                    .on_submit(Message::Listening(Msg::SleepCustom))
+                    .padding(6)
+                    .size(13)
+                    .style(theme::field),
+                button(text("Set").size(13))
+                    .style(theme::tonal)
+                    .padding([6, 12])
+                    .on_press_maybe(valid.then_some(Message::Listening(Msg::SleepCustom))),
+            ]
+            .spacing(6)
+            .align_y(Center),
+        )
+        .padding([4, 10]),
+    );
+    list.into()
+}
+
+/// What the player bar says under the song: the sleep timer while it is
+/// set, with a way to turn it off.
+pub fn status_line(app: &App) -> Option<Element<'_, Message>> {
+    let timer = app.listening.sleep.as_ref()?;
+    let chip = row![
+        icon(Icon::Moon, 12.0, Tone::Accent),
+        text(timer.label(app.now()))
+            .size(11)
+            .style(|t: &iced::Theme| text::Style {
+                color: Some(theme::accent(t)),
+            }),
+        button(icon(Icon::Close, 10.0, Tone::Secondary))
+            .padding(2)
+            .style(theme::row)
+            .on_press(Message::Listening(Msg::SleepCancel)),
+    ]
+    .spacing(4)
+    .align_y(Center);
+    Some(chip.into())
 }
 
 /// A bar button that opens one of its popovers.
