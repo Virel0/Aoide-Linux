@@ -23,7 +23,8 @@ Linux needs ALSA and D-Bus development headers (`alsa-lib` and `dbus` on Arch).
 | `aoide-sidecar` | Aoide sidecar client: sync, Infinity, Discover, measurements |
 | `aoide-store` | local SQLite store: history, playlists, taste flags, op log |
 | `aoide-audio` | decoding, output, gapless, crossfade, loudness |
-| `aoide-mpris` | the Linux desktop: MPRIS media controls, single instance, sleep inhibit |
+| `aoide-mpris` | the Linux desktop: MPRIS media controls, tray icon, single instance, sleep inhibit |
+| `aoide-integrations` | services outside the server: Discord Rich Presence, OpenRouter (search by description, mixes), lyric translation, update notice |
 | `aoide-app` | the iced application |
 
 What is ported from the Electron app, and what is still to come, is in
