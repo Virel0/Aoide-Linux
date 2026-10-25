@@ -152,6 +152,28 @@ async fn read_key(keyring: Arc<dyn CredentialStore>) -> Option<String> {
         .flatten()
 }
 
+/// Whether saving `new` over `old` forgets the key: any change of a set
+/// address, to another or to none. Setting the first one keeps a key saved
+/// before it.
+pub fn forgets_key(old: Option<&str>, new: Option<&str>) -> bool {
+    old.is_some() && old != new
+}
+
+/// Removes the key from the keyring, off the async threads.
+async fn forget(keyring: Arc<dyn CredentialStore>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || keyring.delete(KEY_ENTRY))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r.map_err(|e| e.to_string()))
+}
+
+/// Forgets the key, and says so to Settings.
+fn forget_key(keyring: Arc<dyn CredentialStore>) -> Task<Message> {
+    Task::perform(forget(keyring), |result| {
+        Message::Listening(Msg::Server(ServerMsg::KeyStored(result.map(|()| false))))
+    })
+}
+
 /// Whether the keyring holds a key, for Settings.
 pub fn key_state(keyring: Arc<dyn CredentialStore>) -> Task<Message> {
     Task::perform(
@@ -319,17 +341,35 @@ impl App {
                     Ok(server) => {
                         state.address = None;
                         state.check = None;
+                        // A key is the server's: a new address forgets it, so
+                        // the old key is never sent somewhere else.
+                        let moved = forgets_key(
+                            self.config.translation_server.as_deref(),
+                            server.as_deref(),
+                        );
+                        if moved {
+                            state.key_set = Some(false);
+                        }
                         self.config.translation_server = server.clone();
                         self.save_config();
                         // Whatever was shown came from the old server, or none.
                         self.listening.lyric_extras.translation = None;
+                        let keyring = self.keyring.clone();
                         let Some(server) = server else {
-                            return Task::none();
+                            return if moved {
+                                forget_key(keyring)
+                            } else {
+                                Task::none()
+                            };
                         };
                         self.listening.lyric_extras.settings.busy = true;
-                        let keyring = self.keyring.clone();
-                        let check = Task::perform(
+                        Task::perform(
                             async move {
+                                if moved {
+                                    forget(keyring.clone()).await.map_err(|e| {
+                                        format!("the old key couldn't be forgotten ({e})")
+                                    })?;
+                                }
                                 let libre = LibreTranslate::new(&server, read_key(keyring).await)
                                     .map_err(|e| e.to_string())?;
                                 libre
@@ -339,8 +379,7 @@ impl App {
                                     .map_err(|e| e.to_string())
                             },
                             |result| Message::Listening(Msg::Server(ServerMsg::Checked(result))),
-                        );
-                        Task::batch([check, self.start_translation()])
+                        )
                     }
                 }
             }
@@ -540,7 +579,8 @@ pub fn settings_row<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> {
         text("Translation Server"),
         widgets::secondary(
             "Your own LibreTranslate server translates lyrics that aren't in your language. \
-             The lyrics go only to it. Leave the address empty to turn translation off."
+             The lyrics go only to it. Leave the address empty to turn translation off; a new \
+             address forgets the saved key."
         )
         .size(13),
         row![
@@ -654,6 +694,15 @@ mod tests {
         assert!(romaji[0].starts_with("yozora"), "{}", romaji[0]);
         let runs = reader.furigana("夜空に輝く");
         assert_eq!(runs[0].reading.as_deref(), Some("よぞら"));
+    }
+
+    #[test]
+    fn a_key_is_never_kept_for_another_server() {
+        let ours = Some("https://translate.example.net");
+        assert!(forgets_key(ours, Some("https://translate.example.org")));
+        assert!(forgets_key(ours, None));
+        assert!(!forgets_key(ours, ours));
+        assert!(!forgets_key(None, ours));
     }
 
     #[test]

@@ -91,6 +91,7 @@ impl LibreTranslate {
         }
         let http = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
+            .redirect(same_origin_redirects())
             .build()
             .map_err(|e| LibreError::Unreachable(e.to_string()))?;
         let key = key.filter(|k| !k.trim().is_empty());
@@ -110,7 +111,7 @@ impl LibreTranslate {
             .send()
             .await
             .map_err(|e| LibreError::Unreachable(e.without_url().to_string()))?;
-        let response = checked(response).await?;
+        let response = checked(response, true).await?;
         response
             .json()
             .await
@@ -166,7 +167,7 @@ impl LibreTranslate {
             .send()
             .await
             .map_err(|e| LibreError::Unreachable(e.without_url().to_string()))?;
-        let response = checked(response).await?;
+        let response = checked(response, self.key.is_some()).await?;
         let body: Translated = response
             .json()
             .await
@@ -193,15 +194,40 @@ pub fn server_code(code: &str, languages: &[Language]) -> Option<String> {
         .map(|l| l.code.clone())
 }
 
+/// Redirects only within the server's own origin (scheme, host and port):
+/// on a 307 or 308 reqwest sends the body again, API key and lyrics with
+/// it, wherever `Location` points.
+fn same_origin_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same = attempt
+            .previous()
+            .first()
+            .is_some_and(|first| first.origin() == attempt.url().origin());
+        if !same {
+            attempt.stop()
+        } else if attempt.previous().len() > 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
 /// The response, or what its status means. The server's own words are
 /// untrusted text, so only a short, single-line piece of them is kept.
-async fn checked(response: reqwest::Response) -> Result<reqwest::Response, LibreError> {
+/// `keyed`: a key was sent. A server set up to need keys refuses keyless
+/// requests with 429 (a request limit of none), which means "no key" then.
+async fn checked(
+    response: reqwest::Response,
+    keyed: bool,
+) -> Result<reqwest::Response, LibreError> {
     let status = response.status();
     if status.is_success() {
         return Ok(response);
     }
     match status {
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => Err(LibreError::Unauthorised),
+        StatusCode::TOO_MANY_REQUESTS if !keyed => Err(LibreError::Unauthorised),
         StatusCode::TOO_MANY_REQUESTS => Err(LibreError::Busy),
         _ => {
             let said = response
@@ -349,11 +375,17 @@ mod tests {
             Err(LibreError::Unsupported("de".into()))
         );
 
+        // 429 is "busy" with a key, and "a key is needed" without one.
         let busy = server_with(ResponseTemplate::new(429)).await;
-        let libre = LibreTranslate::new(&busy.uri(), None).unwrap();
+        let libre = LibreTranslate::new(&busy.uri(), Some("k".into())).unwrap();
         assert_eq!(
             libre.translate_lines(&lines, "en").await,
             Err(LibreError::Busy)
+        );
+        let libre = LibreTranslate::new(&busy.uri(), None).unwrap();
+        assert_eq!(
+            libre.translate_lines(&lines, "en").await,
+            Err(LibreError::Unauthorised)
         );
 
         let long = "x".repeat(500) + "\nsecond line";
@@ -404,5 +436,24 @@ mod tests {
             .await;
         let libre = LibreTranslate::new(&format!("{}/lt", server.uri()), None).unwrap();
         assert_eq!(libre.languages().await.unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn the_key_and_lyrics_never_follow_a_redirect_elsewhere() {
+        let elsewhere = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"translatedText": ["x"]})),
+            )
+            .expect(0)
+            .mount(&elsewhere)
+            .await;
+        let server = server_with(
+            ResponseTemplate::new(307)
+                .insert_header("Location", format!("{}/collect", elsewhere.uri())),
+        )
+        .await;
+        let libre = LibreTranslate::new(&server.uri(), Some("secret".into())).unwrap();
+        assert!(libre.translate_lines(&["y".into()], "en").await.is_err());
     }
 }
