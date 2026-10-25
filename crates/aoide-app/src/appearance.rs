@@ -18,6 +18,10 @@ pub struct InterfaceSettings {
     pub accent: Accent,
     /// LRCLIB for songs the server has no lyrics for.
     pub internet_lyrics: bool,
+    /// Romaji under each line of Japanese lyrics.
+    pub romaji: bool,
+    /// Readings over the kanji of Japanese lyrics (the `furigana` feature).
+    pub furigana: bool,
 }
 
 impl Default for InterfaceSettings {
@@ -27,6 +31,8 @@ impl Default for InterfaceSettings {
             appearance: Appearance::System,
             accent: Accent::Violet,
             internet_lyrics: true,
+            romaji: false,
+            furigana: false,
         }
     }
 }
@@ -376,11 +382,14 @@ mod tests {
         let interface = InterfaceSettings::default();
         assert!(interface.track_in_title);
         assert!(interface.internet_lyrics);
+        assert!(!interface.romaji && !interface.furigana);
         let changed = InterfaceSettings {
             track_in_title: false,
             appearance: Appearance::Light,
             accent: Accent::Orange,
             internet_lyrics: false,
+            romaji: true,
+            furigana: true,
         };
         let json = serde_json::to_string(&changed).unwrap();
         let back: InterfaceSettings = serde_json::from_str(&json).unwrap();

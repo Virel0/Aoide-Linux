@@ -275,6 +275,8 @@ mod tests {
                 appearance: crate::appearance::Appearance::Dark,
                 accent: crate::appearance::Accent::Teal,
                 internet_lyrics: false,
+                romaji: true,
+                furigana: false,
             },
         };
         config.save(&path).unwrap();

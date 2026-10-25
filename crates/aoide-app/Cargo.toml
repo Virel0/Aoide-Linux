@@ -9,6 +9,10 @@ rust-version.workspace = true
 # Lyric translation on this machine (Firefox Translations' models through
 # fxtranslate, downloaded from Mozilla on first use). Off by default.
 local-translation = ["aoide-integrations/local-translation"]
+# Readings over kanji in Japanese lyrics, and romaji that reads kanji, through
+# aoide-lyrics' lindera with IPADIC: about 48 MB more binary, and the
+# dictionary is downloaded at build time (aoide-lyrics' docs). Off by default.
+furigana = ["aoide-lyrics/furigana"]
 
 [[bin]]
 name = "aoide"
