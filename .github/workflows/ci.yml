@@ -20,6 +20,8 @@ jobs:
           components: clippy, rustfmt
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Lint the optional local translator too
+        run: cargo clippy -p aoide-integrations --all-targets --features local-translation -- -D warnings
       - run: cargo test --workspace
       - name: MPRIS, single instance and sleep inhibit, on a private D-Bus
         run: cargo test -p aoide-mpris -- --include-ignored
