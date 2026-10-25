@@ -124,8 +124,10 @@ jobs:
               packaging/flatpak/io.github.Virel0.Aoide.Linux.yml
           df -h "$work"
 
-      # With the SDK's own tools, which the build has just installed.
-      - name: Validate the desktop entry and AppStream data
+      # With the SDK's own tool, which the build has just installed. The
+      # AppStream data is validated in CI (ci.yml): the 26.08 SDK has no
+      # appstreamcli.
+      - name: Validate the desktop entry
         run: |
           set -euo pipefail
           sdk() {
@@ -134,7 +136,6 @@ jobs:
               flatpak run --user --filesystem="$PWD":ro --command="$1" org.freedesktop.Sdk/x86_64/26.08 "${@:2}"
           }
           sdk desktop-file-validate "$PWD/packaging/arch/io.github.Virel0.Aoide.Linux.desktop"
-          sdk appstreamcli validate --no-net "$PWD/packaging/flatpak/io.github.Virel0.Aoide.Linux.metainfo.xml"
 
       - name: Bundle it
         run: |
