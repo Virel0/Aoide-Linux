@@ -1,9 +1,9 @@
 name: Release (AppImage and deb)
 
-# A tag like v1.2.3 builds the app once and packages it as an AppImage
-# (packaging/appimage) and attaches it to the release. Run by hand on a
-# branch, it builds and keeps the files as a workflow artifact only, to try
-# the packaging before tagging.
+# A tag like v1.2.3 builds the app once, packages it as an AppImage
+# (packaging/appimage) and a .deb (packaging/deb), and attaches both to the
+# release. Run by hand on a branch, it builds and keeps the files as a
+# workflow artifact only, to try the packaging before tagging.
 on:
   push:
     tags: ['v*']
@@ -74,6 +74,20 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: packaging/appimage/build-appimage.sh target/release/aoide "$VERSION" out
+
+      - name: deb
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: packaging/deb/build-deb.sh target/release/aoide "$VERSION" out
+
+      # Installing it is the check that every name in Depends resolves (on
+      # 22.04 the libasound2 alternative, as on Debian 12).
+      - name: Check the deb installs
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y ./out/aoide-linux_*_amd64.deb
+          dpkg -L aoide-linux
+          test -x /usr/bin/aoide-linux
 
       - name: Keep them for inspection
         uses: actions/upload-artifact@v4
