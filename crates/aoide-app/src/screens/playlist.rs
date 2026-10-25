@@ -40,6 +40,11 @@ pub struct State {
     notes: text_editor::Content,
     /// For a smart playlist: what its rules matched when the page opened.
     smart: Option<Vec<String>>,
+    /// The cover as drawn (`covers`): a chosen picture, an item, or the
+    /// first track's album.
+    cover: Option<crate::artwork::ArtKey>,
+    /// What the last cover change said: done, or why not.
+    cover_note: Option<Result<String, String>>,
 }
 
 const LIST: ListStyle = ListStyle {
@@ -86,6 +91,12 @@ pub enum Message {
         up: bool,
     },
     Remove(String),
+    /// Ask for the cover to draw.
+    FindCover,
+    Cover(Option<crate::artwork::ArtKey>),
+    ChooseCover,
+    RemoveCover,
+    CoverNote(Result<String, String>),
 }
 
 /// Where `moving` goes to land just before (`up`) or just after `neighbour`,
@@ -113,12 +124,27 @@ pub fn open(ctx: &Ctx<'_>, id: &str) -> (State, Task<App>) {
         editing: false,
         notes: text_editor::Content::new(),
         smart: None,
+        cover: None,
+        cover_note: None,
     };
     let task = state.load_rows(ctx);
     (state, task)
 }
 
 impl State {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// The songs' covers and the playlist's own.
+    pub fn artwork(&self) -> Vec<crate::artwork::ArtKey> {
+        let mut keys: Vec<_> = self.cover.clone().into_iter().collect();
+        if let Load::Ready(tracks) = &self.tracks {
+            keys.extend(super::track_art(tracks));
+        }
+        keys
+    }
+
     fn load_rows(&self, ctx: &Ctx<'_>) -> Task<App> {
         let store = ctx.store.clone();
         let id = self.id.clone();
@@ -136,6 +162,13 @@ impl State {
             },
             move |r| App::Page(key, PageMsg::Playlist(Message::Rows(r))),
         )
+    }
+
+    fn find_cover(&self, key: u64) -> Task<App> {
+        Task::done(App::Covers(crate::covers::Msg::Resolve {
+            key,
+            ids: vec![self.id.clone()],
+        }))
     }
 
     fn write(
@@ -189,11 +222,38 @@ impl State {
                 };
                 self.items = items;
                 let client = ctx.client.clone();
-                fetch(
-                    ctx.key,
-                    async move { client.items_by_ids(&ids).await },
-                    move |r| PageMsg::Playlist(Message::Tracks(r)),
-                )
+                Task::batch([
+                    fetch(
+                        ctx.key,
+                        async move { client.items_by_ids(&ids).await },
+                        move |r| PageMsg::Playlist(Message::Tracks(r)),
+                    ),
+                    self.find_cover(ctx.key),
+                ])
+            }
+            Message::FindCover => self.find_cover(ctx.key),
+            Message::Cover(cover) => {
+                self.cover = cover;
+                Task::none()
+            }
+            Message::ChooseCover => {
+                self.cover_note = None;
+                Task::done(App::Covers(crate::covers::Msg::Choose {
+                    key: ctx.key,
+                    playlist: self.id.clone(),
+                }))
+            }
+            Message::RemoveCover => {
+                self.cover_note = None;
+                Task::done(App::Covers(crate::covers::Msg::Remove {
+                    key: ctx.key,
+                    playlist: self.id.clone(),
+                }))
+            }
+            Message::CoverNote(note) => {
+                self.cover_note = Some(note);
+                // The row changed: read it again, for its hash.
+                self.load_rows(ctx)
             }
             Message::Tracks(result) => {
                 match (result, &self.smart) {
@@ -371,9 +431,9 @@ impl State {
             .into(),
             None => widgets::title_bar(name, view.can_go_back),
         };
-        let mut body = column![title].spacing(16);
+        let mut head = column![title].spacing(12);
         if self.editing {
-            body = body.push(
+            head = head.push(
                 text_editor(&self.notes)
                     .placeholder("Notes")
                     .on_action(move |a| message(Message::Notes(a)))
@@ -381,7 +441,7 @@ impl State {
                     .padding(8),
             );
         } else if let Some(notes) = self.playlist.as_ref().and_then(|p| p.notes.as_deref()) {
-            body = body.push(widgets::secondary(notes));
+            head = head.push(widgets::secondary(notes));
         }
         // Plays from a smart playlist are filed as smart, as on the phone.
         let source = if self.smart.is_some() {
@@ -438,7 +498,41 @@ impl State {
                 .on_press(message(Message::Delete))
                 .into()
         });
-        body = body.push(tools);
+        let small = |label: &'a str, m: Option<Message>| {
+            button(text(label).size(13))
+                .style(theme::tonal)
+                .padding([6, 12])
+                .on_press_maybe(m.map(message))
+        };
+        let has_picture = self
+            .playlist
+            .as_ref()
+            .is_some_and(|p| p.image_hash.is_some());
+        let cover_tools = row![
+            small("Choose Cover…", Some(Message::ChooseCover)),
+            small("Remove Cover", has_picture.then_some(Message::RemoveCover)),
+        ]
+        .spacing(8);
+        head = head.push(tools).push(cover_tools);
+        if let Some(note) = &self.cover_note {
+            head = head.push(match note {
+                Ok(note) => widgets::secondary(note.as_str()).size(13).into(),
+                Err(error) => widgets::failure(error),
+            });
+        }
+        let mut body = column![
+            row![
+                widgets::art(
+                    self.cover.as_ref(),
+                    view.artwork,
+                    Length::Fixed(180.0),
+                    10.0
+                ),
+                head.width(Length::Fill)
+            ]
+            .spacing(24)
+        ]
+        .spacing(16);
         if let Some(menu) = view.menu.filter(|m| m.anchor == format!("{key}:playlist")) {
             body = body.push(widgets::menu_strip(menu, view));
         }

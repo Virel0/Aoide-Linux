@@ -15,6 +15,8 @@ use crate::widgets;
 pub struct State {
     new_name: String,
     error: Option<String>,
+    /// Each playlist's cover, once found.
+    covers: std::collections::HashMap<String, crate::artwork::ArtKey>,
 }
 
 #[derive(Debug, Clone)]
@@ -22,9 +24,28 @@ pub enum Message {
     NewName(String),
     Create,
     Created(Result<String, String>),
+    FindCovers,
+    Covers(std::collections::HashMap<String, crate::artwork::ArtKey>),
+}
+
+pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
+    (State::default(), find_covers(ctx.key))
+}
+
+/// Asks for every listed playlist's cover.
+fn find_covers(key: u64) -> Task<App> {
+    Task::done(App::Covers(crate::covers::Msg::Resolve {
+        key,
+        ids: Vec::new(),
+    }))
 }
 
 impl State {
+    /// The covers to draw, for the artwork cache.
+    pub fn artwork(&self) -> Vec<crate::artwork::ArtKey> {
+        self.covers.values().cloned().collect()
+    }
+
     pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {
         match message {
             Message::NewName(name) => {
@@ -54,6 +75,11 @@ impl State {
                     },
                     move |r| App::Page(key, PageMsg::Playlists(Message::Created(r))),
                 )
+            }
+            Message::FindCovers => find_covers(ctx.key),
+            Message::Covers(covers) => {
+                self.covers = covers;
+                Task::none()
             }
             Message::Created(result) => match result {
                 Ok(_) => {
@@ -124,7 +150,18 @@ impl State {
             list = list.push(
                 button(
                     row![
-                        icon(glyph, 22.0, Tone::Accent),
+                        match self.covers.get(&playlist.id) {
+                            Some(cover) => widgets::art(
+                                Some(cover),
+                                view.artwork,
+                                iced::Length::Fixed(36.0),
+                                4.0,
+                            ),
+                            None => iced::widget::container(icon(glyph, 22.0, Tone::Accent))
+                                .width(36)
+                                .align_x(Center)
+                                .into(),
+                        },
                         text(playlist.name.as_str()).size(15).width(Fill),
                         widgets::secondary(count).size(13),
                         more,

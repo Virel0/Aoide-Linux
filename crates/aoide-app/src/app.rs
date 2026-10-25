@@ -164,6 +164,7 @@ pub enum Message {
     /// A Jellyfin playlist changed (this one, or which ones there are).
     JellyfinPlaylistChanged(Option<String>),
     Radio(crate::radio::Msg),
+    Covers(crate::covers::Msg),
 }
 
 /// The player bar's controls.
@@ -467,6 +468,7 @@ impl App {
             Message::SyncPanel(message) => self.sync_panel(message),
             Message::JellyfinPlaylistChanged(id) => self.jellyfin_playlists_changed(id),
             Message::Radio(message) => self.radio(message),
+            Message::Covers(message) => self.covers(message),
         }
     }
 
@@ -482,9 +484,15 @@ impl App {
         self.save_config();
 
         let sidecar = SidecarClient::new(&connection.account.server, connection.token()).ok();
-        let sync = sidecar
-            .clone()
-            .map(|client| Arc::new(SyncEngine::new(self.store.shared(), client)));
+        let blobs = crate::covers::open_blobs(self.paths.as_ref());
+        let sync = sidecar.clone().map(|client| {
+            let engine = SyncEngine::new(self.store.shared(), client);
+            // Chosen covers are uploaded from where they are kept.
+            Arc::new(match blobs {
+                Some(blobs) => engine.with_image_bytes(Arc::new(blobs)),
+                None => engine,
+            })
+        });
         let handoff =
             crate::handoff::Handoff::open(self.paths.as_ref(), &connection.account.server);
         self.session = Some(Signed {

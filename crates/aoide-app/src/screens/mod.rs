@@ -221,7 +221,7 @@ impl Page {
             Section::Artists => wrap(artists::open(ctx), Page::Artists),
             Section::Songs => wrap(songs::open(ctx), Page::Songs),
             Section::Genres => wrap(genres::open(ctx), Page::Genres),
-            Section::Playlists => (Page::Playlists(playlists::State::default()), Task::none()),
+            Section::Playlists => wrap(playlists::open(ctx), Page::Playlists),
             Section::Search => wrap(search::open(), Page::Search),
             Section::Settings => wrap(settings::open(ctx), Page::Settings),
             Section::Playlist(id) => wrap(playlist::open(ctx, id), Page::Playlist),
@@ -310,16 +310,13 @@ impl Page {
             Page::Songs(state) => track_art(&state.tracks),
             Page::Genre(state) => state.albums.ready().map(|t| tiles(t)).unwrap_or_default(),
             Page::Search(state) => state.artwork(),
-            Page::Playlist(state) => state
-                .tracks
-                .ready()
-                .map(|t| track_art(t))
-                .unwrap_or_default(),
-            Page::Genres(_) | Page::Settings(_) | Page::Playlists(_) => Vec::new(),
+            Page::Playlist(state) => state.artwork(),
+            Page::Genres(_) | Page::Settings(_) => Vec::new(),
             Page::Discover(state) => state.artwork(),
             Page::Favourites(state) => state.artwork(),
             Page::Replay(state) => state.artwork(),
             Page::SyncStatus(_) | Page::JellyfinPlaylists(_) => Vec::new(),
+            Page::Playlists(state) => state.artwork(),
             Page::JellyfinPlaylist(state) => state.artwork(),
         }
     }

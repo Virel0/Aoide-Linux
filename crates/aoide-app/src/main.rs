@@ -4,6 +4,7 @@ mod actions;
 mod app;
 mod artwork;
 mod config;
+mod covers;
 mod credentials;
 mod handoff;
 mod icons;

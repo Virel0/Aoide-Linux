@@ -418,9 +418,22 @@ impl State {
                 .on_press_maybe((!running).then_some(AppMessage::SyncPanel(Msg::Retry(key)))),
             );
         }
+        actions = actions.push(
+            button(text("Repair Covers"))
+                .style(theme::tonal)
+                .padding([8, 16])
+                .on_press(AppMessage::Covers(crate::covers::Msg::Repair { key })),
+        );
         body = body
             .push(container(list).padding(16).width(Fill).style(theme::menu))
-            .push(actions);
+            .push(actions)
+            .push(
+                widgets::secondary(
+                    "Repair Covers gives each playlist that has no picture the cover of the \
+                     one Jellyfin playlist with exactly its name, and leaves the rest alone.",
+                )
+                .size(12),
+            );
         if let Some(note) = &self.note {
             body = body.push(widgets::secondary(note.as_str()).size(13));
         }
