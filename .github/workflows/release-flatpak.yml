@@ -129,7 +129,9 @@ jobs:
         run: |
           set -euo pipefail
           sdk() {
-              flatpak run --filesystem="$PWD":ro --command="$1" org.freedesktop.Sdk//26.08 "${@:2}"
+              # --user: the build installed the SDK there, and the image has
+              # one of its own, which left `flatpak run` no single ref to pick.
+              flatpak run --user --filesystem="$PWD":ro --command="$1" org.freedesktop.Sdk/x86_64/26.08 "${@:2}"
           }
           sdk desktop-file-validate "$PWD/packaging/arch/io.github.Virel0.Aoide.Linux.desktop"
           sdk appstreamcli validate --no-net "$PWD/packaging/flatpak/io.github.Virel0.Aoide.Linux.metainfo.xml"
