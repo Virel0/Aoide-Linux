@@ -177,12 +177,21 @@ pub fn filled(theme: &Theme, status: button::Status) -> button::Style {
     style
 }
 
-/// A quieter button beside it: Shuffle, Cancel.
+/// A quieter button beside it: Shuffle, Cancel. Its ground is a shade off
+/// the page, a different one from a card's so it shows on either, and pale
+/// enough for its accent text (contrast: accent text at least 4.5:1, resting
+/// and hovered, in every accent and both modes; tested).
 pub fn tonal(theme: &Theme, status: button::Status) -> button::Style {
     let palette = theme.extended_palette();
+    let shades = &palette.background;
+    let (resting, hovered) = if palette.is_dark {
+        (shades.weaker.color, shades.weakest.color)
+    } else {
+        (shades.weakest.color, shades.weaker.color)
+    };
     let background = match status {
-        button::Status::Hovered | button::Status::Pressed => palette.background.strong.color,
-        _ => palette.background.weak.color,
+        button::Status::Hovered | button::Status::Pressed => hovered,
+        _ => resting,
     };
     button::Style {
         background: Some(Background::Color(background)),
@@ -259,6 +268,27 @@ mod tests {
             }
         }
         all
+    }
+
+    fn button_ground(style: button::Style) -> Color {
+        match style.background {
+            Some(Background::Color(colour)) => colour,
+            other => panic!("not a plain colour: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tonal_buttons_keep_their_text_legible() {
+        for theme in themes() {
+            for status in [button::Status::Active, button::Status::Hovered] {
+                let style = tonal(&theme, status);
+                let ratio = contrast(style.text_color, button_ground(style));
+                assert!(ratio >= 4.5, "{theme} {status:?}: {ratio}");
+            }
+            let style = destructive(&theme, button::Status::Active);
+            let ratio = contrast(style.text_color, button_ground(style));
+            assert!(ratio >= 4.5, "{theme} destructive: {ratio}");
+        }
     }
 
     fn ground(style: container::Style) -> Color {
