@@ -251,7 +251,7 @@ fn candidate(record: Record) -> Option<Candidate> {
         duration: record
             .duration
             .filter(|d| d.is_finite() && *d > 0.0)
-            .map(Duration::from_secs_f64),
+            .and_then(|d| Duration::try_from_secs_f64(d).ok()),
         title: record.track_name.unwrap_or_default(),
         artist: record.artist_name.unwrap_or_default(),
         album: record.album_name,

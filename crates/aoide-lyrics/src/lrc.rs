@@ -37,7 +37,7 @@ pub fn parse_lrc(text: &str) -> Lyrics {
         let first = times[0];
         for time in times {
             // A repeated line's words move with it.
-            let shift = |t: Duration| (t + time).saturating_sub(first);
+            let shift = |t: Duration| t.saturating_add(time).saturating_sub(first);
             timed.push(Timed {
                 text: text.clone(),
                 start: time,
@@ -215,7 +215,7 @@ fn apply_offset(time: Duration, offset_ms: i64) -> Duration {
     if offset_ms >= 0 {
         time.saturating_sub(shift)
     } else {
-        time + shift
+        time.saturating_add(shift)
     }
 }
 
@@ -249,14 +249,18 @@ fn parse_time(tag: &str) -> Option<Duration> {
     )
 }
 
+/// No song is a day long: a later time is a broken or hostile tag.
+const LONGEST: u64 = 24 * 3600;
+
 fn clock(hours: u64, minutes: u64, seconds: u64, millis: u64) -> Option<Duration> {
     if seconds >= 60 {
         return None;
     }
     let total = hours
         .checked_mul(3600)?
-        .checked_add(minutes.checked_mul(60)?)?;
-    Some(Duration::from_secs(total + seconds) + Duration::from_millis(millis))
+        .checked_add(minutes.checked_mul(60)?)?
+        .checked_add(seconds)?;
+    (total < LONGEST).then(|| Duration::from_secs(total) + Duration::from_millis(millis))
 }
 
 fn number(digits: &str) -> Option<u64> {
@@ -295,6 +299,34 @@ fn strip_header_tags(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hostile_times_neither_panic_nor_count() {
+        // From the security audit: each of these panicked with "overflow when
+        // adding durations".
+        let huge = "5124095576030431";
+        for text in [
+            format!("[{huge}:00:00.00]<{huge}:00:00.00>a\n"),
+            format!("[offset:-9223372036854775807]\n[{huge}:00:00.00]hi\n"),
+            format!("[{huge}:00:00.00]a\n[{huge}:00:00.50]b\n"),
+            "[offset:-9223372036854775807]\n[00:01.00]hi\n".to_owned(),
+            "[00:01.00]<00:02.00>a [00:03.00]<99999999999999:00.00>b\n".to_owned(),
+        ] {
+            let lyrics = parse_lrc(&text);
+            for line in &lyrics.lines {
+                assert!(
+                    line.start
+                        .is_none_or(|s| s < Duration::from_secs(u64::MAX / 2))
+                );
+            }
+        }
+        // A day or more is no time at all.
+        assert_eq!(parse_time("24:00:00.00"), None);
+        assert_eq!(
+            parse_time("23:59:59.99"),
+            Some(Duration::from_millis(86_399_990))
+        );
+    }
 
     fn ms(n: u64) -> Duration {
         Duration::from_millis(n)

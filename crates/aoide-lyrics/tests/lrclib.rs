@@ -350,3 +350,20 @@ async fn one_provider_failing_doesnt_sink_the_others() {
         "no lyrics provider answered: a: no answer in time; b: HTTP 503"
     );
 }
+
+#[tokio::test]
+async fn an_absurd_duration_is_no_duration() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/get"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(record(
+            1e300,
+            Some("[00:01.00]First\n"),
+            None,
+        )))
+        .mount(&server)
+        .await;
+    let found = finder(&server).find(&track()).await.unwrap().unwrap();
+    assert!(found.lyrics.is_synced());
+    assert_eq!(found.duration_gap, None);
+}
