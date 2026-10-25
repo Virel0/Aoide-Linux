@@ -42,9 +42,17 @@ pub fn accent(theme: &Theme) -> Color {
     theme.palette().primary
 }
 
-/// Text that says less than the title beside it.
+/// Text that says less than the title beside it: the text colour, faded
+/// less on a light ground, where 60% falls under 4.5:1 on the cards
+/// (contrast: at least 4.5:1 on the page, the sidebar, the bar and a card,
+/// in both modes; tested).
 pub fn secondary(theme: &Theme) -> Color {
-    theme.palette().text.scale_alpha(0.6)
+    let fade = if theme.extended_palette().is_dark {
+        0.6
+    } else {
+        0.68
+    };
+    theme.palette().text.scale_alpha(fade)
 }
 
 /// The sidebar and the side panel: a shade off the page.
@@ -212,4 +220,66 @@ pub fn scrubber(theme: &Theme, status: slider::Status) -> slider::Style {
     style.handle.background = Background::Color(palette.background.base.text);
     style.handle.border_width = 0.0;
     style
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::appearance::{self, Accent, Appearance, InterfaceSettings};
+
+    /// WCAG 2's contrast ratio of `fg`, drawn over `bg`.
+    fn contrast(fg: Color, bg: Color) -> f32 {
+        let mix = |f: f32, b: f32| f * fg.a + b * (1.0 - fg.a);
+        let fg = Color::from_rgb(mix(fg.r, bg.r), mix(fg.g, bg.g), mix(fg.b, bg.b));
+        fn luminance(c: Color) -> f32 {
+            let channel = |v: f32| {
+                if v <= 0.04045 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+        }
+        let (a, b) = (luminance(fg), luminance(bg));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    /// Every mode in every accent.
+    fn themes() -> Vec<Theme> {
+        let mut all = Vec::new();
+        for appearance in [Appearance::Light, Appearance::Dark] {
+            for accent in Accent::ALL {
+                let interface = InterfaceSettings {
+                    appearance,
+                    accent,
+                    ..InterfaceSettings::default()
+                };
+                all.push(appearance::theme(Mode::Light, &interface));
+            }
+        }
+        all
+    }
+
+    fn ground(style: container::Style) -> Color {
+        match style.background {
+            Some(Background::Color(colour)) => colour,
+            other => panic!("not a plain colour: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn secondary_text_reads_on_every_surface() {
+        for theme in themes() {
+            for (name, surface) in [
+                ("page", ground(page(&theme))),
+                ("sidebar", ground(side(&theme))),
+                ("bar", ground(bar(&theme))),
+                ("card", ground(menu(&theme))),
+            ] {
+                let ratio = contrast(secondary(&theme), surface);
+                assert!(ratio >= 4.5, "{theme} {name}: {ratio}");
+            }
+        }
+    }
 }
