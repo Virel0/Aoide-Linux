@@ -2,7 +2,7 @@
 //! bar, and the switches that govern what plays next.
 
 use aoide_audio::RepeatMode;
-use iced::widget::{button, column, container, row, slider, text};
+use iced::widget::{button, column, container, row, slider};
 use iced::{Center, Element, Fill, Length};
 
 use crate::app::{App, Message, Panel, Signed, Transport};
@@ -39,13 +39,12 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             6.0,
         )),
         column![
-            text(current.map_or("Not playing", |m| m.title.as_str()))
+            crate::ellipsis::ellipsis(current.map_or("Not playing", |m| m.title.as_str()))
                 .size(14)
-                .font(widgets::SEMIBOLD)
-                .wrapping(text::Wrapping::None),
-            widgets::secondary(current.map_or("", |m| m.artist.as_str()))
+                .font(widgets::SEMIBOLD),
+            crate::ellipsis::ellipsis(current.map_or("", |m| m.artist.as_str()))
                 .size(12)
-                .wrapping(text::Wrapping::None),
+                .color(|t| Some(theme::secondary(t))),
         ]
         .extend(crate::player_menu::status_line(app))
         .spacing(2)

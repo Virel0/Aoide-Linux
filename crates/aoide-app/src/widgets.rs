@@ -11,6 +11,7 @@ use iced::{Center, ContentFit, Element, Fill, Font, Length, font};
 use crate::actions::{self, Collection, Menu, PlayRequest, RowAction};
 use crate::app::Message;
 use crate::artwork::{ArtKey, Artwork};
+use crate::ellipsis::ellipsis;
 use crate::failure::Failure;
 use crate::icons::{Icon, Tone, icon};
 use crate::library::Tile;
@@ -154,13 +155,10 @@ fn tile_menu(tile: &Tile, route: &Route) -> Option<Message> {
 /// A tile's title and subtitle, with its `…` beside them.
 fn tile_caption<'a>(tile: &'a Tile, menu: Option<Message>) -> Element<'a, Message> {
     let words = column![
-        text(tile.title.as_str())
-            .size(14)
-            .font(SEMIBOLD)
-            .wrapping(text::Wrapping::None),
-        secondary(tile.subtitle.as_str())
+        ellipsis(tile.title.as_str()).size(14).font(SEMIBOLD),
+        ellipsis(tile.subtitle.as_str())
             .size(13)
-            .wrapping(text::Wrapping::None),
+            .color(|t| Some(theme::secondary(t))),
     ]
     .spacing(2)
     .width(Fill)
@@ -474,15 +472,16 @@ pub fn track_row<'a>(
             })
         });
     let mut lines = column![
-        text(track.title.as_str())
+        ellipsis(track.title.as_str())
             .size(14)
-            .wrapping(text::Wrapping::None)
-            .style(move |t| text::Style {
-                color: playing.then(|| theme::accent(t)),
-            }),
+            .color(move |t| playing.then(|| theme::accent(t))),
     ];
     if let Some(subtitle) = subtitle {
-        lines = lines.push(secondary(subtitle).size(12).wrapping(text::Wrapping::None));
+        lines = lines.push(
+            ellipsis(subtitle)
+                .size(12)
+                .color(|t| Some(theme::secondary(t))),
+        );
     }
     // Every row as tall as one with two lines, the title centred when it is
     // alone: an album's rows stay even where only some name an artist.

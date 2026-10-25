@@ -9,6 +9,7 @@ mod covers;
 mod credentials;
 mod discord;
 mod discover;
+mod ellipsis;
 mod failure;
 mod finish;
 mod full_player;

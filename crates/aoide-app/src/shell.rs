@@ -83,7 +83,7 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
                         Tone::Secondary
                     }
                 ),
-                text(label).size(14).wrapping(text::Wrapping::None),
+                crate::ellipsis::ellipsis(label).size(14),
             ]
             .spacing(10)
             .align_y(Center),
