@@ -203,6 +203,7 @@ pub fn view<'a>(
         )
         .step(50),
         crate::lyrics_online::settings_row(&extras),
+        crate::lyrics_extras::settings_row(&extras),
     ];
     let lyrics_rows = if offset != 0 {
         lyrics_rows.push(

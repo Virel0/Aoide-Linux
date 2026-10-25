@@ -284,7 +284,10 @@ impl App {
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
         let update = Task::done(Message::Update(crate::updates::Message::Tick));
-        let listening = crate::listening::boot();
+        let listening = Task::batch([
+            crate::listening::boot(),
+            crate::lyrics_extras::key_state(app.keyring.clone()),
+        ]);
         (app, Task::batch([theme, restore, key, update, listening]))
     }
 

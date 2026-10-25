@@ -7,18 +7,13 @@
 //!   language ([`system_language`], from the locale), and whether a
 //!   translation is worth offering ([`needs_translation`]): a button that
 //!   translates English into English is noise.
-//! - With the `local-translation` feature: [`local::LocalTranslator`]
-//!   translates the lines **on this machine** with Firefox Translations'
-//!   models through the `fxtranslate` engine (pure Rust). A language pair's
-//!   model (about 20 to 40 MB) is downloaded the first time it is needed,
-//!   into the cache directory the app names, and verified by its hash; the
-//!   lyrics themselves never leave the machine. Nothing is bundled.
+//! - [`libre::LibreTranslate`]: the translation itself, by the listener's
+//!   own LibreTranslate server; the lyrics go to that server and nowhere
+//!   else.
 //!
-//! Languages are two-letter ISO 639-1 codes ("en", "fr", "ja"), as Firefox's
-//! models name them.
+//! Languages are two-letter ISO 639-1 codes ("en", "fr", "ja").
 
-#[cfg(feature = "local-translation")]
-pub mod local;
+pub mod libre;
 
 use std::ffi::OsString;
 

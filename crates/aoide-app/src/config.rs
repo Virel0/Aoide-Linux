@@ -179,6 +179,9 @@ pub struct Config {
     /// play as it begins. This computer's alone, not synced: the phone may be
     /// in a car while the desk is at work. `None` is untagged, the default.
     pub activity: Option<String>,
+    /// The listener's LibreTranslate server, as a URL; `None` is no
+    /// translation. Not in an exported settings file: it says where.
+    pub translation_server: Option<String>,
 }
 
 impl Default for Config {
@@ -195,6 +198,7 @@ impl Default for Config {
             interface: crate::appearance::InterfaceSettings::default(),
             collections: Vec::new(),
             activity: None,
+            translation_server: None,
         }
     }
 }
@@ -296,6 +300,7 @@ mod tests {
             },
             collections: Vec::new(),
             activity: Some("gaming".into()),
+            translation_server: Some("https://translate.example.net".into()),
         };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);

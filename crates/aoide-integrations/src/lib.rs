@@ -4,9 +4,8 @@
 //! - [`discord`]: Discord Rich Presence over Discord's local socket.
 //! - [`openrouter`]: search by description and mixes from a mood, through
 //!   OpenRouter; the model only translates words into filters and rules.
-//! - [`translate`]: lyric translation. Language detection always; with the
-//!   `local-translation` feature, translation on this machine with models
-//!   downloaded on first use.
+//! - [`translate`]: lyric translation. Language detection on this machine;
+//!   the translation by the listener's own LibreTranslate server.
 //! - [`update`]: whether a newer release is out on GitHub, at most daily.
 //!
 //! Nothing here knows about iced or the other Aoide crates. Async parts run

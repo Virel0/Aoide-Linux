@@ -7,9 +7,6 @@ rust-version.workspace = true
 
 [features]
 default = ["furigana"]
-# Lyric translation on this machine (Firefox Translations' models through
-# fxtranslate, downloaded from Mozilla on first use). Off by default.
-local-translation = ["aoide-integrations/local-translation"]
 # Readings over kanji in Japanese lyrics, and romaji that reads kanji, through
 # aoide-lyrics' lindera with IPADIC: about 48 MB more binary, and the
 # dictionary is downloaded at build time (aoide-lyrics' docs; the Flatpak
@@ -26,8 +23,8 @@ workspace = true
 [dependencies]
 aoide-audio = { path = "../aoide-audio" }
 # Discord Rich Presence, OpenRouter (search by description, mixes), the update
-# notice; lyric translation: the lyrics' language always, translating with the
-# `local-translation` feature above.
+# notice; lyric translation: the lyrics' language here, the translating by the
+# listener's own LibreTranslate server.
 aoide-integrations = { path = "../aoide-integrations" }
 aoide-jellyfin = { path = "../aoide-jellyfin" }
 # Internet lyrics (LRCLIB) for songs the server has none for.

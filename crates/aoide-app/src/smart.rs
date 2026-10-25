@@ -97,7 +97,7 @@ impl SmartSettings {
 
 /// A key being typed. Its `Debug` never shows it.
 #[derive(Clone, Default, PartialEq, Eq)]
-pub struct Draft(String);
+pub struct Draft(pub(crate) String);
 
 impl fmt::Debug for Draft {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

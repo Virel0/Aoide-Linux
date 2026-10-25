@@ -6,26 +6,27 @@
 //! `furigana` feature, aoide-lyrics' `JapaneseReader` (lindera with IPADIC)
 //! reads the kanji too: readings over them, and romaji of the whole line.
 //!
-//! Translation needs the `local-translation` feature: it runs on this
-//! machine with Firefox Translations' models (aoide-integrations'
-//! `LocalTranslator`), a language pair's model downloaded from Mozilla the
-//! first time it is needed. Without the feature the Translate switch isn't
-//! there. The lyrics never leave the machine.
+//! Translation is done by the listener's own LibreTranslate server
+//! (aoide-integrations' `LibreTranslate`), named in Settings → Lyrics with
+//! its API key if it wants one. Until a server is named the Translate switch
+//! isn't there. The lyrics go to that server and nowhere else.
 
-use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::Arc;
 
-use aoide_jellyfin::Lyrics;
-use iced::widget::{button, column, container, row, text};
-use iced::{Center, Element, Subscription, Task};
+use aoide_integrations::translate::libre::LibreTranslate;
+use aoide_jellyfin::{Lyrics, ServerAddress};
+use iced::widget::{button, column, container, row, text, text_input};
+use iced::{Center, Element, Fill, Task};
 
 use crate::app::{App, Message};
-use crate::listening::Msg;
+use crate::credentials::CredentialStore;
+use crate::listening::{Msg, SettingsExtras};
 use crate::screens::Load;
+use crate::smart::Draft;
 use crate::{theme, widgets};
 
-/// Whether this build can translate.
-pub const CAN_TRANSLATE: bool = cfg!(feature = "local-translation");
+/// The keyring entry for the translation server's API key.
+pub const KEY_ENTRY: &str = "libretranslate-key";
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -44,8 +45,34 @@ pub struct State {
     pub ruby: Vec<Vec<RubyRun>>,
     #[cfg(feature = "furigana")]
     reader: Option<aoide_lyrics::JapaneseReader>,
-    #[cfg(feature = "local-translation")]
-    translator: Option<std::sync::Arc<aoide_integrations::translate::local::LocalTranslator>>,
+    /// Settings → Lyrics → Translation.
+    pub settings: ServerSettings,
+}
+
+/// The translation server's rows in Settings, as they are being edited.
+#[derive(Debug, Default)]
+pub struct ServerSettings {
+    /// The address as typed; `None` until typed in, when the saved one shows.
+    pub address: Option<String>,
+    pub key: Draft,
+    /// Whether the keyring holds a key; `None` before it has been asked.
+    pub key_set: Option<bool>,
+    /// What the last check of the server found, or why it failed.
+    pub check: Option<Result<String, String>>,
+    pub busy: bool,
+}
+
+/// Settings → Lyrics → Translation.
+#[derive(Debug, Clone)]
+pub enum ServerMsg {
+    AddressTyped(String),
+    SaveAddress,
+    Checked(Result<usize, String>),
+    KeyTyped(Draft),
+    SaveKey,
+    ClearKey,
+    /// The keyring answered: whether a key is there now.
+    KeyStored(Result<bool, String>),
 }
 
 /// A run of a line and, over its kanji, how they're read.
@@ -80,14 +107,8 @@ pub fn is_japanese(lyrics: &Lyrics) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(not(feature = "local-translation"), allow(dead_code))]
 pub enum Translation {
-    /// On its way; `downloading` when the model wasn't here yet, with how
-    /// much of it has arrived.
-    Working {
-        downloading: bool,
-        bytes: u64,
-    },
+    Working,
     Ready(Vec<String>),
     Failed(String),
 }
@@ -105,44 +126,43 @@ pub fn foreign_language(lyrics: &Lyrics, target: &str) -> Option<&'static str> {
     aoide_integrations::translate::needs_translation(&lines, target)
 }
 
-/// Bytes under `dir`, every file in every folder: how much of a model has
-/// arrived.
-pub fn bytes_under(dir: &Path) -> u64 {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return 0;
-    };
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| match entry.file_type() {
-            Ok(kind) if kind.is_dir() => bytes_under(&entry.path()),
-            Ok(_) => entry.metadata().map_or(0, |m| m.len()),
-            Err(_) => 0,
-        })
-        .sum()
-}
-
-/// `12.3 MB`.
-pub fn megabytes(bytes: u64) -> String {
-    format!("{:.1} MB", bytes as f64 / 1_000_000.0)
-}
-
-/// A failed translation in a sentence: the download, or the rest.
+/// A failed translation in a sentence.
 pub fn failure(error: &str) -> String {
-    if error.contains("unreachable") || error.contains("GET ") || error.contains("download") {
-        "The translation model couldn't be downloaded from Mozilla. Switch Translate off and on \
-         to try again."
-            .to_owned()
-    } else {
-        let short: String = error.chars().take(140).collect();
-        format!("The lyrics couldn't be translated ({short}).")
-    }
+    format!("The lyrics couldn't be translated: {error}.")
 }
 
-/// Where the models are kept: the cache directory's `translation-models`.
-pub fn models_dir(paths: Option<&crate::config::Paths>) -> Option<PathBuf> {
-    paths
-        .and_then(|p| p.artwork_dir.parent())
-        .map(|cache| cache.join("translation-models"))
+/// What the address field holds, as the server's URL; `Ok(None)` for an
+/// empty field, which turns translation off.
+pub fn parse_address(typed: &str) -> Result<Option<String>, String> {
+    let typed = typed.trim();
+    if typed.is_empty() {
+        return Ok(None);
+    }
+    ServerAddress::parse(typed)
+        .map(|address| Some(address.as_str().to_owned()))
+        .map_err(|_| "That isn't an address Aoide can use.".to_owned())
+}
+
+/// The key from the keyring, off the async threads. A keyring that can't
+/// be read is treated as no key; a server that wants one will say so.
+async fn read_key(keyring: Arc<dyn CredentialStore>) -> Option<String> {
+    tokio::task::spawn_blocking(move || keyring.get(KEY_ENTRY).ok().flatten())
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Whether the keyring holds a key, for Settings.
+pub fn key_state(keyring: Arc<dyn CredentialStore>) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || keyring.get(KEY_ENTRY).map(|k| k.is_some()))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r.map_err(|e| e.to_string()))
+        },
+        |result| Message::Listening(Msg::Server(ServerMsg::KeyStored(result))),
+    )
 }
 
 impl App {
@@ -234,69 +254,37 @@ impl App {
         self.listening.lyric_extras.romaji = romaji_lines(lyrics, None);
     }
 
-    /// Translates the lyrics showing, if asked and worth it.
-    #[cfg(feature = "local-translation")]
+    /// Translates the lyrics showing, if asked, worth it and a server is
+    /// named.
     fn start_translation(&mut self) -> Task<Message> {
-        use aoide_integrations::translate::local::{LocalTranslator, ModelSource};
         let extras = &self.listening.lyric_extras;
-        let (Some(from), true, None) = (extras.foreign, extras.translate, &extras.translation)
-        else {
+        let (Some(_), true, None) = (extras.foreign, extras.translate, &extras.translation) else {
+            return Task::none();
+        };
+        let Some(server) = self.config.translation_server.clone() else {
             return Task::none();
         };
         let Some((item, lyrics)) = self.shown_lyrics() else {
             return Task::none();
         };
-        let Some(dir) = models_dir(self.paths.as_ref()) else {
-            self.listening.lyric_extras.translation = Some(Translation::Failed(
-                "There is no cache folder to keep the model in.".into(),
-            ));
-            return Task::none();
-        };
-        if self.listening.lyric_extras.translator.is_none() {
-            // A development build can fetch from a stand-in instead.
-            let source = std::env::var("AOIDE_DEV_TRANSLATION_MIRROR")
-                .ok()
-                .filter(|_| cfg!(debug_assertions))
-                .map_or(ModelSource::Mozilla, ModelSource::Mirror);
-            match LocalTranslator::new(dir.clone(), source) {
-                Ok(translator) => {
-                    self.listening.lyric_extras.translator = Some(std::sync::Arc::new(translator));
-                }
-                Err(error) => {
-                    self.listening.lyric_extras.translation =
-                        Some(Translation::Failed(error.to_string()));
-                    return Task::none();
-                }
-            }
-        }
-        let Some(translator) = self.listening.lyric_extras.translator.clone() else {
-            return Task::none();
-        };
+        self.listening.lyric_extras.translation = Some(Translation::Working);
+        let keyring = self.keyring.clone();
         let to = target_language();
-        self.listening.lyric_extras.translation = Some(Translation::Working {
-            downloading: !translator.is_downloaded(from, &to),
-            bytes: bytes_under(&dir),
-        });
         let lines: Vec<String> = lyrics.lines.iter().map(|l| l.text.clone()).collect();
         Task::perform(
             async move {
-                let result = tokio::task::spawn_blocking(move || {
-                    translator
-                        .translate_lines(&lines, from, &to)
-                        .map_err(|e| e.to_string())
-                })
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r);
+                let key = read_key(keyring).await;
+                let result = match LibreTranslate::new(&server, key) {
+                    Ok(libre) => libre
+                        .translate_lines(&lines, &to)
+                        .await
+                        .map_err(|e| e.to_string()),
+                    Err(error) => Err(error.to_string()),
+                };
                 (item, result)
             },
             |(item, result)| Message::Listening(Msg::Translated(item, result)),
         )
-    }
-
-    #[cfg(not(feature = "local-translation"))]
-    fn start_translation(&mut self) -> Task<Message> {
-        Task::none()
     }
 
     pub(crate) fn translated(&mut self, item: String, result: Result<Vec<String>, String>) {
@@ -310,26 +298,108 @@ impl App {
         });
     }
 
-    /// The model's download, measured on disk.
-    pub(crate) fn model_progress(&mut self) {
-        let dir = models_dir(self.paths.as_ref());
-        if let Some(Translation::Working {
-            downloading: true,
-            bytes,
-        }) = self.listening.lyric_extras.translation.as_mut()
-            && let Some(dir) = dir
-        {
-            *bytes = bytes_under(&dir);
-        }
-    }
-
-    pub(crate) fn lyric_extras_subscription(&self) -> Subscription<Message> {
-        match &self.listening.lyric_extras.translation {
-            Some(Translation::Working {
-                downloading: true, ..
-            }) => iced::time::every(Duration::from_millis(500))
-                .map(|_| Message::Listening(Msg::ModelProgress)),
-            _ => Subscription::none(),
+    /// Settings → Lyrics → Translation.
+    pub(crate) fn translation_server(&mut self, msg: ServerMsg) -> Task<Message> {
+        let state = &mut self.listening.lyric_extras.settings;
+        match msg {
+            ServerMsg::AddressTyped(typed) => {
+                state.address = Some(typed);
+                Task::none()
+            }
+            ServerMsg::SaveAddress => {
+                let typed = state
+                    .address
+                    .clone()
+                    .unwrap_or_else(|| self.config.translation_server.clone().unwrap_or_default());
+                match parse_address(&typed) {
+                    Err(why) => {
+                        state.check = Some(Err(why));
+                        Task::none()
+                    }
+                    Ok(server) => {
+                        state.address = None;
+                        state.check = None;
+                        self.config.translation_server = server.clone();
+                        self.save_config();
+                        // Whatever was shown came from the old server, or none.
+                        self.listening.lyric_extras.translation = None;
+                        let Some(server) = server else {
+                            return Task::none();
+                        };
+                        self.listening.lyric_extras.settings.busy = true;
+                        let keyring = self.keyring.clone();
+                        let check = Task::perform(
+                            async move {
+                                let libre = LibreTranslate::new(&server, read_key(keyring).await)
+                                    .map_err(|e| e.to_string())?;
+                                libre
+                                    .languages()
+                                    .await
+                                    .map(|l| l.len())
+                                    .map_err(|e| e.to_string())
+                            },
+                            |result| Message::Listening(Msg::Server(ServerMsg::Checked(result))),
+                        );
+                        Task::batch([check, self.start_translation()])
+                    }
+                }
+            }
+            ServerMsg::Checked(result) => {
+                state.busy = false;
+                state.check = Some(match result {
+                    Ok(0) => Err("It answered, but has no languages installed.".to_owned()),
+                    Ok(n) => Ok(format!("Connected. It translates {n} languages.")),
+                    Err(error) => Err(format!("Not connected: {error}.")),
+                });
+                Task::none()
+            }
+            ServerMsg::KeyTyped(draft) => {
+                state.key = draft;
+                Task::none()
+            }
+            ServerMsg::SaveKey => {
+                let key = state.key.0.trim().to_owned();
+                if key.is_empty() {
+                    return Task::none();
+                }
+                state.key = Draft::default();
+                state.busy = true;
+                let keyring = self.keyring.clone();
+                Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            keyring.set(KEY_ENTRY, &key).map(|()| true)
+                        })
+                        .await
+                        .map_err(|e| e.to_string())
+                        .and_then(|r| r.map_err(|e| e.to_string()))
+                    },
+                    |result| Message::Listening(Msg::Server(ServerMsg::KeyStored(result))),
+                )
+            }
+            ServerMsg::ClearKey => {
+                state.busy = true;
+                let keyring = self.keyring.clone();
+                Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || {
+                            keyring.delete(KEY_ENTRY).map(|()| false)
+                        })
+                        .await
+                        .map_err(|e| e.to_string())
+                        .and_then(|r| r.map_err(|e| e.to_string()))
+                    },
+                    |result| Message::Listening(Msg::Server(ServerMsg::KeyStored(result))),
+                )
+            }
+            ServerMsg::KeyStored(result) => {
+                state.busy = false;
+                match result {
+                    Ok(set) => state.key_set = Some(set),
+                    Err(error) => state.check = Some(Err(format!("The keyring said: {error}."))),
+                }
+                Task::none()
+            }
         }
     }
 }
@@ -341,7 +411,7 @@ pub fn toolbar<'a>(app: &'a App, item: &str) -> Option<Element<'a, Message>> {
     if extras.item.as_deref() != Some(item) {
         return None;
     }
-    let offer_translation = CAN_TRANSLATE && extras.foreign.is_some();
+    let offer_translation = app.config.translation_server.is_some() && extras.foreign.is_some();
     if !offer_translation && !extras.japanese {
         return None;
     }
@@ -378,17 +448,8 @@ pub fn toolbar<'a>(app: &'a App, item: &str) -> Option<Element<'a, Message>> {
             Msg::Translate(!extras.translate),
         ));
         if extras.translate {
-            let from = extras.foreign.unwrap_or_default();
             let status = match &extras.translation {
-                Some(Translation::Working {
-                    downloading: true,
-                    bytes,
-                }) => format!(
-                    "Downloading the {from}\u{2192}{} model, {} so far (about 20 to 40 MB, once)\u{2026}",
-                    target_language(),
-                    megabytes(*bytes)
-                ),
-                Some(Translation::Working { .. }) => "Translating\u{2026}".to_owned(),
+                Some(Translation::Working) => "Translating\u{2026}".to_owned(),
                 Some(Translation::Failed(why)) => why.clone(),
                 _ => String::new(),
             };
@@ -397,8 +458,7 @@ pub fn toolbar<'a>(app: &'a App, item: &str) -> Option<Element<'a, Message>> {
             }
             notes = notes.push(
                 widgets::secondary(
-                    "Translated on this computer. The model comes from Mozilla's Firefox \
-                     Translations; the lyrics stay here.",
+                    "Translated by your LibreTranslate server; the lyrics go only to it.",
                 )
                 .size(11),
             );
@@ -466,6 +526,89 @@ pub fn ruby_line<'a>(
     Some(row(cells).wrap().into())
 }
 
+/// Settings → Lyrics → Translation: the server's address and its key.
+pub fn settings_row<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> {
+    let state = &extras.listening.lyric_extras.settings;
+    let send = |m: ServerMsg| Message::Listening(Msg::Server(m));
+    let saved = extras
+        .config
+        .translation_server
+        .as_deref()
+        .unwrap_or_default();
+    let address = state.address.as_deref().unwrap_or(saved);
+    let mut rows = column![
+        text("Translation Server"),
+        widgets::secondary(
+            "Your own LibreTranslate server translates lyrics that aren't in your language. \
+             The lyrics go only to it. Leave the address empty to turn translation off."
+        )
+        .size(13),
+        row![
+            text_input("translate.example.net", address)
+                .on_input(move |s| send(ServerMsg::AddressTyped(s)))
+                .on_submit(send(ServerMsg::SaveAddress))
+                .padding(8)
+                .style(theme::field),
+            button(text("Save").size(13))
+                .style(theme::tonal)
+                .padding([6, 12])
+                .on_press_maybe((!state.busy).then(|| send(ServerMsg::SaveAddress))),
+        ]
+        .spacing(8)
+        .align_y(Center),
+    ]
+    .spacing(6);
+    match &state.check {
+        _ if state.busy => rows = rows.push(widgets::secondary("Checking\u{2026}").size(13)),
+        Some(Ok(line)) => rows = rows.push(widgets::secondary(line.as_str()).size(13)),
+        Some(Err(line)) => rows = rows.push(text(line.as_str()).size(13)),
+        None => {}
+    }
+    if extras.config.translation_server.is_none() {
+        return rows.into();
+    }
+    // The key: saved, cleared, or said to be set. Never shown.
+    let key_line = match state.key_set {
+        None => "Checking the keyring\u{2026}",
+        Some(true) => "A key is set.",
+        Some(false) => "No key is set. Only needed if your server asks for one.",
+    };
+    let mut key_row = row![
+        column![text("API Key"), widgets::secondary(key_line).size(13)]
+            .spacing(2)
+            .width(Fill)
+    ]
+    .spacing(8)
+    .align_y(Center);
+    if state.key_set == Some(true) {
+        key_row = key_row.push(
+            button(text("Clear").size(13))
+                .style(theme::destructive)
+                .padding([4, 10])
+                .on_press_maybe((!state.busy).then(|| send(ServerMsg::ClearKey))),
+        );
+    }
+    let can_save = !state.busy && !state.key.0.trim().is_empty();
+    rows.push(key_row)
+        .push(
+            row![
+                text_input("Paste the server's API key", &state.key.0)
+                    .secure(true)
+                    .on_input(move |s| send(ServerMsg::KeyTyped(Draft(s))))
+                    .on_submit_maybe(can_save.then(|| send(ServerMsg::SaveKey)))
+                    .padding(8)
+                    .style(theme::field),
+                button(text("Save").size(13))
+                    .style(theme::tonal)
+                    .padding([6, 12])
+                    .on_press_maybe(can_save.then(|| send(ServerMsg::SaveKey))),
+            ]
+            .spacing(8)
+            .align_y(Center),
+        )
+        .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,29 +657,16 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_download_is_said_plainly() {
-        let said = failure(
-            "no translation model for fr to en: no cached model for fr→en; and Remote Settings \
-             was unreachable: GET https://example.org/settings: HTTP 404",
+    fn the_address_is_read_as_the_sign_in_reads_one() {
+        assert_eq!(parse_address("  "), Ok(None));
+        assert_eq!(
+            parse_address("translate.example.net").unwrap().as_deref(),
+            Some("https://translate.example.net")
         );
-        assert!(
-            said.starts_with("The translation model couldn't be downloaded"),
-            "{said}"
+        assert_eq!(
+            parse_address("192.168.1.10:5000").unwrap().as_deref(),
+            Some("http://192.168.1.10:5000")
         );
-        assert!(!said.contains("http"));
-        let other = failure(&"x".repeat(500));
-        assert!(other.len() < 200);
-    }
-
-    #[test]
-    fn the_download_is_measured_on_disk() {
-        let dir = tempfile::tempdir().unwrap();
-        assert_eq!(bytes_under(dir.path()), 0);
-        std::fs::create_dir_all(dir.path().join("fr-en")).unwrap();
-        std::fs::write(dir.path().join("fr-en").join("model.bin"), vec![0u8; 1_500]).unwrap();
-        std::fs::write(dir.path().join("catalogue.json"), b"{}").unwrap();
-        assert_eq!(bytes_under(dir.path()), 1_502);
-        assert_eq!(bytes_under(&dir.path().join("missing")), 0);
-        assert_eq!(megabytes(12_340_000), "12.3 MB");
+        assert!(parse_address("ftp://translate.example.net").is_err());
     }
 }

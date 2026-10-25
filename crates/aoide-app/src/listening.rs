@@ -63,10 +63,9 @@ pub enum Msg {
     /// New lyrics are in the panel.
     LyricsShown,
     Translate(bool),
-    /// Only made with the `local-translation` feature.
-    #[cfg_attr(not(feature = "local-translation"), allow(dead_code))]
     Translated(String, Result<Vec<String>, String>),
-    ModelProgress,
+    /// Settings → Lyrics → Translation.
+    Server(crate::lyrics_extras::ServerMsg),
     Sleep(Choice),
     SleepMinutes(String),
     SleepCustom,
@@ -90,9 +89,7 @@ pub enum Msg {
 pub fn is_quiet(message: &Message) -> bool {
     matches!(
         message,
-        Message::Listening(
-            Msg::VisualFrame | Msg::SleepTick | Msg::CheckHidden | Msg::ModelProgress
-        )
+        Message::Listening(Msg::VisualFrame | Msg::SleepTick | Msg::CheckHidden)
     )
 }
 
@@ -138,11 +135,7 @@ impl App {
                 .map(|_| Message::Listening(Msg::SleepTick)),
             _ => Subscription::none(),
         };
-        Subscription::batch([
-            sleep,
-            self.full_player_subscription(),
-            self.lyric_extras_subscription(),
-        ])
+        Subscription::batch([sleep, self.full_player_subscription()])
     }
 
     /// An engine event, for the sleep timer: a boundary to pause on, or the
@@ -372,10 +365,7 @@ impl App {
                 self.translated(item, result);
                 Task::none()
             }
-            Msg::ModelProgress => {
-                self.model_progress();
-                Task::none()
-            }
+            Msg::Server(msg) => self.translation_server(msg),
             Msg::Transcode(transcode) => {
                 self.config.sound.transcode = transcode.sanitised();
                 self.save_config();
