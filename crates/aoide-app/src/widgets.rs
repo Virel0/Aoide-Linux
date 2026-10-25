@@ -220,9 +220,14 @@ pub fn title_bar<'a>(title: &'a str, back: bool) -> Element<'a, Message> {
     bar.push(text(title).size(28).font(BOLD)).into()
 }
 
+/// The scrollable every page is drawn in, put back at its top when another
+/// page opens.
+pub const PAGE: &str = "page-scroll";
+
 /// A page's whole body: scrolled, padded.
 pub fn page<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     scrollable(container(content).padding([24, 28]).width(Fill))
+        .id(PAGE)
         .height(Fill)
         .into()
 }

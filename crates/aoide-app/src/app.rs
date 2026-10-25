@@ -316,6 +316,12 @@ impl App {
         ])
     }
 
+    /// The open page's back-stack entry, if signed in.
+    fn page_key(&self) -> Option<u64> {
+        let nav = self.session.as_ref()?.nav.as_ref()?;
+        Some(nav.current().key)
+    }
+
     pub(crate) fn now(&self) -> u64 {
         u64::try_from(self.clock.elapsed().as_millis()).unwrap_or(u64::MAX)
     }
@@ -324,7 +330,19 @@ impl App {
         // Position ticks arrive four times a second and change no artwork.
         let quiet = matches!(message, Message::Engine(EngineEvent::Position { .. }))
             || crate::listening::is_quiet(&message);
-        let task = self.handle(message);
+        let page = self.page_key();
+        let mut task = self.handle(message);
+        // Another page opened: it starts at its top, not at the offset the
+        // last one was scrolled to (iced keeps one scroll state for both).
+        if self.page_key() != page {
+            task = Task::batch([
+                task,
+                iced::widget::operation::snap_to(
+                    crate::widgets::PAGE,
+                    iced::widget::scrollable::RelativeOffset::START,
+                ),
+            ]);
+        }
         // The desktop hears only what changed.
         self.publish();
         self.publish_system();
