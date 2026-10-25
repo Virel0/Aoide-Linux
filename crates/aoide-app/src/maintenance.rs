@@ -115,14 +115,23 @@ pub struct Cache {
     pub clears: &'static str,
 }
 
-/// Every cache there is to clear. Lyrics and the server's answers are not
-/// kept on disk, so they have none.
+/// Every cache there is to clear. The server's answers are not kept on
+/// disk, so they have none.
 pub fn caches(paths: &crate::config::Paths) -> Vec<Cache> {
-    vec![Cache {
+    let mut all = vec![Cache {
         name: "Artwork",
         dir: paths.artwork_dir.clone(),
         clears: "the album covers kept on this computer; they are fetched again as they are shown",
-    }]
+    }];
+    if let Some(dir) = crate::lyrics_online::cache_dir(paths) {
+        all.push(Cache {
+            name: "Internet Lyrics",
+            dir,
+            clears: "the lyrics found on LRCLIB, and the songs it had none for; they are looked up \
+                     again when played",
+        });
+    }
+    all
 }
 
 /// Removes the files in `dir` (not the folder, nor anything under it that
@@ -378,8 +387,8 @@ pub fn settings_sections(app: &App) -> Element<'_, AppMessage> {
     let caches = crate::screens::settings::section(
         "Caches",
         cache_rows,
-        "Lyrics and the server's answers aren't kept on disk, so there is nothing of theirs to \
-         clear. Your listening history and playlists are not a cache and stay.",
+        "The server's answers aren't kept on disk, so there is nothing of theirs to clear. Your \
+         listening history and playlists are not a cache and stay.",
     );
     column![file, logging, caches].spacing(24).into()
 }
@@ -517,10 +526,11 @@ mod tests {
     }
 
     #[test]
-    fn the_artwork_cache_is_the_one_there_is() {
+    fn the_caches_are_artwork_and_internet_lyrics() {
         let paths = crate::config::Paths::under(Path::new("/c"), Path::new("/d"), Path::new("/k"));
         let all = caches(&paths);
-        assert_eq!(all.len(), 1);
+        assert_eq!(all.len(), 2);
         assert_eq!(all[0].dir, Path::new("/k/artwork"));
+        assert_eq!(all[1].dir, Path::new("/k/lyrics"));
     }
 }
