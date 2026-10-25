@@ -44,6 +44,7 @@ pub enum Msg {
     LoadDevices,
     Devices(Result<Vec<OutputDevice>, String>),
     ChooseDevice(DeviceChoice),
+    Transcode(crate::sound::Transcode),
     Sleep(Choice),
     SleepMinutes(String),
     SleepCustom,
@@ -269,6 +270,11 @@ impl App {
                 }
             }
             Msg::LoadDevices => list_devices(),
+            Msg::Transcode(transcode) => {
+                self.config.sound.transcode = transcode.sanitised();
+                self.save_config();
+                Task::none()
+            }
             Msg::Devices(result) => {
                 self.listening.devices = Some(result);
                 Task::none()

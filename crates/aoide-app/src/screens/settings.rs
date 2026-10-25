@@ -164,6 +164,7 @@ pub fn view<'a>(
             ),
             switch("Infinity", settings.infinity, Toggle::Infinity),
             crate::screens::equalizer::settings_row(&extras.config.sound),
+            crate::player_menu::transcode_rows(&extras.config.sound.transcode),
         ],
         "Crossfade fades one song into the next instead of stopping between them, longer when \
          the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album \

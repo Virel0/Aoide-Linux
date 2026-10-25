@@ -286,3 +286,72 @@ pub fn open_full<'a>(art: Element<'a, Message>) -> Element<'a, Message> {
         .on_press(Message::Listening(Msg::OpenFull))
         .into()
 }
+
+/// Transcoding, in Settings → Playback: the switch, and while it is on the
+/// bitrate and the format.
+pub fn transcode_rows<'a>(transcode: &crate::sound::Transcode) -> Element<'a, Message> {
+    use crate::sound::{Transcode, TranscodeFormat};
+    let t = *transcode;
+    let set = move |t: Transcode| Message::Listening(Msg::Transcode(t));
+    let note = if t.enabled {
+        format!(
+            "Your server converts each song to {} at {} kbps before sending it: less data, but \
+             no gapless joins. Songs queued from now on.",
+            t.format, t.bitrate_kbps
+        )
+    } else {
+        "Songs come as they are on the server, unless this computer can't play the format."
+            .to_owned()
+    };
+    let mut rows = column![
+        iced::widget::toggler(t.enabled)
+            .label("Transcode Streams")
+            .width(Fill)
+            .on_toggle(move |enabled| set(Transcode { enabled, ..t })),
+        crate::widgets::secondary(note).size(13),
+    ]
+    .spacing(8);
+    if t.enabled {
+        let bitrates: Vec<String> = Transcode::BITRATES
+            .iter()
+            .map(|b| format!("{b} kbps"))
+            .collect();
+        rows = rows.push(
+            row![
+                text("Bitrate").width(Fill),
+                pick_list(
+                    bitrates,
+                    Some(format!("{} kbps", t.bitrate_kbps)),
+                    move |label: String| {
+                        let kbps = label
+                            .split(' ')
+                            .next()
+                            .and_then(|n| n.parse().ok())
+                            .unwrap_or(t.bitrate_kbps);
+                        set(Transcode {
+                            bitrate_kbps: kbps,
+                            ..t
+                        })
+                    }
+                )
+                .padding([6, 10])
+                .text_size(14)
+                .width(Length::Fixed(160.0)),
+            ]
+            .align_y(Center),
+        );
+        rows = rows.push(
+            row![
+                text("Format").width(Fill),
+                pick_list(TranscodeFormat::ALL, Some(t.format), move |format| {
+                    set(Transcode { format, ..t })
+                })
+                .padding([6, 10])
+                .text_size(14)
+                .width(Length::Fixed(160.0)),
+            ]
+            .align_y(Center),
+        );
+    }
+    rows.into()
+}

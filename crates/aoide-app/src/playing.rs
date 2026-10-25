@@ -235,6 +235,7 @@ impl App {
                 )
                 .ok()
             })
+            .map(|built| crate::sound::transcoded(built, &self.config.sound.transcode))
             .collect();
         let result = match pending.how {
             Destination::Play {
