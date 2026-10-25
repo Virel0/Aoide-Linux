@@ -366,6 +366,27 @@ pub fn track_list_with_headings<'a>(
     list.into()
 }
 
+/// A row's second line. An album's own list names the artist only where it
+/// is not the album's artist, as Apple Music does; other lists always name
+/// it, and the album too when they say so.
+fn subtitle(track: &TrackMeta, style: ListStyle) -> Option<String> {
+    if style.numbered && !style.show_album {
+        let same = track
+            .album_artist
+            .as_deref()
+            .is_some_and(|a| a.trim().eq_ignore_ascii_case(track.artist.trim()));
+        return (!same && !track.artist.is_empty()).then(|| track.artist.clone());
+    }
+    Some(if style.show_album && !track.album.is_empty() {
+        format!("{} · {}", track.artist, track.album)
+    } else {
+        track.artist.clone()
+    })
+}
+
+/// A title and a line under it, at the sizes a track row uses.
+const TWO_LINES: f32 = 34.0;
+
 /// One track row.
 pub fn track_row<'a>(
     track: &'a TrackMeta,
@@ -401,11 +422,7 @@ pub fn track_row<'a>(
             4.0,
         )
     };
-    let subtitle = if style.show_album && !track.album.is_empty() {
-        format!("{} · {}", track.artist, track.album)
-    } else {
-        track.artist.clone()
-    };
+    let subtitle = subtitle(track, style);
     let favourite = view
         .favourites
         .get(&track.id)
@@ -421,23 +438,25 @@ pub fn track_row<'a>(
                 tracks: vec![track.clone()],
             })
         });
-    let body = row![
-        lead,
-        column![
-            text(track.title.as_str())
-                .size(14)
-                .wrapping(text::Wrapping::None)
-                .style(move |t| text::Style {
-                    color: playing.then(|| theme::accent(t)),
-                }),
-            secondary(subtitle).size(12).wrapping(text::Wrapping::None),
-        ]
-        .spacing(2)
+    let mut lines = column![
+        text(track.title.as_str())
+            .size(14)
+            .wrapping(text::Wrapping::None)
+            .style(move |t| text::Style {
+                color: playing.then(|| theme::accent(t)),
+            }),
+    ];
+    if let Some(subtitle) = subtitle {
+        lines = lines.push(secondary(subtitle).size(12).wrapping(text::Wrapping::None));
+    }
+    // Every row as tall as one with two lines, the title centred when it is
+    // alone: an album's rows stay even where only some name an artist.
+    let lines = container(lines.spacing(2).clip(true))
         .width(Fill)
-        .clip(true),
-    ]
-    .spacing(12)
-    .align_y(Center);
+        .height(Length::Fixed(TWO_LINES))
+        .align_y(Center)
+        .clip(true);
+    let body = row![lead, lines].spacing(12).align_y(Center);
     let body = if favourite {
         body.push(icon(Icon::HeartFilled, 14.0, Tone::Accent))
     } else {
@@ -683,5 +702,44 @@ mod tests {
         assert_eq!(duration(0), "0:00");
         assert_eq!(duration(65_400), "1:05");
         assert_eq!(duration(3_723_000), "1:02:03");
+    }
+
+    #[test]
+    fn an_album_list_names_the_artist_only_where_it_differs() {
+        let track = |artist: &str| {
+            let mut meta = TrackMeta::from_item(
+                &serde_json::from_value(serde_json::json!({
+                    "Id": "t1", "Name": "Harbour Lights", "Type": "Audio",
+                    "Album": "Low Tide Radio", "AlbumArtist": "The Quiet Engines",
+                }))
+                .unwrap(),
+            );
+            meta.artist = artist.into();
+            meta
+        };
+        let album = ListStyle {
+            numbered: true,
+            show_album: false,
+        };
+        assert_eq!(subtitle(&track("The Quiet Engines"), album), None);
+        assert_eq!(subtitle(&track("the quiet engines "), album), None);
+        assert_eq!(
+            subtitle(&track("The Quiet Engines, Mara Vey"), album).as_deref(),
+            Some("The Quiet Engines, Mara Vey")
+        );
+        let unknown = TrackMeta {
+            album_artist: None,
+            ..track("Mara Vey")
+        };
+        assert_eq!(subtitle(&unknown, album).as_deref(), Some("Mara Vey"));
+        // Anywhere else, the artist is always there.
+        let songs = ListStyle {
+            numbered: false,
+            show_album: true,
+        };
+        assert_eq!(
+            subtitle(&track("The Quiet Engines"), songs).as_deref(),
+            Some("The Quiet Engines · Low Tide Radio")
+        );
     }
 }
