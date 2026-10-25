@@ -164,7 +164,7 @@ pub fn load_key(keyring: Arc<dyn CredentialStore>) -> Task<AppMessage> {
 pub async fn read_key(keyring: Arc<dyn CredentialStore>) -> Result<ApiKey, String> {
     blocking(move || KeyringApiKeys(keyring).load())
         .await?
-        .ok_or_else(|| "No OpenRouter key is set. Add one in Settings → Smart Search.".to_owned())
+        .ok_or_else(|| "No OpenRouter key is set. Add one in Settings → Smart search.".to_owned())
 }
 
 /// How many songs a description finds at most.
@@ -540,7 +540,7 @@ pub fn settings_section<'a>(
     };
     let mut key_row = row![
         column![
-            text("OpenRouter Key"),
+            text("OpenRouter key"),
             widgets::secondary(key_line).size(13)
         ]
         .spacing(2)
@@ -592,7 +592,7 @@ pub fn settings_section<'a>(
             column![text("Model"), widgets::secondary(settings.model()).size(13)]
                 .spacing(2)
                 .width(Fill),
-            button(text("Show Models").size(13))
+            button(text("Show models").size(13))
                 .style(theme::tonal)
                 .padding([4, 10])
                 .on_press_maybe(
@@ -613,7 +613,7 @@ pub fn settings_section<'a>(
                 )
                 .padding(8)
                 .style(theme::field),
-            button(text("Use This Id").size(13))
+            button(text("Use this ID").size(13))
                 .style(theme::tonal)
                 .padding([6, 12])
                 .on_press_maybe(
@@ -664,7 +664,7 @@ pub fn settings_section<'a>(
     }
 
     crate::screens::settings::section(
-        "Smart Search",
+        "Smart search",
         rows,
         "Search by description and Mixes ask a language model on OpenRouter to turn your words \
          into filters; your server then finds the songs. Only the words you typed and your \

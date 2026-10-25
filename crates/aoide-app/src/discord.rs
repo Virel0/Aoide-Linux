@@ -242,7 +242,7 @@ pub fn settings_section<'a>(
         rows = rows
             .push(
                 row![
-                    text("Status Shows").width(Fill),
+                    text("Status shows").width(Fill),
                     pick_list(Display::ALL, Some(Display(options.display)), |d| {
                         AppMessage::Discord(Message::Display(d))
                     })
@@ -251,13 +251,13 @@ pub fn settings_section<'a>(
                 .align_y(Center),
             )
             .push(switch(
-                "Show When Paused",
+                "Show when paused",
                 options.show_when_paused,
                 Message::ShowWhenPaused,
             ))
-            .push(switch("Show Cover", options.show_cover, Message::ShowCover))
+            .push(switch("Show cover", options.show_cover, Message::ShowCover))
             .push(switch(
-                "Playing and Paused Badge",
+                "Playing and paused badge",
                 options.show_state_icon,
                 Message::StateIcon,
             ))

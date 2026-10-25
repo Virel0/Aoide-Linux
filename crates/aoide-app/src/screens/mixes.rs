@@ -118,10 +118,10 @@ impl State {
                         widgets::secondary(
                             "A language model turns your description into rules; your library \
                              and your listening history pick the songs. Add a key in Settings → \
-                             Smart Search."
+                             Smart search."
                         )
                         .size(13),
-                        button(text("Open Settings").size(13))
+                        button(text("Open settings").size(13))
                             .style(theme::tonal)
                             .padding([6, 12])
                             .on_press(App::Section(Section::Settings)),
@@ -202,7 +202,7 @@ impl State {
                     text(if self.saving {
                         "Saving…"
                     } else {
-                        "Save as Smart Playlist"
+                        "Save as smart playlist"
                     })
                     .size(14),
                 )

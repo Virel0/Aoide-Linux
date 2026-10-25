@@ -253,7 +253,7 @@ pub fn settings_row<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> {
     let interface = extras.config.interface.clone();
     column![
         toggler(interface.internet_lyrics)
-            .label("Find Lyrics on the Internet")
+            .label("Find lyrics on the internet")
             .width(Fill)
             .style(crate::theme::switch)
             .on_toggle(move |on| {

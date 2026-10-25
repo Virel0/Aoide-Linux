@@ -166,7 +166,7 @@ pub fn view<'a>(
         column![
             switch("Crossfade", settings.crossfade, Toggle::Crossfade),
             switch(
-                "Keep Albums Whole",
+                "Keep albums whole",
                 settings.keep_albums_whole,
                 Toggle::KeepAlbumsWhole
             ),
@@ -175,19 +175,19 @@ pub fn view<'a>(
             crate::player_menu::transcode_rows(&extras.config.sound.transcode),
         ],
         "Crossfade fades one song into the next instead of stopping between them, longer when \
-         the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album \
+         the two are at the same tempo. Keep albums whole leaves consecutive tracks of one album \
          running straight into each other, the way they were sequenced. Infinity keeps the queue \
          going when it runs out, with songs your server picks to follow the one playing.",
     );
     let sound = section(
         "Sound",
         column![
-            switch("Skip Silence", settings.skip_silence, Toggle::SkipSilence),
-            switch("Level Volume", settings.level_volume, Toggle::LevelVolume),
+            switch("Skip silence", settings.skip_silence, Toggle::SkipSilence),
+            switch("Level volume", settings.level_volume, Toggle::LevelVolume),
             crate::player_menu::device_row(&extras),
         ],
-        "Skip Silence plays only the span of each track your server measured as sound. Level \
-         Volume turns loud records down to the same loudness; a quieter track is left alone, \
+        "Skip silence plays only the span of each track your server measured as sound. Level \
+         volume turns loud records down to the same loudness; a quieter track is left alone, \
          never turned up. A file with its own ReplayGain tags plays by them instead, album gain \
          first, never louder than its peak allows. Tracks with neither play as they are.",
     );
@@ -254,10 +254,10 @@ pub fn view<'a>(
         }
     }
     let hidden = section(
-        "Hidden from Mixes",
+        "Hidden from mixes",
         hidden_rows,
-        "Songs marked Not Interested stay out of Infinity; songs marked Don't Count Plays leave \
-         your history alone. Clear a song to undo both.",
+        "Songs marked \u{201c}Not interested\u{201d} stay out of Infinity; songs marked \
+         \u{201c}Don't count plays\u{201d} leave your history alone. Clear a song to undo both.",
     );
 
     let mut account_rows = column![];
@@ -290,7 +290,7 @@ pub fn view<'a>(
             button(text(if sync.running {
                 "Syncing…"
             } else {
-                "Sync Now"
+                "Sync now"
             }))
             .style(theme::tonal)
             .padding([6, 14])
@@ -305,7 +305,7 @@ pub fn view<'a>(
             column![
                 text("Sign out of Aoide? You'll need your server address and password to sign back in."),
                 row![
-                    button("Sign Out")
+                    button("Sign out")
                         .style(theme::destructive)
                         .padding([6, 14])
                         .on_press(App::SignOut),
@@ -319,7 +319,7 @@ pub fn view<'a>(
             .spacing(8),
         )
     } else {
-        button("Sign Out")
+        button("Sign out")
             .style(theme::destructive)
             .padding([6, 14])
             .on_press(message(Message::SignOut))
@@ -351,7 +351,7 @@ fn server_section<'a>() -> Element<'a, App> {
         "Server",
         column![
             row![
-                text("Rescan Library").width(Fill),
+                text("Rescan library").width(Fill),
                 button(text("Rescan"))
                     .style(theme::tonal)
                     .padding([6, 14])
@@ -371,7 +371,7 @@ fn infinity_albums_section<'a>(settings: &Settings, key: u64) -> Element<'a, App
         column![
             toggler(settings.infinity_albums)
                 .style(theme::switch)
-                .label("Add Whole Albums")
+                .label("Add whole albums")
                 .width(Fill)
                 .on_toggle(move |on| {
                     App::Page(

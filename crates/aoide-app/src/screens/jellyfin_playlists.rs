@@ -53,8 +53,8 @@ pub fn switcher<'a>(jellyfin: bool) -> Element<'a, AppMessage> {
             .on_press(AppMessage::Section(section))
     };
     row![
-        tab("Aoide Playlists", !jellyfin, Section::Playlists),
-        tab("Jellyfin Playlists", jellyfin, Section::JellyfinPlaylists),
+        tab("Aoide playlists", !jellyfin, Section::Playlists),
+        tab("Jellyfin playlists", jellyfin, Section::JellyfinPlaylists),
     ]
     .spacing(8)
     .into()
@@ -154,7 +154,7 @@ impl State {
             button(text(if self.creating {
                 "Making…"
             } else {
-                "New Playlist"
+                "New playlist"
             }))
             .style(theme::filled)
             .padding([8, 14])

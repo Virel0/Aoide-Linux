@@ -238,7 +238,7 @@ impl State {
         let mut part = column![].spacing(12);
         if view.smart_search && looks_like_a_phrase(term) && shown.is_none() {
             part = part.push(
-                button(text("Search by Description").size(13))
+                button(text("Search by description").size(13))
                     .style(theme::tonal)
                     .padding([6, 12])
                     .on_press(App::Page(key, PageMsg::Search(Message::Describe))),
@@ -260,7 +260,7 @@ impl State {
                 }
                 if !found.songs.is_empty() {
                     part = part
-                        .push(text("Songs by Description").size(20).font(widgets::BOLD))
+                        .push(text("Songs by description").size(20).font(widgets::BOLD))
                         .push(widgets::track_list(
                             &found.songs,
                             view,

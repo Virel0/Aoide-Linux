@@ -39,7 +39,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             6.0,
         )),
         column![
-            text(current.map_or("Not Playing", |m| m.title.as_str()))
+            text(current.map_or("Not playing", |m| m.title.as_str()))
                 .size(14)
                 .font(widgets::SEMIBOLD)
                 .wrapping(text::Wrapping::None),

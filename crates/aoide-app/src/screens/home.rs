@@ -169,11 +169,11 @@ impl State {
 
     fn shelves(&self) -> [(&'static str, &Load<Vec<Tile>>); 5] {
         [
-            ("Recently Added", &self.added),
-            ("Recently Played", &self.played),
-            ("Most Played", &self.most),
-            ("Recently Released", &self.released),
-            ("Random Albums", &self.random),
+            ("Recently added", &self.added),
+            ("Recently played", &self.played),
+            ("Most played", &self.most),
+            ("Recently released", &self.released),
+            ("Random albums", &self.random),
         ]
     }
 
@@ -292,7 +292,7 @@ fn resume_grid<'a>(cards: &'a [crate::handoff::Card], view: &View<'a>) -> Elemen
         }
         rows = rows.push(line);
     }
-    column![text("Jump Back In").size(20).font(widgets::BOLD), rows]
+    column![text("Jump back in").size(20).font(widgets::BOLD), rows]
         .spacing(10)
         .into()
 }

@@ -94,8 +94,8 @@ impl Section {
             Section::Mixes => "Mixes",
             Section::Favourites => "Favourites",
             Section::Replay => "Replay",
-            Section::JellyfinPlaylists => "Jellyfin Playlists",
-            Section::Collections => "New Collection",
+            Section::JellyfinPlaylists => "Jellyfin playlists",
+            Section::Collections => "New collection",
             Section::Collection(_) => "Collection",
         }
     }

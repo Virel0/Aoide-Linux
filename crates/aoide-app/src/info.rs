@@ -74,7 +74,7 @@ pub fn lines(details: &ItemDetails) -> Vec<(&'static str, String)> {
         "Artist",
         (!item.artists.is_empty()).then(|| item.artists.join(", ")),
     );
-    add("Album Artist", item.album_artist.clone());
+    add("Album artist", item.album_artist.clone());
     add("Album", item.album.clone());
     add(
         "Track",
@@ -105,13 +105,13 @@ pub fn lines(details: &ItemDetails) -> Vec<(&'static str, String)> {
         },
     );
     add(
-        "Bit Rate",
+        "Bit rate",
         details
             .bitrate
             .map(|b| format!("{} kbps", (b + 500) / 1_000)),
     );
     add(
-        "Sample Rate",
+        "Sample rate",
         details.sample_rate.map(|r| {
             let khz = f64::from(r) / 1_000.0;
             if khz.fract() == 0.0 {
@@ -121,7 +121,7 @@ pub fn lines(details: &ItemDetails) -> Vec<(&'static str, String)> {
             }
         }),
     );
-    add("Bit Depth", details.bit_depth.map(|d| format!("{d}-bit")));
+    add("Bit depth", details.bit_depth.map(|d| format!("{d}-bit")));
     add(
         "Channels",
         match (details.channels, &details.channel_layout) {
@@ -132,7 +132,7 @@ pub fn lines(details: &ItemDetails) -> Vec<(&'static str, String)> {
         },
     );
     add("Size", details.size.map(size));
-    add("Date Added", details.date_added.map(date));
+    add("Date added", details.date_added.map(date));
     add(
         "Plays",
         Some(match details.play_count {
@@ -140,7 +140,7 @@ pub fn lines(details: &ItemDetails) -> Vec<(&'static str, String)> {
             n => format!("{n} (counted when they start)"),
         }),
     );
-    add("Last Played", details.last_played.map(date));
+    add("Last played", details.last_played.map(date));
     add("File", details.path.clone());
     lines
 }
@@ -276,12 +276,12 @@ mod tests {
                 .map(|(_, v)| v.as_str())
         };
         assert_eq!(find("Format"), Some("FLAC"));
-        assert_eq!(find("Bit Rate"), Some("1043 kbps"));
-        assert_eq!(find("Sample Rate"), Some("44.1 kHz"));
+        assert_eq!(find("Bit rate"), Some("1043 kbps"));
+        assert_eq!(find("Sample rate"), Some("44.1 kHz"));
         assert_eq!(find("Channels"), Some("2 (stereo)"));
         assert_eq!(find("Track"), Some("5 (disc 1)"));
         assert_eq!(find("Length"), Some("3:20"));
-        assert_eq!(find("Date Added"), None, "unknown is left out");
+        assert_eq!(find("Date added"), None, "unknown is left out");
         assert_eq!(find("Plays"), Some("3 (counted when they start)"));
     }
 }

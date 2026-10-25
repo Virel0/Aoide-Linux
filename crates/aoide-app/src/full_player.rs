@@ -261,7 +261,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
         }
     });
     let words = column![
-        text(current.map_or("Not Playing", |m| m.title.as_str()))
+        text(current.map_or("Not playing", |m| m.title.as_str()))
             .size(30)
             .font(widgets::BOLD),
         widgets::secondary(subtitle).size(17),

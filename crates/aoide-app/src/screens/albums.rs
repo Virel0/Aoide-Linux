@@ -46,8 +46,8 @@ impl fmt::Display for AlbumSort {
         f.write_str(match self {
             AlbumSort::Title => "Title",
             AlbumSort::Artist => "Artist",
-            AlbumSort::RecentlyAdded => "Recently Added",
-            AlbumSort::ReleaseDate => "Release Date",
+            AlbumSort::RecentlyAdded => "Recently added",
+            AlbumSort::ReleaseDate => "Release date",
         })
     }
 }

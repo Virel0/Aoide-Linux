@@ -148,7 +148,7 @@ impl State {
         if !self.top.is_empty() {
             body = body.push(
                 column![
-                    text("Top Songs").size(20).font(widgets::BOLD),
+                    text("Top songs").size(20).font(widgets::BOLD),
                     widgets::track_list(
                         &self.top,
                         view,

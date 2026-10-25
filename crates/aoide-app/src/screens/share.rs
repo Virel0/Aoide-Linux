@@ -344,7 +344,7 @@ impl State {
             // The owner stops a share; the person it was shared with can leave it.
             let (stop, question) = if mine {
                 (
-                    "Stop Sharing",
+                    "Stop sharing",
                     "Stop sharing with them? Changes stop reaching them; nothing they already changed is undone.",
                 )
             } else {
@@ -383,7 +383,7 @@ impl State {
             };
             shared = shared.push(line);
         }
-        body = body.push(section("Shared With", shared.into()));
+        body = body.push(section("Shared with", shared.into()));
 
         let already: Vec<&str> = snapshot
             .shares
@@ -449,7 +449,7 @@ impl State {
                 .into()
             }
         };
-        body = body.push(section("Share With", add));
+        body = body.push(section("Share with", add));
         if let Some(note) = &self.note {
             body = body.push(match note {
                 Ok(note) => widgets::secondary(note.as_str()).size(13).into(),
@@ -462,7 +462,7 @@ impl State {
                 n => format!("{n} of your edits to it are"),
             };
             body = body.push(section(
-                "Held Back",
+                "Held back",
                 widgets::secondary(format!(
                     "{count} held: its owner no longer shares it with you for editing. They're \
                      kept, and go with the next sync if it's shared with you again."

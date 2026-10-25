@@ -188,7 +188,7 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
         let interface = interface.clone();
         toggler(interface.track_in_title)
             .style(theme::switch)
-            .label("Show the Song in the Window Title")
+            .label("Show the song in the window title")
             .width(Fill)
             .on_toggle(move |on| {
                 let mut change = interface.clone();
@@ -231,7 +231,7 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
             );
         }
         row![
-            text("Accent Colour").width(Fill),
+            text("Accent colour").width(Fill),
             swatches,
             widgets::secondary(interface.accent.title())
                 .size(13)

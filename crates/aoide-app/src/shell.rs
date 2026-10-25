@@ -145,13 +145,13 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             item(label, Icon::Genre, section).into()
         })
         .push(item(
-            "New Collection…".into(),
+            "New collection…".into(),
             Icon::Plus,
             Section::Collections,
         )),
     );
     if !signed.playlists.is_empty() {
-        body = body.push(heading("Aoide Playlists")).push(lists);
+        body = body.push(heading("Aoide playlists")).push(lists);
     }
     let mut footer = column![item("Settings".into(), Icon::Settings, Section::Settings)].spacing(4);
     if let Some(Err(status)) = &signed.sync_status {
@@ -184,8 +184,8 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             "This computer has listening history and playlists from before accounts were \
              recorded. Are they yours?",
             Some((
-                ("Keep Them", Message::ResolveOwner { keep: true }),
-                ("Erase Them", Message::ConfirmErase(true)),
+                ("Keep them", Message::ResolveOwner { keep: true }),
+                ("Erase them", Message::ConfirmErase(true)),
             )),
         ));
     }

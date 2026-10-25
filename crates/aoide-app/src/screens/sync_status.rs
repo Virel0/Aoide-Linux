@@ -77,7 +77,7 @@ pub fn ago(then: Millis, now: Millis) -> String {
 fn kind(table: &str) -> &str {
     use aoide_store::SyncEntity as E;
     match E::from_local_table(table) {
-        Some(E::TrackFlags) => "taste flags (Not Interested, Don't Count Plays)",
+        Some(E::TrackFlags) => "taste flags (not interested, don't count plays)",
         Some(E::Like) => "likes",
         Some(E::QueueState) => "the queue for handoff",
         Some(E::PlayEvent) => "plays",
@@ -400,7 +400,7 @@ impl State {
         }
         let running = overview.running;
         let mut actions = row![
-            button(text(if running { "Syncing…" } else { "Sync Now" }))
+            button(text(if running { "Syncing…" } else { "Sync now" }))
                 .style(theme::filled)
                 .padding([8, 16])
                 .on_press_maybe((!running).then_some(AppMessage::SyncPanel(Msg::SyncNow(key)))),
@@ -410,8 +410,8 @@ impl State {
         if overview.retryable > 0 {
             actions = actions.push(
                 button(text(match overview.retryable {
-                    1 => "Retry 1 Change".to_owned(),
-                    n => format!("Retry {n} Changes"),
+                    1 => "Retry 1 change".to_owned(),
+                    n => format!("Retry {n} changes"),
                 }))
                 .style(theme::tonal)
                 .padding([8, 16])
@@ -419,7 +419,7 @@ impl State {
             );
         }
         actions = actions.push(
-            button(text("Repair Covers"))
+            button(text("Repair covers"))
                 .style(theme::tonal)
                 .padding([8, 16])
                 .on_press(AppMessage::Covers(crate::covers::Msg::Repair { key })),
@@ -429,7 +429,7 @@ impl State {
             .push(actions)
             .push(
                 widgets::secondary(
-                    "Repair Covers gives each playlist that has no picture the cover of the \
+                    "Repair covers gives each playlist that has no picture the cover of the \
                      one Jellyfin playlist with exactly its name, and leaves the rest alone.",
                 )
                 .size(12),

@@ -522,8 +522,8 @@ impl State {
                 })
             }));
         let cover_tools = row![
-            small("Choose Cover…", Some(Message::ChooseCover)),
-            small("Remove Cover", has_picture.then_some(Message::RemoveCover)),
+            small("Choose cover…", Some(Message::ChooseCover)),
+            small("Remove cover", has_picture.then_some(Message::RemoveCover)),
             share,
         ]
         .spacing(8);

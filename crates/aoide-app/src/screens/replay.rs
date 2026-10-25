@@ -225,7 +225,7 @@ impl State {
         if !self.top.is_empty() {
             body = body.push(
                 column![
-                    text("Top Songs").size(20).font(widgets::BOLD),
+                    text("Top songs").size(20).font(widgets::BOLD),
                     widgets::track_list(
                         &self.top,
                         view,
@@ -241,7 +241,7 @@ impl State {
         }
         if !recap.top_artists.is_empty() {
             body = body.push(ranked(
-                "Top Artists",
+                "Top artists",
                 recap
                     .top_artists
                     .iter()
@@ -250,7 +250,7 @@ impl State {
         }
         if !recap.top_albums.is_empty() {
             body = body.push(ranked(
-                "Top Albums",
+                "Top albums",
                 recap
                     .top_albums
                     .iter()

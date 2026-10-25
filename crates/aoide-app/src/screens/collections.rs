@@ -312,7 +312,7 @@ impl State {
         let title = if self.saved {
             self.filter.name.as_str()
         } else {
-            "New Collection"
+            "New collection"
         };
         let chip = |label: String, on: bool, m: Message| -> Element<'a, AppMessage> {
             button(text(label).size(13))
@@ -415,9 +415,9 @@ impl State {
                 .padding(8)
                 .style(theme::field),
             button(text(if self.saved {
-                "Save Changes"
+                "Save changes"
             } else {
-                "Save as Collection"
+                "Save as collection"
             }))
             .style(theme::filled)
             .padding([8, 14])

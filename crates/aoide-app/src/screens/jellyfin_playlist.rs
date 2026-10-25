@@ -413,11 +413,11 @@ impl State {
         });
         tools = tools
             .push(small(
-                "Choose Cover…",
+                "Choose cover…",
                 (!self.busy).then_some(Message::ChooseCover),
             ))
             .push(small(
-                "Remove Cover",
+                "Remove cover",
                 (!self.busy && self.art.is_some()).then_some(Message::RemoveCover),
             ));
         tools = tools.push(

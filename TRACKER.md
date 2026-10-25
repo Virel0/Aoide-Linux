@@ -184,8 +184,6 @@ earlier. Each is his to make; nothing here is built yet.
 - **The Flatpak's keyring access**: `--talk-name=org.freedesktop.secrets`
   reaches the whole unlocked keyring. The Secret portal would scope it to
   the app, but needs another keyring library (oo7) in place of keyring 3.6.
-- **Title Case or sentence case** for the app's wording (it is Apple-style
-  Title Case now, with a few exceptions).
 - **Settings layout**: one long page now; sections or tabs, and switches on
   the right, as macOS has them.
 - **Error messages**: they show raw transport errors and have no Retry.

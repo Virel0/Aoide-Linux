@@ -204,8 +204,8 @@ pub fn device_options(
     let default = listed.iter().find(|d| d.is_default);
     let mut options = vec![DeviceOption {
         label: match default {
-            Some(device) => format!("System Default ({})", device.name),
-            None => "System Default".to_owned(),
+            Some(device) => format!("System default ({})", device.name),
+            None => "System default".to_owned(),
         },
         choice: DeviceChoice::FollowDefault,
     }];
@@ -510,7 +510,7 @@ impl CompressorField {
             CompressorField::Ratio => "Ratio",
             CompressorField::Attack => "Attack",
             CompressorField::Release => "Release",
-            CompressorField::Makeup => "Makeup Gain",
+            CompressorField::Makeup => "Makeup gain",
             CompressorField::Knee => "Knee",
         }
     }
@@ -707,12 +707,12 @@ mod tests {
         ];
         let options = device_options(&listed, &DeviceChoice::FollowDefault);
         let labels: Vec<&str> = options.iter().map(|o| o.label.as_str()).collect();
-        assert_eq!(labels, ["System Default (PipeWire)", "PipeWire", "USB DAC"]);
+        assert_eq!(labels, ["System default (PipeWire)", "PipeWire", "USB DAC"]);
         assert_eq!(
             chosen_option(&options, &DeviceChoice::FollowDefault)
                 .unwrap()
                 .label,
-            "System Default (PipeWire)"
+            "System default (PipeWire)"
         );
         let usb = DeviceChoice::from(&listed[1]);
         assert_eq!(chosen_option(&options, &usb).unwrap().label, "USB DAC");
@@ -746,7 +746,7 @@ mod tests {
         // Nothing listed at all: the default without a name.
         assert_eq!(
             device_options(&[], &DeviceChoice::FollowDefault)[0].label,
-            "System Default"
+            "System default"
         );
     }
 

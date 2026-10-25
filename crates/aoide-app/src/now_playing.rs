@@ -43,7 +43,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, panel: Panel) -> Element<'a, M
             Length::Fixed(220.0),
             10.0,
         ),
-        text(current.map_or("Not Playing", |m| m.title.as_str()))
+        text(current.map_or("Not playing", |m| m.title.as_str()))
             .size(16)
             .font(widgets::BOLD),
         widgets::secondary(current.map_or("", |m| m.artist.as_str())).size(13),

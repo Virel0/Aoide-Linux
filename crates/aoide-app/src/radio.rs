@@ -110,7 +110,7 @@ pub fn start_button<'a>(station: Station) -> Element<'a, Message> {
     button(
         row![
             icon(Icon::Radio, 14.0, Tone::Accent),
-            text("Start Radio").wrapping(text::Wrapping::None)
+            text("Start radio").wrapping(text::Wrapping::None)
         ]
         .spacing(6)
         .align_y(Center),

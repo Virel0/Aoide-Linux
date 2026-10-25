@@ -68,12 +68,12 @@ fn more(app: &App) -> Element<'_, Message> {
         ),
         item(
             Some(Icon::Expand),
-            "Full-Screen Player",
+            "Full-screen player",
             Message::Listening(Msg::OpenFull)
         ),
         check_item(
             app.listening.private,
-            "Private Listening",
+            "Private listening",
             Message::Listening(Msg::Private(!app.listening.private))
         ),
         container(
@@ -84,7 +84,7 @@ fn more(app: &App) -> Element<'_, Message> {
         )
         .padding([0, 10]),
         rule::horizontal(1),
-        heading("What You're Doing"),
+        heading("What you're doing"),
     ]
     .spacing(2);
     // None first and always there: taking a tag off is as cheap as putting
@@ -113,7 +113,7 @@ fn more(app: &App) -> Element<'_, Message> {
             .padding([0, 10]),
         )
         .push(rule::horizontal(1))
-        .push(heading("Sleep Timer"));
+        .push(heading("Sleep timer"));
     if let Some(timer) = &app.listening.sleep {
         let left = match timer {
             SleepTimer::At { .. } => format!("{} left", timer.label(app.now())),
@@ -121,7 +121,7 @@ fn more(app: &App) -> Element<'_, Message> {
         };
         list = list.push(item(
             Some(Icon::Close),
-            format!("Turn Off ({left})"),
+            format!("Turn off ({left})"),
             Message::Listening(Msg::SleepCancel),
         ));
     }
@@ -130,12 +130,12 @@ fn more(app: &App) -> Element<'_, Message> {
     list = list
         .push(check_item(
             matches!(armed, Some(SleepTimer::EndOfSong { .. })),
-            "End of Song",
+            "End of song",
             sleep(Choice::EndOfSong),
         ))
         .push(check_item(
             matches!(armed, Some(SleepTimer::EndOfAlbum { .. })),
-            "End of Album",
+            "End of album",
             sleep(Choice::EndOfAlbum),
         ));
     if !playing {
@@ -149,7 +149,7 @@ fn more(app: &App) -> Element<'_, Message> {
     for minutes in Choice::PRESETS {
         list = list.push(check_item(
             false,
-            format!("{minutes} Minutes"),
+            format!("{minutes} minutes"),
             sleep(Choice::Minutes(minutes)),
         ));
     }
@@ -276,7 +276,7 @@ fn outputs(app: &App) -> Element<'_, Message> {
         Some(Ok(listed)) => listed.as_slice(),
         _ => &[],
     };
-    let mut list = Column::new().spacing(2).push(heading("Play On"));
+    let mut list = Column::new().spacing(2).push(heading("Play on"));
     for option in crate::sound::device_options(listed, chosen) {
         let on = crate::sound::chosen_option(std::slice::from_ref(&option), chosen).is_some();
         list = list.push(check_item(
@@ -372,7 +372,7 @@ pub fn transcode_rows<'a>(transcode: &crate::sound::Transcode) -> Element<'a, Me
     let mut rows = column![
         iced::widget::toggler(t.enabled)
             .style(theme::switch)
-            .label("Transcode Streams")
+            .label("Transcode streams")
             .width(Fill)
             .on_toggle(move |enabled| set(Transcode { enabled, ..t })),
         crate::widgets::secondary(note).size(13),
