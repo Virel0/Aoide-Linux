@@ -5,7 +5,7 @@ use iced::widget::{
     Column, button, center, column, container, mouse_area, opaque, row, rule, scrollable, space,
     stack, text,
 };
-use iced::{Center, Color, Element, Fill, Length};
+use iced::{Center, Element, Fill, Length};
 
 use crate::actions::{Menu, RowAction};
 use crate::app::{App, Message, Signed};
@@ -62,11 +62,8 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
     };
     let card = container(widgets::menu_strip(menu, &view)).max_width(560);
     opaque(
-        mouse_area(center(opaque(card)).style(|_| container::Style {
-            background: Some(Color::BLACK.scale_alpha(0.45).into()),
-            ..container::Style::default()
-        }))
-        .on_press(Message::Row(RowAction::Close)),
+        mouse_area(center(opaque(card)).style(theme::scrim))
+            .on_press(Message::Row(RowAction::Close)),
     )
 }
 

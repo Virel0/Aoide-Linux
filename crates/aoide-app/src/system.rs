@@ -2,8 +2,8 @@
 //! the config file ([`SystemSettings`]) and what runs while the app does
 //! ([`State`]).
 
+use iced::Element;
 use iced::widget::{center, column, container, mouse_area, opaque, text};
-use iced::{Color, Element};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{App, Message};
@@ -88,15 +88,5 @@ pub fn sheet<'a>(card: Element<'a, Message>, close: Message) -> Element<'a, Mess
         .padding(20)
         .max_width(560)
         .style(crate::theme::menu);
-    opaque(
-        mouse_area(
-            center(opaque(card))
-                .padding(40)
-                .style(|_| container::Style {
-                    background: Some(Color::BLACK.scale_alpha(0.45).into()),
-                    ..container::Style::default()
-                }),
-        )
-        .on_press(close),
-    )
+    opaque(mouse_area(center(opaque(card)).padding(40).style(crate::theme::scrim)).on_press(close))
 }

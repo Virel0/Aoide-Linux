@@ -89,6 +89,14 @@ pub fn bar(theme: &Theme) -> container::Style {
     }
 }
 
+/// The dimmed window behind a sheet or a tile's actions.
+pub fn scrim(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(Color::BLACK.scale_alpha(0.45))),
+        ..container::Style::default()
+    }
+}
+
 /// Where artwork would be, before it arrives or when there is none.
 pub fn placeholder(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
