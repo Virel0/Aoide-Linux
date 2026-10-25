@@ -24,9 +24,15 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         None => main,
     };
     let window = column![main, player_bar::view(app, signed)];
-    match signed.menu.as_ref().filter(|m| m.collection.is_some()) {
+    let window: Element<'a, Message> = match signed.menu.as_ref().filter(|m| m.collection.is_some())
+    {
         Some(menu) => stack![window, collection_menu(app, signed, menu)].into(),
         None => window.into(),
+    };
+    // The release notes (and the other sheets of Settings → System) on top.
+    match crate::system::overlay(app) {
+        Some(sheet) => stack![window, sheet].into(),
+        None => window,
     }
 }
 
@@ -41,6 +47,7 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
         playlists: &signed.playlists,
         favourites: &signed.favourites,
         can_go_back: false,
+        smart_search: false,
     };
     let card = container(widgets::menu_strip(menu, &view)).max_width(560);
     opaque(
@@ -89,6 +96,7 @@ fn sidebar(signed: &Signed) -> Element<'_, Message> {
         Section::Playlists | Section::Playlist(_) => Icon::Playlist,
         Section::Search => Icon::Search,
         Section::Settings => Icon::Settings,
+        Section::Mixes => Icon::Mix,
     };
 
     let mut library = Column::new().spacing(2);
@@ -153,6 +161,9 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     if let Some(notice) = &app.notice {
         body = body.push(banner(notice, None));
     }
+    if let Some(update) = crate::updates::banner(app) {
+        body = body.push(update);
+    }
     if let Some(reason) = app.playback.unavailable() {
         body = body.push(
             container(widgets::secondary(format!("No sound output: {reason}")).size(12))
@@ -173,6 +184,7 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         playlists: &signed.playlists,
         favourites: &signed.favourites,
         can_go_back: nav.can_go_back(),
+        smart_search: app.smart.has_key(),
     };
     let page = match &entry.page {
         Page::Settings(state) => screens::settings::view(
@@ -185,6 +197,7 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
                 last: signed.sync_status.as_ref(),
             },
             &view,
+            crate::system::settings_sections(app),
         ),
         page => page.view(&view),
     };

@@ -80,6 +80,9 @@ const COMMAND_QUEUE: usize = 32;
 pub struct Link {
     now: watch::Sender<NowPlaying>,
     commands: CommandSource,
+    /// The integration's runtime, for the other desktop services (the tray,
+    /// Discord) to run on; `None` if it could not be built.
+    runtime: Option<tokio::runtime::Handle>,
 }
 
 /// The command channel, handed to the subscription once.
@@ -103,8 +106,19 @@ impl Link {
             commands: CommandSource {
                 receiver: Arc::new(Mutex::new(Some(rx))),
             },
+            runtime: None,
         };
         (link, now_rx, tx)
+    }
+
+    /// The runtime the desktop services run on.
+    pub fn runtime(&self) -> Option<&tokio::runtime::Handle> {
+        self.runtime.as_ref()
+    }
+
+    /// What was last published.
+    pub fn now_playing(&self) -> NowPlaying {
+        self.now.borrow().clone()
     }
 
     /// A link to nothing: what a failed start gets.
@@ -149,7 +163,8 @@ pub fn start(bus: &Bus) -> Start {
         // No session bus: nobody else could be found either.
         Err(_) => (None, None),
     };
-    let (link, now, commands) = Link::new();
+    let (mut link, now, commands) = Link::new();
+    link.runtime = Some(runtime.handle().clone());
     runtime.spawn(serve(bus.clone(), guard, raise, now, commands));
     Start::First(Desktop {
         _runtime: Some(runtime),

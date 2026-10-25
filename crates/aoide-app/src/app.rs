@@ -37,7 +37,7 @@ use crate::theme;
 pub struct App {
     pub(crate) paths: Option<Paths>,
     pub(crate) config: Config,
-    keyring: Arc<dyn CredentialStore>,
+    pub(crate) keyring: Arc<dyn CredentialStore>,
     pub(crate) store: StoreHandle,
     /// Something the listener should know that is not about one screen.
     pub(crate) notice: Option<String>,
@@ -52,6 +52,10 @@ pub struct App {
     phase: Phase,
     login: login::State,
     pub(crate) session: Option<Signed>,
+    /// The tray and the other services of Settings → System.
+    pub(crate) system: crate::system::State,
+    /// Smart search's key and model picker.
+    pub(crate) smart: crate::smart::State,
 }
 
 /// An open page and its place in the stack.
@@ -154,6 +158,14 @@ pub enum Message {
     Notice(String),
     Dismiss,
     Ignore,
+    Tray(crate::tray::Message),
+    Discord(crate::discord::Message),
+    Smart(crate::smart::Message),
+    Mixes(crate::mixes::Request),
+    Update(crate::updates::Message),
+    Palette(crate::palette::Message),
+    /// Settings → System's file, log and cache rows.
+    System(crate::maintenance::Message),
 }
 
 /// The player bar's controls.
@@ -222,6 +234,8 @@ impl App {
                 iced::widget::operation::focus(login::SERVER),
             ),
         };
+        let system = crate::system::State::new(&desktop, &config);
+        let key = crate::smart::load_key(Arc::clone(&keyring));
         let app = Self {
             login: login::State::new(config.last_server.clone()),
             paths,
@@ -237,9 +251,12 @@ impl App {
             clock: Instant::now(),
             phase,
             session: None,
+            system,
+            smart: crate::smart::State::default(),
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
-        (app, Task::batch([theme, restore]))
+        let update = Task::done(Message::Update(crate::updates::Message::Tick));
+        (app, Task::batch([theme, restore, key, update]))
     }
 
     pub fn title(&self) -> String {
@@ -256,6 +273,10 @@ impl App {
             iced::system::theme_changes().map(Message::ThemeChanged),
             window::events().map(|(id, event)| Message::Window(id, event)),
             integration::commands(&self.desktop).map(Message::Desktop),
+            crate::tray::events(&self.system.tray).map(Message::Tray),
+            crate::discord::status(self.system.discord.as_ref()).map(Message::Discord),
+            crate::updates::ticks(&self.config.system.updates).map(Message::Update),
+            crate::palette::keys().map(Message::Palette),
         ])
     }
 
@@ -269,6 +290,7 @@ impl App {
         let task = self.handle(message);
         // The desktop hears only what changed.
         self.publish();
+        self.publish_system();
         if quiet {
             return task;
         }
@@ -298,6 +320,9 @@ impl App {
                         Message::SignedIn,
                     )
                 }
+                login::Action::FindServers => Task::perform(crate::discover::find(), |r| {
+                    Message::Login(login::Message::Found(r))
+                }),
             },
             Message::Restored(result) => match result {
                 Ok(Some(connection)) => self.enter(Event::Restored, connection),
@@ -448,6 +473,13 @@ impl App {
                 Task::none()
             }
             Message::Ignore => Task::none(),
+            Message::Tray(message) => self.tray_message(message),
+            Message::Discord(message) => self.discord_message(message),
+            Message::Smart(message) => self.smart_message(message),
+            Message::Mixes(request) => self.mix_request(request),
+            Message::Update(message) => self.update_message(message),
+            Message::Palette(message) => self.palette_message(message),
+            Message::System(message) => self.maintenance_message(message),
         }
     }
 
@@ -1057,7 +1089,7 @@ impl App {
 
     // MARK: - Playing
 
-    fn transport(&mut self, control: Transport) -> Task<Message> {
+    pub(crate) fn transport(&mut self, control: Transport) -> Task<Message> {
         let result = match control {
             Transport::Toggle => self.playback.toggle(),
             Transport::Next => self.playback.next(),
@@ -1204,7 +1236,7 @@ impl App {
         Task::batch([self.save_queue(), self.check_infinity()])
     }
 
-    fn desktop(&mut self, command: integration::Command) -> Task<Message> {
+    pub(crate) fn desktop(&mut self, command: integration::Command) -> Task<Message> {
         use integration::Command as C;
         let result = match command {
             C::Play => self.playback.play(),
@@ -1239,11 +1271,8 @@ impl App {
                 }
                 result
             }
-            C::Raise => {
-                return self.window.map_or_else(Task::none, |id| {
-                    window::minimize(id, false).chain(window::gain_focus(id))
-                });
-            }
+            // Also out of the tray, if the window is hidden there.
+            C::Raise => return self.show_window(),
             C::Quit => return self.quit(),
         };
         self.result(result)
@@ -1281,14 +1310,15 @@ impl App {
                 Task::none()
             }
             window::Event::Focused => self.request_sync(),
-            window::Event::CloseRequested => self.quit(),
+            window::Event::CloseRequested => self.close_requested(),
+            window::Event::Unfocused => self.window_unfocused(),
             _ => Task::none(),
         }
     }
 
     /// Saves what should outlive the window, waits for the store thread to
     /// finish what it was given, then exits.
-    fn quit(&mut self) -> Task<Message> {
+    pub(crate) fn quit(&mut self) -> Task<Message> {
         self.save_config();
         let _ = self.save_queue();
         let report = self.final_report();

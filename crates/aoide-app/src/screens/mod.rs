@@ -14,6 +14,7 @@ pub mod genre;
 pub mod genres;
 pub mod home;
 pub mod login;
+pub mod mixes;
 pub mod playlist;
 pub mod playlists;
 pub mod search;
@@ -45,16 +46,18 @@ pub enum Section {
     Settings,
     /// One Aoide playlist, by id.
     Playlist(String),
+    Mixes,
 }
 
 impl Section {
-    pub const LIBRARY: [Section; 7] = [
+    pub const LIBRARY: [Section; 8] = [
         Section::Home,
         Section::Albums,
         Section::Artists,
         Section::Songs,
         Section::Genres,
         Section::Playlists,
+        Section::Mixes,
         Section::Search,
     ];
 
@@ -69,6 +72,7 @@ impl Section {
             Section::Search => "Search",
             Section::Settings => "Settings",
             Section::Playlist(_) => "Playlist",
+            Section::Mixes => "Mixes",
         }
     }
 }
@@ -109,6 +113,8 @@ pub struct View<'a> {
     pub playlists: &'a [PlaylistSummary],
     pub favourites: &'a HashMap<String, bool>,
     pub can_go_back: bool,
+    /// An OpenRouter key is set: Search offers search by description.
+    pub smart_search: bool,
 }
 
 /// Something being fetched.
@@ -163,6 +169,7 @@ pub enum Page {
     Playlists(playlists::State),
     Playlist(playlist::State),
     Settings(settings::State),
+    Mixes(mixes::State),
 }
 
 #[derive(Debug, Clone)]
@@ -179,6 +186,7 @@ pub enum PageMsg {
     Playlists(playlists::Message),
     Playlist(playlist::Message),
     Settings(settings::Message),
+    Mixes(mixes::Message),
 }
 
 impl Page {
@@ -194,6 +202,7 @@ impl Page {
             Section::Search => wrap(search::open(), Page::Search),
             Section::Settings => wrap(settings::open(ctx), Page::Settings),
             Section::Playlist(id) => wrap(playlist::open(ctx, id), Page::Playlist),
+            Section::Mixes => wrap(mixes::open(), Page::Mixes),
         }
     }
 
@@ -220,6 +229,7 @@ impl Page {
             (Page::Playlists(state), PageMsg::Playlists(m)) => state.update(m, ctx),
             (Page::Playlist(state), PageMsg::Playlist(m)) => state.update(m, ctx),
             (Page::Settings(state), PageMsg::Settings(m)) => state.update(m),
+            (Page::Mixes(state), PageMsg::Mixes(m)) => state.update(m, ctx.key),
             _ => Task::none(),
         }
     }
@@ -239,6 +249,7 @@ impl Page {
             Page::Playlists(state) => state.view(view),
             Page::Playlist(state) => state.view(view),
             Page::Settings(_) => iced::widget::space().into(),
+            Page::Mixes(state) => state.view(view),
         }
     }
 
@@ -261,6 +272,7 @@ impl Page {
                 .ready()
                 .map(|t| track_art(t))
                 .unwrap_or_default(),
+            Page::Mixes(state) => state.artwork(),
             Page::Genres(_) | Page::Settings(_) | Page::Playlists(_) => Vec::new(),
         }
     }

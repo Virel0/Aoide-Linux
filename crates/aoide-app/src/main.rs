@@ -5,12 +5,18 @@ mod app;
 mod artwork;
 mod config;
 mod credentials;
+mod discord;
+mod discover;
 mod icons;
 mod integration;
 mod library;
+mod logging;
 mod lyrics_panel;
+mod maintenance;
+mod mixes;
 mod nav;
 mod now_playing;
+mod palette;
 mod playback;
 mod player_bar;
 mod playing;
@@ -18,9 +24,13 @@ mod queue_panel;
 mod screens;
 mod session;
 mod shell;
+mod smart;
 mod store_worker;
 mod sync;
+mod system;
 mod theme;
+mod tray;
+mod updates;
 mod widgets;
 
 use iced::window;
@@ -48,6 +58,7 @@ fn main() -> iced::Result {
         .as_ref()
         .map(|paths| Config::load(&paths.config_file))
         .unwrap_or_else(|| Config::load(std::path::Path::new("")));
+    logging::init(config.system.log_level);
     if let Some(paths) = &paths {
         // The device id is minted on first load and must survive this launch
         // even if the app is killed before it next saves.
@@ -65,6 +76,8 @@ fn main() -> iced::Result {
             (Some(x), Some(y)) => window::Position::Specific(iced::Point::new(x, y)),
             _ => window::Position::Centered,
         },
+        // Start Minimised: hidden in the tray (shown again if no panel takes it).
+        visible: !config.system.tray.start_hidden(),
         ..window::Settings::default()
     };
 

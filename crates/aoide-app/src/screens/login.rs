@@ -1,6 +1,9 @@
-//! The sign-in screen: server address, username, password, Connect.
+//! The sign-in screen: server address, username, password, Connect, and
+//! Find Servers on This Network (discover.rs) to pick an address instead of
+//! typing one.
 
-use iced::widget::{button, column, container, text, text_input};
+use aoide_jellyfin::DiscoveredServer;
+use iced::widget::{button, column, container, row, text, text_input};
 use iced::{Center, Element, Fill, Length};
 
 use crate::session::SignInForm;
@@ -15,6 +18,10 @@ pub struct State {
     pub form: SignInForm,
     pub error: Option<String>,
     pub busy: bool,
+    /// The servers found on the network: `None` before looking, `Err` when
+    /// the search itself failed.
+    pub found: Option<Result<Vec<DiscoveredServer>, String>>,
+    pub finding: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +32,11 @@ pub enum Message {
     /// Enter in a field: on to the next one.
     Next(&'static str),
     Submit,
+    /// Find Servers on This Network.
+    Find,
+    Found(Result<Vec<DiscoveredServer>, String>),
+    /// A found server's address, picked.
+    Pick(String),
 }
 
 /// What the app should do after a form message.
@@ -35,6 +47,8 @@ pub enum Action {
     /// Sign in with this form. The password has already been cleared from the
     /// screen's own copy.
     SignIn(SignInForm),
+    /// Look for servers on the network.
+    FindServers,
 }
 
 impl State {
@@ -77,6 +91,23 @@ impl State {
                 let form = self.form.clone();
                 self.form.password.clear();
                 Action::SignIn(form)
+            }
+            Message::Find => {
+                if self.finding || self.busy {
+                    return Action::None;
+                }
+                self.finding = true;
+                Action::FindServers
+            }
+            Message::Found(result) => {
+                self.finding = false;
+                self.found = Some(result);
+                Action::None
+            }
+            Message::Pick(address) => {
+                self.form.server = address;
+                self.found = None;
+                Action::Focus(USERNAME)
             }
         }
     }
@@ -138,6 +169,7 @@ impl State {
             column![
                 label("Server"),
                 server,
+                self.found_view(editable),
                 text(
                     "Home addresses (jellyfin.local, or a local network IP) connect over plain HTTP; \
                      anything else uses HTTPS. Type a full address to choose."
@@ -164,6 +196,75 @@ impl State {
         form = form.push(connect);
 
         container(form).center(Fill).style(theme::page).into()
+    }
+}
+
+impl State {
+    /// Find Servers on This Network, and what it found.
+    fn found_view(&self, editable: bool) -> Element<'_, Message> {
+        let quiet = |t: &iced::Theme| text::Style {
+            color: Some(theme::secondary(t)),
+        };
+        let mut part = column![
+            button(
+                text(if self.finding {
+                    "Looking…"
+                } else {
+                    "Find Servers on This Network"
+                })
+                .size(13),
+            )
+            .style(theme::tonal)
+            .padding([4, 10])
+            .on_press_maybe((editable && !self.finding).then_some(Message::Find)),
+        ]
+        .spacing(4);
+        match &self.found {
+            None => {}
+            Some(Err(error)) => {
+                part = part.push(
+                    text(format!("The network couldn't be searched: {error}"))
+                        .size(12)
+                        .style(quiet),
+                );
+            }
+            Some(Ok(servers)) if servers.is_empty() => {
+                part = part.push(
+                    text(
+                        "No server answered. Its discovery may be off, or a firewall in the way; \
+                         type the address instead.",
+                    )
+                    .size(12)
+                    .style(quiet),
+                );
+            }
+            Some(Ok(servers)) => {
+                for server in servers {
+                    part = part.push(
+                        button(
+                            row![
+                                text(crate::discover::label(server)).size(14).width(Fill),
+                                // A server with no name is already listed by address.
+                                text(if server.name.trim().is_empty() {
+                                    ""
+                                } else {
+                                    server.address.as_str()
+                                })
+                                .size(12)
+                                .style(quiet),
+                            ]
+                            .spacing(8)
+                            .align_y(Center),
+                        )
+                        .width(Fill)
+                        .padding([6, 10])
+                        .style(theme::row)
+                        .on_press_maybe(editable.then(|| Message::Pick(server.address.clone()))),
+                    );
+                }
+            }
+        }
+        part.into()
     }
 }
 
@@ -224,6 +325,28 @@ mod tests {
             state.error.as_deref(),
             Some("Your username or password wasn't accepted.")
         );
+    }
+
+    #[test]
+    fn a_found_server_fills_in_the_address() {
+        let mut state = State::default();
+        assert_eq!(state.update(Message::Find), Action::FindServers);
+        // Once at a time.
+        assert_eq!(state.update(Message::Find), Action::None);
+        let server = DiscoveredServer {
+            id: "s1".into(),
+            name: "Living Room".into(),
+            address: "http://192.0.2.10:8096".into(),
+            endpoint_address: None,
+        };
+        state.update(Message::Found(Ok(vec![server])));
+        assert!(!state.finding);
+        assert_eq!(
+            state.update(Message::Pick("http://192.0.2.10:8096".into())),
+            Action::Focus(USERNAME)
+        );
+        assert_eq!(state.form.server, "http://192.0.2.10:8096");
+        assert!(state.found.is_none());
     }
 
     #[test]
