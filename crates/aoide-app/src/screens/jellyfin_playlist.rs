@@ -445,20 +445,15 @@ impl State {
         let mut info = column![
             title,
             widgets::secondary(format!("Jellyfin playlist · {count}")).size(13),
-            row![
-                widgets::play_buttons(
-                    tracks,
-                    format!("{key}:jellyfin-playlist"),
-                    PlaySource::Playlist
-                ),
-                crate::radio::start_button(crate::radio::Station::new(
+            widgets::play_buttons_with(
+                tracks,
+                format!("{key}:jellyfin-playlist"),
+                PlaySource::Playlist,
+                vec![crate::radio::start_button(crate::radio::Station::new(
                     aoide_jellyfin::MixSeed::Playlist(self.id.clone()),
                     self.name.clone(),
-                )),
-            ]
-            .spacing(10)
-            .wrap()
-            .vertical_spacing(10),
+                ))],
+            ),
             tools.wrap().vertical_spacing(8),
         ]
         .spacing(10)

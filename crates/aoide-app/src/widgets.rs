@@ -6,7 +6,7 @@ use iced::widget::{
     Column, Row, button, column, container, grid, image, mouse_area, row, scrollable, space, text,
     text_input, toggler,
 };
-use iced::{Center, ContentFit, Element, Fill, Font, Length, Shrink, font};
+use iced::{Center, ContentFit, Element, Fill, Font, Length, font};
 
 use crate::actions::{self, Collection, Menu, PlayRequest, RowAction};
 use crate::app::Message;
@@ -653,6 +653,17 @@ pub fn play_buttons<'a>(
     anchor: String,
     source: PlaySource,
 ) -> Element<'a, Message> {
+    play_buttons_with(tracks, anchor, source, Vec::new())
+}
+
+/// Play and Shuffle, then `extras` (Start radio), then the "…" menu last,
+/// as Apple Music orders an album's actions. The row wraps when narrow.
+pub fn play_buttons_with<'a>(
+    tracks: &'a [TrackMeta],
+    anchor: String,
+    source: PlaySource,
+    extras: Vec<Element<'a, Message>>,
+) -> Element<'a, Message> {
     let enabled = !tracks.is_empty();
     // Icons don't fade with a disabled button's label: quiet them here.
     let tone = |on: Tone| if enabled { on } else { Tone::Secondary };
@@ -678,6 +689,9 @@ pub fn play_buttons<'a>(
         .on_press_maybe(
             enabled.then(|| Message::Play(PlayRequest::shuffled(tracks, PlaySource::Shuffle)))
         ),
+    ]
+    .extend(extras)
+    .push(
         button(icon(Icon::More, 18.0, tone(Tone::Accent)))
             .style(theme::tonal)
             .padding([8, 10])
@@ -687,9 +701,11 @@ pub fn play_buttons<'a>(
                     tracks: tracks.to_vec(),
                 })
             })),
-    ]
+    )
     .spacing(10)
-    .width(Shrink)
+    .align_y(Center)
+    .wrap()
+    .vertical_spacing(10)
     .into()
 }
 

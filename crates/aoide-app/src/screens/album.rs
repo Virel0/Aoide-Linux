@@ -131,18 +131,15 @@ impl State {
         if let Some(finish) = &self.finish {
             info = info.push(widgets::secondary(finish.as_str()).size(13));
         }
-        info = info.push(
-            row![
-                widgets::play_buttons(tracks, format!("{}:album", view.key), PlaySource::Album),
-                crate::radio::start_button(crate::radio::Station::new(
-                    aoide_jellyfin::MixSeed::Album(self.id.clone()),
-                    self.title.clone(),
-                )),
-            ]
-            .spacing(10)
-            .wrap()
-            .vertical_spacing(10),
-        );
+        info = info.push(widgets::play_buttons_with(
+            tracks,
+            format!("{}:album", view.key),
+            PlaySource::Album,
+            vec![crate::radio::start_button(crate::radio::Station::new(
+                aoide_jellyfin::MixSeed::Album(self.id.clone()),
+                self.title.clone(),
+            ))],
+        ));
 
         let mut body = column![
             widgets::title_bar("", view.can_go_back),
