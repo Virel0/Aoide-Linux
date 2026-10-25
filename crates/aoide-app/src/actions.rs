@@ -53,6 +53,8 @@ pub enum Collection {
     Artist(String),
     /// An Aoide playlist.
     Playlist(String),
+    /// A Jellyfin playlist.
+    JellyfinPlaylist(String),
 }
 
 impl Collection {
@@ -60,7 +62,7 @@ impl Collection {
         match self {
             Collection::Album(_) => PlaySource::Album,
             Collection::Artist(_) => PlaySource::Unknown,
-            Collection::Playlist(_) => PlaySource::Playlist,
+            Collection::Playlist(_) | Collection::JellyfinPlaylist(_) => PlaySource::Playlist,
         }
     }
 }
@@ -111,6 +113,9 @@ pub async fn collection_tracks(
                 .map_err(|e| Failure::Store(e.to_string()))?;
             client.items_by_ids(&ids).await.map_err(Failure::Server)
         }
+        Collection::JellyfinPlaylist(id) => {
+            client.playlist_items(&id).await.map_err(Failure::Server)
+        }
     }
 }
 
@@ -138,6 +143,9 @@ pub struct Menu {
     pub collection: Option<(Collection, String)>,
     pub loading: bool,
     pub error: Option<String>,
+    /// The server's own playlists, fetched when Add to Playlist opens:
+    /// `(id, name)`.
+    pub jellyfin: Option<Result<Vec<(String, String)>, String>>,
 }
 
 impl Menu {
@@ -152,6 +160,7 @@ impl Menu {
             collection: None,
             loading: false,
             error: None,
+            jellyfin: None,
         }
     }
 
@@ -214,6 +223,10 @@ pub enum RowAction {
     FlagsLoaded(String, Flags),
     GoToAlbum,
     GoToArtist,
+    /// The Jellyfin playlists to offer arrived.
+    JellyfinPlaylists(Result<Vec<(String, String)>, String>),
+    /// Add the menu's songs to this Jellyfin playlist.
+    AddToJellyfin(String),
 }
 
 /// The playlists to offer, filtered by name once there are enough to need it.

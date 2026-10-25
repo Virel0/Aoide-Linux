@@ -86,8 +86,12 @@ impl State {
         ]
         .spacing(10)
         .align_y(Center);
-        let mut body =
-            column![widgets::title_bar("Playlists", view.can_go_back), create].spacing(20);
+        let mut body = column![
+            widgets::title_bar("Playlists", view.can_go_back),
+            super::jellyfin_playlists::switcher(false),
+            create
+        ]
+        .spacing(20);
         if let Some(error) = &self.error {
             body = body.push(widgets::failure(error));
         }

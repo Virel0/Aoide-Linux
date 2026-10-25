@@ -113,8 +113,8 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 
 | Feature | Round | Status | Notes |
 |---|---|---|---|
-| Jellyfin playlists: create, edit, delete, reorder, add/remove songs | 2 | 🟨 | library done; UI pending. Removing and moving go by entry id (`playlist_entries`); delete checks the id is a playlist first |
-| Jellyfin playlist cover upload | 3 | 🟨 | library done; UI pending. `set_playlist_cover` / `delete_playlist_cover`; the server allows it for administrators only |
+| Jellyfin playlists: create, edit, delete, reorder, add/remove songs | 2 | ✅ | Playlists has an Aoide / Jellyfin switch. The Jellyfin list creates; a playlist's page plays and shuffles (remembered for the resume grid), renames, deletes after asking, and in Edit moves entries up and down and removes them, by entry id. Add to Playlist… offers Aoide and Jellyfin playlists under their own headings. Seen against the stand-in server |
+| Jellyfin playlist cover upload | 3 | ✅ | Choose Cover… opens the system's file dialog (rfd: NSOpenPanel on macOS, the XDG portal or zenity on Linux) for a JPEG, PNG or WebP up to 20 MB; Remove Cover. A non-administrator is told "Only an administrator of this Jellyfin server can change a playlist's cover" with the 403. Both seen against the stand-in server on macOS; the Linux dialog not yet run |
 | Aoide playlists: create, rename, notes, delete, add, remove, move (fractional index) | 1 | ✅ | In the app: create, rename, delete, add songs; Edit shows the notes editor and each entry's Up, Down and Remove. A move is the store's `move_item`, one row written, measured past entries the server no longer has. Clicked through against the stand-in server; syncing the edits to a real sidecar not yet seen |
 | Add to Aoide playlist (with search past 8, "New playlist…") | 1 | ✅ | |
 | Built-in Rediscover Mix and Heavy Rotation | 2 | 🟨 | Library done; UI pending. `Store::ensure_built_in_playlists` creates each under its fixed id only where no row has ever existed, so a deleted built-in stays deleted; the rules are pinned to the other clients' JSON |

@@ -161,6 +161,8 @@ pub enum Message {
     Handoff(crate::handoff::Msg),
     Discover(crate::screens::discover::Msg),
     SyncPanel(crate::screens::sync_status::Msg),
+    /// A Jellyfin playlist changed (this one, or which ones there are).
+    JellyfinPlaylistChanged(Option<String>),
 }
 
 /// The player bar's controls.
@@ -462,6 +464,7 @@ impl App {
             Message::Handoff(message) => self.handoff(message),
             Message::Discover(message) => self.discover(message),
             Message::SyncPanel(message) => self.sync_panel(message),
+            Message::JellyfinPlaylistChanged(id) => self.jellyfin_playlists_changed(id),
         }
     }
 
@@ -956,7 +959,10 @@ impl App {
                 if let Some(menu) = signed.menu.as_mut() {
                     menu.adding = !menu.adding;
                 }
-                Task::none()
+                self.offer_jellyfin_playlists()
+            }
+            RowAction::JellyfinPlaylists(_) | RowAction::AddToJellyfin(_) => {
+                self.jellyfin_menu_action(action)
             }
             RowAction::Filter(filter) => {
                 if let Some(menu) = signed.menu.as_mut() {

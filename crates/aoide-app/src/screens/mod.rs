@@ -15,6 +15,8 @@ pub mod favourites;
 pub mod genre;
 pub mod genres;
 pub mod home;
+pub mod jellyfin_playlist;
+pub mod jellyfin_playlists;
 pub mod login;
 pub mod playlist;
 pub mod playlists;
@@ -51,6 +53,7 @@ pub enum Section {
     Playlist(String),
     Favourites,
     Replay,
+    JellyfinPlaylists,
 }
 
 impl Section {
@@ -79,6 +82,7 @@ impl Section {
             Section::Playlist(_) => "Playlist",
             Section::Favourites => "Favourites",
             Section::Replay => "Replay",
+            Section::JellyfinPlaylists => "Jellyfin Playlists",
         }
     }
 }
@@ -92,6 +96,7 @@ pub enum Route {
     Playlist { id: String },
     Discover,
     SyncStatus,
+    JellyfinPlaylist { id: String, name: String },
 }
 
 /// An Aoide playlist as the sidebar and the pickers list it.
@@ -179,6 +184,8 @@ pub enum Page {
     Favourites(favourites::State),
     Replay(replay::State),
     SyncStatus(sync_status::State),
+    JellyfinPlaylists(jellyfin_playlists::State),
+    JellyfinPlaylist(jellyfin_playlist::State),
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +206,8 @@ pub enum PageMsg {
     Favourites(favourites::Message),
     Replay(replay::Message),
     SyncStatus(sync_status::Message),
+    JellyfinPlaylists(jellyfin_playlists::Message),
+    JellyfinPlaylist(jellyfin_playlist::Message),
 }
 
 impl Page {
@@ -216,6 +225,9 @@ impl Page {
             Section::Playlist(id) => wrap(playlist::open(ctx, id), Page::Playlist),
             Section::Favourites => wrap(favourites::open(ctx), Page::Favourites),
             Section::Replay => wrap(replay::open(ctx), Page::Replay),
+            Section::JellyfinPlaylists => {
+                wrap(jellyfin_playlists::open(ctx), Page::JellyfinPlaylists)
+            }
         }
     }
 
@@ -227,6 +239,10 @@ impl Page {
             Route::Playlist { id } => wrap(playlist::open(ctx, id), Page::Playlist),
             Route::Discover => wrap(discover::open(ctx), Page::Discover),
             Route::SyncStatus => wrap(sync_status::open(ctx), Page::SyncStatus),
+            Route::JellyfinPlaylist { id, name } => wrap(
+                jellyfin_playlist::open(ctx, id, name),
+                Page::JellyfinPlaylist,
+            ),
         }
     }
 
@@ -248,6 +264,8 @@ impl Page {
             (Page::Favourites(state), PageMsg::Favourites(m)) => state.update(m),
             (Page::Replay(state), PageMsg::Replay(m)) => state.update(m, ctx),
             (Page::SyncStatus(state), PageMsg::SyncStatus(m)) => state.update(m, ctx),
+            (Page::JellyfinPlaylists(state), PageMsg::JellyfinPlaylists(m)) => state.update(m, ctx),
+            (Page::JellyfinPlaylist(state), PageMsg::JellyfinPlaylist(m)) => state.update(m, ctx),
             _ => Task::none(),
         }
     }
@@ -271,6 +289,8 @@ impl Page {
             Page::Favourites(state) => state.view(view),
             Page::Replay(state) => state.view(view),
             Page::SyncStatus(state) => state.view(view),
+            Page::JellyfinPlaylists(state) => state.view(view),
+            Page::JellyfinPlaylist(state) => state.view(view),
         }
     }
 
@@ -297,7 +317,8 @@ impl Page {
             Page::Discover(state) => state.artwork(),
             Page::Favourites(state) => state.artwork(),
             Page::Replay(state) => state.artwork(),
-            Page::SyncStatus(_) => Vec::new(),
+            Page::SyncStatus(_) | Page::JellyfinPlaylists(_) => Vec::new(),
+            Page::JellyfinPlaylist(state) => state.artwork(),
         }
     }
 }

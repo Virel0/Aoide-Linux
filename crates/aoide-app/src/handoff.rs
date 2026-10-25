@@ -174,8 +174,14 @@ pub fn collection_context(collection: &Collection, title: &str) -> Option<Recent
             title,
             now,
         )),
+        Collection::JellyfinPlaylist(id) => Some(RecentContext::new(
+            RecentContextKind::JellyfinPlaylist,
+            id.clone(),
+            title,
+            now,
+        )),
         // An artist's songs album by album are not something to resume.
-        _ => None,
+        Collection::Artist(_) => None,
     }
 }
 

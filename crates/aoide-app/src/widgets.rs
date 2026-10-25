@@ -499,6 +499,8 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
                     .style(theme::field),
             );
         }
+        let heading = |label: &'static str| secondary(label).size(12).font(SEMIBOLD);
+        lists = lists.push(heading("Aoide Playlists"));
         for playlist in actions::matching(view.playlists, |p| p.name.as_str(), &menu.filter) {
             lists = lists.push(
                 button(text(playlist.name.as_str()).size(13))
@@ -507,6 +509,22 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
                     .padding([4, 8])
                     .on_press(Message::Row(RowAction::AddTo(playlist.id.clone()))),
             );
+        }
+        lists = lists.push(heading("Jellyfin Playlists"));
+        match &menu.jellyfin {
+            None => {}
+            Some(Err(error)) => lists = lists.push(secondary(error.as_str()).size(12)),
+            Some(Ok(jellyfin)) => {
+                for (id, name) in actions::matching(jellyfin, |p| p.1.as_str(), &menu.filter) {
+                    lists = lists.push(
+                        button(text(name.as_str()).size(13))
+                            .width(Fill)
+                            .style(theme::row)
+                            .padding([4, 8])
+                            .on_press(Message::Row(RowAction::AddToJellyfin(id.clone()))),
+                    );
+                }
+            }
         }
         let create = row![
             text_input("New playlist…", &menu.new_name)

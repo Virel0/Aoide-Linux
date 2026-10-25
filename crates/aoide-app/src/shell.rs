@@ -54,7 +54,8 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
 
 fn sidebar(signed: &Signed) -> Element<'_, Message> {
     let item = |label: String, glyph: Icon, section: Section| {
-        let selected = signed.section == section;
+        let selected = signed.section == section
+            || (section == Section::Playlists && signed.section == Section::JellyfinPlaylists);
         button(
             row![
                 icon(
@@ -86,7 +87,7 @@ fn sidebar(signed: &Signed) -> Element<'_, Message> {
         Section::Artists => Icon::Artist,
         Section::Songs => Icon::Song,
         Section::Genres => Icon::Genre,
-        Section::Playlists | Section::Playlist(_) => Icon::Playlist,
+        Section::Playlists | Section::Playlist(_) | Section::JellyfinPlaylists => Icon::Playlist,
         Section::Search => Icon::Search,
         Section::Settings => Icon::Settings,
         Section::Favourites => Icon::Heart,
