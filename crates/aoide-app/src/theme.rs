@@ -6,6 +6,27 @@ use iced::theme::{Mode, Palette};
 use iced::widget::{button, container, slider, text_input, toggler};
 use iced::{Background, Border, Color, Shadow, Theme, color};
 
+/// Light mode's surfaces. iced derives its greys from white in steps of 3 to
+/// 15%, and its 10% card (#dedede) and 7% bar read heavy on a white page;
+/// these are lighter, close to macOS's own. Dark mode keeps iced's shades.
+/// (Contrast: secondary text at least 4.5:1 on the card, the bar and a
+/// hovered row; a tonal button's accent text at least 4.5:1; tested.)
+mod light {
+    use iced::{Color, color};
+
+    /// A card: Settings' groups, the action strip, a sheet.
+    pub const CARD: Color = color!(0xf2f2f5);
+    /// The player bar.
+    pub const BAR: Color = color!(0xf5f5f7);
+    /// A row under the pointer, and pressed.
+    pub const HOVER: Color = color!(0xebebef);
+    pub const PRESSED: Color = color!(0xe1e1e6);
+    /// A tonal button's ground: darker than a card, so it shows on one as
+    /// well as on the page.
+    pub const TONAL: Color = color!(0xececf0);
+    pub const TONAL_HOVER: Color = color!(0xe7e7eb);
+}
+
 /// The accent on a light ground.
 pub const ACCENT_LIGHT: Color = color!(0x6244e5);
 /// The same accent on a dark ground.
@@ -77,8 +98,13 @@ pub fn page(theme: &Theme) -> container::Style {
 /// The player bar along the bottom.
 pub fn bar(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
+    let ground = if palette.is_dark {
+        palette.background.weaker.color
+    } else {
+        light::BAR
+    };
     container::Style {
-        background: Some(Background::Color(palette.background.weaker.color)),
+        background: Some(Background::Color(ground)),
         text_color: Some(palette.background.base.text),
         border: Border {
             color: palette.background.strong.color,
@@ -110,11 +136,21 @@ pub fn placeholder(theme: &Theme) -> container::Style {
     }
 }
 
-/// The inline action strip under a row.
+/// A card's ground.
+fn card(theme: &Theme) -> Color {
+    let palette = theme.extended_palette();
+    if palette.is_dark {
+        palette.background.weak.color
+    } else {
+        light::CARD
+    }
+}
+
+/// The inline action strip under a row, and every card.
 pub fn menu(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
     container::Style {
-        background: Some(Background::Color(palette.background.weak.color)),
+        background: Some(Background::Color(card(theme))),
         border: Border {
             radius: 8.0.into(),
             ..Border::default()
@@ -143,9 +179,17 @@ pub fn error_box(theme: &Theme) -> container::Style {
 /// A row or a plain icon: no chrome until hovered.
 pub fn row(theme: &Theme, status: button::Status) -> button::Style {
     let palette = theme.extended_palette();
+    let (hovered, pressed) = if palette.is_dark {
+        (
+            palette.background.weak.color,
+            palette.background.strong.color,
+        )
+    } else {
+        (light::HOVER, light::PRESSED)
+    };
     let background = match status {
-        button::Status::Hovered => Some(Background::Color(palette.background.weak.color)),
-        button::Status::Pressed => Some(Background::Color(palette.background.strong.color)),
+        button::Status::Hovered => Some(Background::Color(hovered)),
+        button::Status::Pressed => Some(Background::Color(pressed)),
         _ => None,
     };
     button::Style {
@@ -195,7 +239,7 @@ pub fn tonal(theme: &Theme, status: button::Status) -> button::Style {
     let (resting, hovered) = if palette.is_dark {
         (shades.weaker.color, shades.weakest.color)
     } else {
-        (shades.weakest.color, shades.weaker.color)
+        (light::TONAL, light::TONAL_HOVER)
     };
     let background = match status {
         button::Status::Hovered | button::Status::Pressed => hovered,
@@ -389,6 +433,46 @@ mod tests {
                 let ratio = contrast(secondary(&theme), surface);
                 assert!(ratio >= 4.5, "{theme} {name}: {ratio}");
             }
+        }
+    }
+
+    #[test]
+    fn secondary_text_reads_on_a_hovered_row() {
+        for theme in themes() {
+            let hovered = button_ground(row(&theme, button::Status::Hovered));
+            let ratio = contrast(secondary(&theme), hovered);
+            assert!(ratio >= 4.5, "{theme} hovered row: {ratio}");
+        }
+    }
+
+    /// Lighter first: the page, a card, a tonal button, the same hovered.
+    /// A tonal button on a card or on the page is always a shade darker.
+    #[test]
+    fn light_surfaces_step_down_from_the_page() {
+        fn luminance(c: Color) -> f32 {
+            0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+        }
+        for theme in themes()
+            .into_iter()
+            .filter(|t| !t.extended_palette().is_dark)
+        {
+            let steps = [
+                ground(page(&theme)),
+                ground(menu(&theme)),
+                button_ground(tonal(&theme, button::Status::Active)),
+                button_ground(tonal(&theme, button::Status::Hovered)),
+            ];
+            for pair in steps.windows(2) {
+                assert!(
+                    luminance(pair[0]) > luminance(pair[1]),
+                    "{theme}: {:?} then {:?}",
+                    pair[0],
+                    pair[1]
+                );
+            }
+            // Lighter than the shade iced gives a card (#dedede).
+            let iced_card = theme.extended_palette().background.weak.color;
+            assert!(luminance(ground(menu(&theme))) > luminance(iced_card));
         }
     }
 
