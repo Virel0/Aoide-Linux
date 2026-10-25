@@ -189,6 +189,7 @@ impl App {
             Message::StateIcon(on) => options.show_state_icon = on,
             Message::Links(on) => options.show_links = on,
             Message::Status(status) => {
+                log::info!("Discord Rich Presence: {status:?}");
                 self.system.discord_status = status;
                 return Task::none();
             }

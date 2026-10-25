@@ -235,7 +235,10 @@ impl App {
                             _ => "You have the latest version.".to_owned(),
                         })
                     }
-                    Err(error) => Err(format!("The last check failed: {error}.")),
+                    Err(error) => {
+                        log::warn!("update check failed: {error}");
+                        Err(format!("The last check failed: {error}."))
+                    }
                 });
                 self.save_config();
                 Task::none()

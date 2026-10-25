@@ -293,6 +293,7 @@ async fn serve(
                 }
                 other => format!("The tray couldn't start: {other}."),
             };
+            log::warn!("{reason}");
             let _ = out.send(Message::Started(generation, Err(reason))).await;
             return;
         }

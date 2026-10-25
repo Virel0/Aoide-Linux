@@ -10,7 +10,9 @@ mod discover;
 mod icons;
 mod integration;
 mod library;
+mod logging;
 mod lyrics_panel;
+mod maintenance;
 mod mixes;
 mod nav;
 mod now_playing;
@@ -56,6 +58,7 @@ fn main() -> iced::Result {
         .as_ref()
         .map(|paths| Config::load(&paths.config_file))
         .unwrap_or_else(|| Config::load(std::path::Path::new("")));
+    logging::init(config.system.log_level);
     if let Some(paths) = &paths {
         // The device id is minted on first load and must survive this launch
         // even if the app is killed before it next saves.

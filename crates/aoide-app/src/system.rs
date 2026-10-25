@@ -22,6 +22,8 @@ pub struct SystemSettings {
     pub smart_search: crate::smart::SmartSettings,
     /// The update notice: whether to check, and what the last check found.
     pub updates: crate::updates::UpdateSettings,
+    /// How much Aoide writes to standard error.
+    pub log_level: crate::logging::LogLevel,
 }
 
 /// The desktop services, running beside MPRIS on the integration's runtime.
@@ -33,6 +35,7 @@ pub struct State {
     pub updates: crate::updates::State,
     /// The command palette, while it is open.
     pub palette: Option<crate::palette::Palette>,
+    pub maintenance: crate::maintenance::State,
 }
 
 impl State {
@@ -45,6 +48,7 @@ impl State {
             tray: Tray::new(runtime, &config.system.tray),
             updates: crate::updates::State::default(),
             palette: None,
+            maintenance: crate::maintenance::State::default(),
         }
     }
 }
@@ -66,6 +70,7 @@ pub fn settings_sections(app: &App) -> Element<'_, Message> {
         crate::tray::settings_section(&app.config.system.tray, &app.system.tray.status),
         crate::discord::settings_section(&app.config.system.discord, app.system.discord_status),
         crate::updates::settings_section(&app.config.system.updates, &app.system.updates),
+        crate::maintenance::settings_sections(app),
     ]
     .spacing(24)
     .into()

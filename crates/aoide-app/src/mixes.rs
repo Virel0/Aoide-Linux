@@ -508,6 +508,13 @@ pub async fn compose(
         .and_then(|r| r.limit)
         .map_or(DEFAULT_LENGTH, |l| l as usize);
     chosen.truncate(length);
+    log::info!(
+        "mix: {} names ({} missed), {} candidates, {} chosen",
+        outcome.names.len(),
+        missed.len(),
+        rule_ids.len(),
+        chosen.len()
+    );
     Ok(Mix {
         description,
         looked_for,

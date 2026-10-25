@@ -164,6 +164,8 @@ pub enum Message {
     Mixes(crate::mixes::Request),
     Update(crate::updates::Message),
     Palette(crate::palette::Message),
+    /// Settings → System's file, log and cache rows.
+    System(crate::maintenance::Message),
 }
 
 /// The player bar's controls.
@@ -477,6 +479,7 @@ impl App {
             Message::Mixes(request) => self.mix_request(request),
             Message::Update(message) => self.update_message(message),
             Message::Palette(message) => self.palette_message(message),
+            Message::System(message) => self.maintenance_message(message),
         }
     }
 

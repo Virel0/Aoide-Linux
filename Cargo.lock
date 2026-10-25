@@ -148,6 +148,7 @@ dependencies = [
  "iced",
  "image",
  "keyring",
+ "log",
  "reqwest",
  "rustls",
  "serde",
