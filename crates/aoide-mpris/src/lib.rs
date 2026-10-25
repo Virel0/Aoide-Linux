@@ -7,8 +7,13 @@
 //!   so a second launch raises the first window instead of starting another
 //!   player.
 //! - [`Inhibitor`]: keeps the machine from suspending while music plays.
+//! - [`Tray`]: the tray icon (StatusNotifierItem) with Play/Pause, Next,
+//!   Previous, Stop, Open Aoide and Quit; a click on the icon toggles the
+//!   window. Its clicks arrive as [`TrayCommand`]s on a channel, the same way
+//!   MPRIS requests do.
 //!
-//! The crate speaks in its own small types ([`PlayerState`], [`Command`]) and
+//! The crate speaks in its own small types ([`PlayerState`], [`Command`],
+//! [`TrayState`], [`TrayCommand`]) and
 //! knows nothing of iced or the other Aoide crates.
 //!
 //! # Runtime
@@ -21,15 +26,16 @@
 //! # Platforms
 //!
 //! D-Bus is only used on Linux. Elsewhere the crate still builds with the same
-//! API: [`Mpris::start`] and [`Inhibitor::new`] return [`Error::Unavailable`],
+//! API: [`Mpris::start`], [`Tray::start`] and [`Inhibitor::new`] return
+//! [`Error::Unavailable`],
 //! and [`single_instance`] always says this is the first instance.
 //!
 //! # Tests
 //!
 //! The pure logic (track ids, change detection, request checks, metadata) is
-//! tested on every platform. `tests/dbus.rs` drives the real interfaces over a
-//! private bus; it is Linux-only and `#[ignore]`d because it starts
-//! `dbus-daemon`. On Linux (ubuntu-24.04 ships `dbus-daemon`):
+//! tested on every platform. `tests/dbus.rs` and `tests/tray.rs` drive the
+//! real interfaces over a private bus; they are Linux-only and `#[ignore]`d
+//! because they start `dbus-daemon`. On Linux (ubuntu-24.04 ships `dbus-daemon`):
 //!
 //! ```text
 //! cargo test -p aoide-mpris -- --include-ignored
@@ -41,6 +47,8 @@ mod diff;
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod metadata;
 mod track_id;
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+mod tray;
 mod types;
 
 #[cfg(target_os = "linux")]
@@ -54,8 +62,9 @@ mod stub;
 use stub as platform;
 
 pub use diff::SEEK_TOLERANCE;
-pub use platform::{Inhibitor, InstanceGuard, Mpris};
+pub use platform::{Inhibitor, InstanceGuard, Mpris, Tray};
 pub use track_id::{NO_TRACK, TRACK_PATH_PREFIX, jellyfin_id_from_track_path, track_object_path};
+pub use tray::{Pixmap, TOOLTIP_TITLE, TrayCommand, TrayIcon, TrayState};
 pub use types::{Command, LoopStatus, Metadata, PlaybackStatus, PlayerState};
 
 /// The MPRIS bus name.

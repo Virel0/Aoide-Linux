@@ -3,10 +3,12 @@
 mod inhibit;
 mod instance;
 mod mpris;
+mod tray;
 
 pub use inhibit::Inhibitor;
 pub use instance::{InstanceGuard, single_instance};
 pub use mpris::Mpris;
+pub use tray::Tray;
 
 use zbus::connection::Builder;
 

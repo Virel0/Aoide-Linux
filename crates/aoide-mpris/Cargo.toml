@@ -15,12 +15,13 @@ tokio = { version = "1.54.1", default-features = false, features = ["sync"] }
 # D-Bus exists only on Linux. zbus is pure Rust (no libdbus), and its `tokio`
 # feature makes it run on the app's tokio runtime instead of its own executor.
 [target.'cfg(target_os = "linux")'.dependencies]
-tokio = { version = "1.54.1", default-features = false, features = ["sync", "time"] }
+# The tray listens for the panel's watcher coming and going on a task of its own.
+futures-util = { version = "0.3.34", default-features = false }
+tokio = { version = "1.54.1", default-features = false, features = ["sync", "time", "rt"] }
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-futures-util = { version = "0.3.34", default-features = false }
 serde = "1.0.229"

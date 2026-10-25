@@ -32,7 +32,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Favourites | 2 | 🟨 | library done; UI pending. `ListQuery::favorites_only` on songs, albums, artists |
 | Collections (saved filters) | 3 | 🟨 | library done; UI pending. `query_filters` lists genres, years and tags under a library; a saved filter is a `ListQuery` (genre_ids, years, tags, favorites_only) the app keeps |
 | Search: plain Jellyfin search, songs and albums | 1 | ✅ | Songs, albums and artists as you type, 300 ms debounce |
-| Search by description (OpenRouter → filters) | 3 | ⬜ | Model only translates to filters; Jellyfin selects |
+| Search by description (OpenRouter → filters) | 3 | 🟨 | Library done; UI pending. `aoide_integrations::openrouter`: `translate_search` (prompt, parsing and checks ported from the Electron app with its test cases; the iOS app's sort directions), model picked by id from `models()` with prices, the key passed by the caller and kept in the keyring through `ApiKeyStore`. Only the phrase and the genre names are sent; the model only translates to filters, Jellyfin selects. Tested against a local stand-in, not yet against OpenRouter |
 | Command palette | 3 | ⬜ | |
 | Now Playing column: artwork, controls, Queue/Lyrics tabs | 1 | ✅ | Cover, Queue and Lyrics tabs; the transport is the player bar's |
 | Full-screen player | 2 | ⬜ | |
@@ -78,9 +78,9 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 |---|---|---|---|
 | MPRIS (bus name `aoide`): play, pause, next, previous, stop, volume, shuffle, loop, position, metadata | 1 | 🟨 | Wired (`integration.rs`): aoide-mpris on its own small tokio runtime, commands as a subscription, what plays published on every change with the cached cover as a `file://` URL (never the server's). The mapping is unit-tested and the Linux code cross-checked with clippy; not yet run on a Linux desktop. On macOS it reports itself unavailable and the app runs on |
 | Global media hotkeys outside MPRIS | 3 | ⬜ | |
-| Tray: play/pause, next, previous, stop, open, quit; minimise/exit to tray, start minimised | 2 | ⬜ | |
+| Tray: play/pause, next, previous, stop, open, quit; minimise/exit to tray, start minimised | 2 | 🟨 | Library done; UI pending. `aoide_mpris::Tray`: StatusNotifierItem and its DBusMenu on zbus (not `ksni`, which only speaks to the session bus), re-registers when a panel starts later or restarts; clicks arrive as `TrayCommand`s, a left click toggles the window, a middle click plays or pauses; `is_shown()` says whether a panel took it. Private-bus tests in `tests/tray.rs` (ignored by default) not yet run on Linux; the Linux code cross-checked with clippy. Minimise/exit to tray and start minimised are the app's |
 | Prevent sleep / suspend while playing | 2 | 🟨 | Came with MPRIS: aoide-mpris's inhibitor is set whenever playing starts or stops. Not yet run on a Linux desktop |
-| Discord Rich Presence (Aoide's application id, options as in Electron) | 2 | ⬜ | |
+| Discord Rich Presence (Aoide's application id, options as in Electron) | 2 | 🟨 | Library done; UI pending. `aoide_integrations::discord::Presence`: Discord's local socket (`discord-ipc-0..9` under `XDG_RUNTIME_DIR`, Flatpak and snap subpaths included), "Listening" with song, artist, album, time bar; display type (app name / artist / song), shown when paused, cover only if a public `https` URL without credentials (else Aoide's `icon` asset), playing/paused badge, links only if free of tracking parameters. Opens no socket while off, at most one update a second, finds a Discord started later. Tested against a stand-in Discord socket; not yet seen in a real Discord client |
 | Single instance (second launch focuses the window) | 1 | 🟨 | Decided in `main.rs` before any window: a second launch calls Raise on the first (un-minimise and focus) and exits 0. Not yet run on a Linux desktop; macOS has no D-Bus, so every launch is first there |
 | Window size and position remembered | 1 | ✅ | |
 | Track info in the window title | 2 | ⬜ | |
@@ -106,7 +106,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Infinity albums mode | 3 | ⬜ | |
 | Track, album and artist radio (Instant Mix) | 2 | 🟨 | library done; UI pending. `instant_mix_from` with a track, album, artist, genre or playlist seed; `similar_items`, `similar_albums`, `similar_artists` |
 | Taste flags: Not Interested, Don't Count Plays; "Hidden from mixes" list | 1 | ✅ | Set from the action strip; Hidden from mixes lists them in Settings with Clear |
-| Mixes (describe a mood → smart rules via OpenRouter) | 3 | ⬜ | |
+| Mixes (describe a mood → smart rules via OpenRouter) | 3 | 🟨 | Library done; UI pending. `describe_mix` returns rules in the phone's `smartRules` JSON (byte for byte, illegal field/operator pairs refused with a reason) and the names the mood mentioned; `mix_plan` has the genre matching ("rock" takes Hard Rock, not Rockabilly), name-first ordering and the summary line, ported from the Electron app. Evaluating the history rules against the local store is the app's (aoide-store). Tested against a local stand-in, not yet against OpenRouter |
 | Discover | 2 | ⬜ | |
 
 ## Playlists
@@ -145,7 +145,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Synced lyrics from Jellyfin, follow along, tap to seek | 1 | ✅ | |
 | Lyric timing offset | 1 | ✅ | The Settings slider (±1.5 s); applied to line selection and to click-to-seek |
 | Internet lyrics (LRCLIB, NetEase, Genius, SimpMusic), on by default, can be turned off | 2 | 🟨 | library done; UI pending. aoide-lyrics, LRCLIB only: NetEase has no documented API, Genius' API has no lyrics, SimpMusic has no terms (crate docs). The off switch and caching what was found are the app's |
-| Lyric translation | 3 | ⬜ | The iOS app does it on-device; needs a local option on Linux |
+| Lyric translation | 3 | 🟨 | Library done; UI pending. `aoide_integrations::translate`: the lyrics' language by whatlang and the listener's from the locale, offered only when they differ; with the `local-translation` feature (off by default), `LocalTranslator` translates on this machine with Firefox Translations' models through `fxtranslate` (pure Rust, MPL-2.0), each pair's model (about 20 to 40 MB) downloaded on first use to the cache dir, through English when there is no direct model. Lyrics never leave the machine. Not yet run with a real model (the test for it is ignored and needs a downloaded model); fxtranslate 0.5.0 has a decoder fix waiting in its next release, and Mozilla's model hosting is meant for Firefox, so a mirror (`ModelSource::Mirror`) is worth setting up |
 | Furigana and romaji | 3 | 🟨 | library done; UI pending. Kana→romaji always; furigana and dictionary romaji behind aoide-lyrics' `furigana` feature, off by default (IPADIC adds about 48.6 MB and downloads at build time) |
 
 ## Settings shown in round 1
@@ -161,7 +161,7 @@ else in the Electron settings arrives with its feature above.
 | pacman repository from GitHub releases (`[aoide]`) | 1 | 🟨 | `packaging/arch/PKGBUILD` (package `aoide-linux`) and `.github/workflows/release-arch.yml`: a `v*` tag builds it in an Arch container into the repository `[aoide-linux]` on the release. Installs beside the Electron `aoide`, so its names differ for now (`/usr/bin/aoide-linux`, desktop id `io.github.Virel0.Aoide.Linux`); what taking over the app id `io.github.Virel0.Aoide` takes is at the top of the PKGBUILD. Not yet tagged or built in CI; only the package step was dry-run (on macOS) |
 | Flatpak | 2 | ⬜ | |
 | AppImage / deb | 3 | ⬜ | |
-| In-app "update available" notice | 3 | ⬜ | pacman and Flatpak update the app themselves |
+| In-app "update available" notice | 3 | 🟨 | Library done; UI pending. `aoide_integrations::update::UpdateChecker`: GitHub's latest release of Virel0/aoide-linux against the running version (semver, drafts and pre-releases ignored), with the notes and the release page; at most one attempt a day through an `UpdateState` the app keeps; sends only a fixed `User-Agent: aoide-linux` and GitHub's API headers. The off switch is the app's. pacman and Flatpak update the app themselves. Tested against a local stand-in for GitHub |
 | Settings import/export, log level, clear cache | 3 | ⬜ | |
 
 ## Not porting
