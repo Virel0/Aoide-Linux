@@ -102,9 +102,16 @@ impl State {
         }
         let mut list = column![].spacing(2);
         for playlist in view.playlists {
-            let count = match playlist.count {
-                1 => "1 song".to_owned(),
-                n => format!("{n} songs"),
+            let count = match (playlist.smart, playlist.count) {
+                (true, 1) => "Smart · 1 song".to_owned(),
+                (true, n) => format!("Smart · {n} songs"),
+                (false, 1) => "1 song".to_owned(),
+                (false, n) => format!("{n} songs"),
+            };
+            let glyph = if playlist.smart {
+                Icon::Sparkle
+            } else {
+                Icon::Playlist
             };
             let more = button(icon(Icon::More, 18.0, Tone::Secondary))
                 .style(theme::row)
@@ -117,7 +124,7 @@ impl State {
             list = list.push(
                 button(
                     row![
-                        icon(Icon::Playlist, 22.0, Tone::Accent),
+                        icon(glyph, 22.0, Tone::Accent),
                         text(playlist.name.as_str()).size(15).width(Fill),
                         widgets::secondary(count).size(13),
                         more,

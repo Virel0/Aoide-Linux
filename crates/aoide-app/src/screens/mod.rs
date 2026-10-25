@@ -105,6 +105,8 @@ pub struct PlaylistSummary {
     pub id: String,
     pub name: String,
     pub count: i64,
+    /// Its songs are what its rules match.
+    pub smart: bool,
 }
 
 /// What a screen's update and open can reach.

@@ -534,6 +534,11 @@ impl App {
 
     /// What runs once the store is known to be this account's.
     fn after_claim(&mut self) -> Task<Message> {
+        // Before the playlists are read: the store thread runs jobs in order.
+        let now = aoide_store::now_millis();
+        self.store.send(move |w| {
+            let _ = w.store.ensure_built_in_playlists(now);
+        });
         Task::batch([self.load_playlists(), self.restore_queue()])
     }
 
@@ -576,10 +581,19 @@ impl App {
                 store
                     .call(|w| {
                         let lists = w.store.playlists().unwrap_or_default();
+                        let now = aoide_store::now_millis();
                         lists
                             .into_iter()
                             .map(|p| PlaylistSummary {
-                                count: w.store.item_count(&p.id).unwrap_or(0),
+                                // A smart playlist's count is what its rules match now.
+                                count: if p.is_smart {
+                                    w.store
+                                        .match_count_of(&p, now, aoide_store::Calendar::Local)
+                                        .unwrap_or(0)
+                                } else {
+                                    w.store.item_count(&p.id).unwrap_or(0)
+                                },
+                                smart: p.is_smart,
                                 id: p.id,
                                 name: p.name,
                             })
