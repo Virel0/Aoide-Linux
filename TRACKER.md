@@ -178,9 +178,11 @@ and macOS builds.
 Open decisions, from the 2026-10-25 security audit and design review and
 earlier. Each is his to make; nothing here is built yet.
 
-- **Sign the packages** and the pacman database (needs a key of his and a
-  repository secret); until then each release carries SHA256SUMS files and
-  the pacman repository needs `SigLevel = Optional`.
+- **The release key**: signing is built (`packaging/sign.sh`, in the
+  release jobs only); it needs a key of his made and stored as the
+  `AOIDE_SIGNING_KEY` secret, and its public half committed, as
+  `docs/releases.md` says. Until then releases carry SHA256SUMS files and go
+  out unsigned.
 - **Title Case or sentence case** for the app's wording (it is Apple-style
   Title Case now, with a few exceptions).
 - **Settings layout**: one long page now; sections or tabs, and switches on

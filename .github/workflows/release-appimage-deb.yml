@@ -111,10 +111,23 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out the signing script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: packaging/sign.sh
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: aoide-linux-packages
           path: out
+
+      - name: Sign
+        env:
+          AOIDE_SIGNING_KEY: ${{ secrets.AOIDE_SIGNING_KEY }}
+          AOIDE_SIGNING_PASSPHRASE: ${{ secrets.AOIDE_SIGNING_PASSPHRASE }}
+        run: packaging/sign.sh out/*.AppImage out/*.deb out/SHA256SUMS-appimage-deb
 
       - name: Attach to the release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
