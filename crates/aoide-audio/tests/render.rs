@@ -1,5 +1,6 @@
 //! Offline renders, measured: trimming, crossfade level, seeking, loudness
-//! gain, volume and pause.
+//! gain, volume and pause (the pause and resume fades themselves are
+//! measured in `tests/fades.rs`).
 
 mod common;
 
@@ -454,7 +455,7 @@ fn pause_holds_the_position_and_play_carries_on() {
         .unwrap();
     render(&mut engine, RATE as usize / 2, 480);
     handle.pause().unwrap();
-    render(&mut engine, 960, 480); // the fade-out runs out
+    render(&mut engine, 7_200, 480); // the 150 ms fade-out runs out
     let paused_at = handle.position_ms();
     let silent = render(&mut engine, RATE as usize, 480);
     assert!(silent.iter().all(|&s| s == 0.0), "sound while paused");
@@ -464,8 +465,8 @@ fn pause_holds_the_position_and_play_carries_on() {
         "the position moved while paused"
     );
     assert_eq!(engine.transport(), Transport::Paused);
-    println!("pause: held at {paused_at} ms (paused after 500 ms + a 10 ms fade)");
-    assert!((paused_at as i64 - 510).abs() <= 11);
+    println!("pause: held at {paused_at} ms (paused after 500 ms + a 150 ms fade)");
+    assert!((paused_at as i64 - 650).abs() <= 1);
 
     handle.play().unwrap();
     render(&mut engine, 4_800, 480);

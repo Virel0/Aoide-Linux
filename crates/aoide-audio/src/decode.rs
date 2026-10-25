@@ -9,11 +9,12 @@ use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo, TrackType};
 use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::MetadataOptions;
+use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag};
 use symphonia::core::units::{TimeBase, Timestamp};
 
 use crate::error::{Error, Result};
 use crate::http::HttpSource;
+use crate::loudness::{ReplayGainTags, parse_tag_number};
 
 /// Where a track's bytes come from.
 #[derive(Clone, Debug)]
@@ -58,6 +59,7 @@ pub struct Decoder {
     sample_rate: u32,
     channels: usize,
     total_frames: Option<u64>,
+    replay_gain: ReplayGainTags,
     buf: Vec<f32>,
     /// The frame index the next decoded packet starts at, when it follows on.
     next_frame: u64,
@@ -96,7 +98,7 @@ impl Decoder {
         Self::from_format(format)
     }
 
-    fn from_format(format: Box<dyn FormatReader>) -> Result<Self> {
+    fn from_format(mut format: Box<dyn FormatReader>) -> Result<Self> {
         let track = format
             .default_track(TrackType::Audio)
             .ok_or_else(|| Error::Unsupported("no audio track".into()))?;
@@ -121,6 +123,7 @@ impl Decoder {
         let track_id = track.id;
         let time_base = track.time_base;
         let total_frames = track.num_frames;
+        let replay_gain = read_replay_gain(&mut *format, track_id);
         Ok(Self {
             format,
             decoder,
@@ -129,6 +132,7 @@ impl Decoder {
             sample_rate,
             channels,
             total_frames,
+            replay_gain,
             buf: Vec::new(),
             next_frame: 0,
             resync: false,
@@ -148,6 +152,13 @@ impl Decoder {
     /// Playable frames in the file, when the container says.
     pub fn total_frames(&self) -> Option<u64> {
         self.total_frames
+    }
+
+    /// The ReplayGain tags the file carries (Vorbis comments in FLAC, Ogg
+    /// and Opus, ID3v2 `TXXX` frames, APE tags, iTunes `----` atoms in MP4),
+    /// as read when it was opened.
+    pub fn replay_gain(&self) -> ReplayGainTags {
+        self.replay_gain
     }
 
     /// Seeks so the next packet holds `frame` (sample-accurate seek: the
@@ -234,6 +245,42 @@ impl Decoder {
             None => ts,
         }
     }
+}
+
+/// The ReplayGain tags in every metadata revision read so far: those before
+/// the container (an ID3v2 tag), the container's own, and the track's. A
+/// later revision overrides an earlier one, field by field.
+fn read_replay_gain(format: &mut dyn FormatReader, track_id: u32) -> ReplayGainTags {
+    let mut tags = ReplayGainTags::default();
+    let mut metadata = format.metadata();
+    let mut take = |revision: &MetadataRevision| {
+        let track = revision
+            .per_track
+            .iter()
+            .filter(|per_track| per_track.track_id == u64::from(track_id))
+            .flat_map(|per_track| per_track.metadata.tags.iter());
+        for tag in revision.media.tags.iter().chain(track) {
+            let (slot, text) = match &tag.std {
+                Some(StandardTag::ReplayGainTrackGain(text)) => (&mut tags.track_gain_db, text),
+                Some(StandardTag::ReplayGainTrackPeak(text)) => (&mut tags.track_peak, text),
+                Some(StandardTag::ReplayGainAlbumGain(text)) => (&mut tags.album_gain_db, text),
+                Some(StandardTag::ReplayGainAlbumPeak(text)) => (&mut tags.album_peak, text),
+                _ => continue,
+            };
+            if let Some(value) = parse_tag_number(text) {
+                *slot = Some(value);
+            }
+        }
+    };
+    loop {
+        if let Some(revision) = metadata.current() {
+            take(revision);
+        }
+        if metadata.pop().is_none() {
+            break;
+        }
+    }
+    tags
 }
 
 /// The name of a codec a music library can hold that this build has no

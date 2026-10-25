@@ -46,3 +46,31 @@ fn the_default_device_plays_and_reports_the_heard_position() {
         "position {position} ms after 1.5 s"
     );
 }
+
+#[test]
+#[ignore = "needs an audio output device"]
+fn the_devices_are_listed_and_one_can_be_chosen_by_id() {
+    let devices = aoide_audio::output_devices().expect("a device list");
+    for device in &devices {
+        println!(
+            "{}{} ({})",
+            device.name,
+            if device.is_default { " [default]" } else { "" },
+            device.id
+        );
+    }
+    assert!(!devices.is_empty(), "no output devices");
+    assert!(devices.iter().filter(|d| d.is_default).count() <= 1);
+
+    // Started on the default device by its id, as a saved choice would be.
+    let default = devices.iter().find(|d| d.is_default).unwrap_or(&devices[0]);
+    let choice = aoide_audio::DeviceChoice::from(default);
+    let (output, handle, _events) = Output::start_on(choice.clone()).expect("the chosen device");
+    handle.set_volume(0.0).unwrap();
+    println!("playing on {:?}", output.playing_on());
+    assert_eq!(
+        output.playing_on(),
+        choice,
+        "fell back to following the default"
+    );
+}

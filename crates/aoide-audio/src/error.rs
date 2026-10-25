@@ -13,6 +13,9 @@ pub enum Error {
     Resample(String),
     /// No output device, or it refused the stream.
     Output(String),
+    /// A setting the engine cannot take (an equaliser with too many bands, a
+    /// number that is not one).
+    Settings(String),
 }
 
 impl fmt::Display for Error {
@@ -24,6 +27,7 @@ impl fmt::Display for Error {
             Error::Seek(m) => write!(f, "seeking failed: {m}"),
             Error::Resample(m) => write!(f, "resampling failed: {m}"),
             Error::Output(m) => write!(f, "audio output: {m}"),
+            Error::Settings(m) => write!(f, "audio setting: {m}"),
         }
     }
 }

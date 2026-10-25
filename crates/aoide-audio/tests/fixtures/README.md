@@ -70,3 +70,79 @@ transcodes with.
 ```
 ffmpeg -t 0.25 -i clicks_a.wav -c:a libopus -b:a 64k opus.opus
 ```
+
+## ReplayGain fixtures
+
+For `tests/replaygain.rs`: half a second of a 1 kHz tone at half scale
+(−6 dBFS, peak exactly 0.5), 48 kHz stereo, tagged. Made on macOS 26.2 with
+ffmpeg 9.0.2, metaflac 1.5.0 and `oggenc` from vorbis-tools 1.4.3.
+
+`gen_rg.py` writes the source, `tone.wav`:
+
+```python
+import math, struct, wave
+
+RATE, FRAMES = 48000, 24000
+
+def tone():
+    # 1 kHz at half scale (-6 dBFS), both channels, half a second.
+    out = []
+    for k in range(FRAMES):
+        v = round(16384 * math.sin(2 * math.pi * 1000 * k / RATE))
+        out += [v, v]
+    return out
+
+with wave.open("tone.wav", "wb") as w:
+    w.setnchannels(2); w.setsampwidth(2); w.setframerate(RATE)
+    s = tone()
+    w.writeframes(struct.pack("<%dh" % len(s), *s))
+```
+
+| File | Tags | Command |
+|---|---|---|
+| `rg_album.flac` | track −4 dB / 0.5, album −7 dB / 0.6 | `ffmpeg -i tone.wav -c:a flac rg_album.flac`, then `metaflac --remove-all-tags --set-tag="REPLAYGAIN_TRACK_GAIN=-4.00 dB" --set-tag="REPLAYGAIN_TRACK_PEAK=0.500000" --set-tag="REPLAYGAIN_ALBUM_GAIN=-7.00 dB" --set-tag="REPLAYGAIN_ALBUM_PEAK=0.600000" rg_album.flac` |
+| `rg_boost.flac` | track +9 dB / 0.5 | as above, with `--set-tag="REPLAYGAIN_TRACK_GAIN=+9.00 dB" --set-tag="REPLAYGAIN_TRACK_PEAK=0.500000"` |
+| `rg_track.ogg` | track −3 dB, no peak | `oggenc -Q -q 4 -c "REPLAYGAIN_TRACK_GAIN=-3.00 dB" -o rg_track.ogg tone.wav` |
+| `rg_album.mp3` | as `rg_album.flac`, ID3v2.4 `TXXX` | `ffmpeg -i tone.wav -c:a libmp3lame -b:a 128k -id3v2_version 4 -metadata "REPLAYGAIN_TRACK_GAIN=-4.00 dB" -metadata "REPLAYGAIN_TRACK_PEAK=0.500000" -metadata "REPLAYGAIN_ALBUM_GAIN=-7.00 dB" -metadata "REPLAYGAIN_ALBUM_PEAK=0.600000" rg_album.mp3` |
+| `rg_album.m4a` | track −4 dB, album −7 dB / 0.6, iTunes `----` atoms | `ffmpeg -i tone.wav -c:a alac rg_album.m4a`, then `python3 itunes_rg.py rg_album.m4a "replaygain_track_gain=-4.00 dB" "replaygain_album_gain=-7.00 dB" "replaygain_album_peak=0.600000"` |
+
+ffmpeg's MP4 muxer drops tags it does not know, so `itunes_rg.py` adds the
+freeform atoms itself, inside the `ilst` that ffmpeg writes. It relies on
+`moov` being the last atom (ffmpeg's default without `+faststart`), so no
+chunk offset moves:
+
+```python
+# Adds iTunes freeform (----) ReplayGain atoms to an M4A whose moov is the
+# last top-level atom (what ffmpeg writes), so no chunk offset moves.
+import struct, sys
+
+def atom(kind, payload):
+    return struct.pack(">I4s", 8 + len(payload), kind) + payload
+
+def freeform(name, value):
+    return atom(b"----",
+        atom(b"mean", b"\0\0\0\0" + b"com.apple.iTunes")
+        + atom(b"name", b"\0\0\0\0" + name.encode())
+        + atom(b"data", struct.pack(">II", 1, 0) + value.encode()))
+
+def children(data, start, end):
+    at = start
+    while at < end:
+        size, kind = struct.unpack(">I4s", data[at:at + 8])
+        yield at, size, kind
+        at += size
+
+path, pairs = sys.argv[1], sys.argv[2:]
+data = bytearray(open(path, "rb").read())
+moov = [(a, s) for a, s, k in children(data, 0, len(data)) if k == b"moov"][0]
+assert moov[0] + moov[1] == len(data), "moov is not last"
+udta = [(a, s) for a, s, k in children(data, moov[0] + 8, moov[0] + moov[1]) if k == b"udta"][0]
+meta = [(a, s) for a, s, k in children(data, udta[0] + 8, udta[0] + udta[1]) if k == b"meta"][0]
+ilst = [(a, s) for a, s, k in children(data, meta[0] + 12, meta[0] + meta[1]) if k == b"ilst"][0]
+extra = b"".join(freeform(n, v) for n, v in (p.split("=", 1) for p in pairs))
+end = ilst[0] + ilst[1]
+data[end:end] = extra
+for at, size in (moov, udta, meta, ilst):
+    struct.pack_into(">I", data, at, size + len(extra))
+open(path, "wb").write(data)
+```

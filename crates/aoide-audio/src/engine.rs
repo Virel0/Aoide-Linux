@@ -18,16 +18,22 @@ use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread;
 
+use crate::compressor::{Compressor, CompressorSettings};
+use crate::eq::{EqCurve, EqParams, Equalizer};
 use crate::error::{Error, Result};
 use crate::mix::{MixTransition, curve};
 use crate::pipeline::{Feed, FeedRead, InlineFeed, Marker, ThreadFeed, TrackSpec};
 use crate::queue::EntryId;
+use crate::visualizer::{TapRing, VisualizerTap};
 
 /// Frames rendered per inner step; any caller buffer is split into these.
 const BLOCK: usize = 4096;
-/// A pause, a resume or a skip while playing is faded over this long, so it
-/// does not click.
-const DECLICK_SECONDS: f32 = 0.010;
+/// A skip or a seek while playing fades the new track in over this long, so
+/// the jump does not click.
+const DECLICK_SECONDS: f64 = 0.010;
+/// A pause fades out, and a resume fades in, over this long, on equal-power
+/// curves: the music eases off rather than stopping dead.
+pub const PAUSE_FADE_SECONDS: f64 = 0.150;
 /// How often a position event is sent, in heard time.
 const POSITION_EVERY_MS: f64 = 250.0;
 const ANCHORS: usize = 32;
@@ -101,6 +107,8 @@ enum Command {
     Pause,
     Stop,
     Volume(f32),
+    Equalizer(EqParams),
+    Compressor(Option<CompressorSettings>),
 }
 
 struct NextPlan {
@@ -122,6 +130,7 @@ pub struct EngineHandle {
     config: EngineConfig,
     commands: SyncSender<Command>,
     shared: Arc<Shared>,
+    tap: Arc<TapRing>,
 }
 
 impl EngineHandle {
@@ -180,6 +189,36 @@ impl EngineHandle {
     /// Master volume, 0 to 1, ramped over one block.
     pub fn set_volume(&self, volume: f32) -> Result<()> {
         self.send(Command::Volume(volume.clamp(0.0, 1.0)))
+    }
+
+    /// The equaliser's curve, or `None` to turn it off. The change glides in
+    /// over about 15 ms, so moving a slider never clicks; off glides to flat
+    /// and then the equaliser is not run at all. Refuses a curve of more than
+    /// [`crate::eq::MAX_BANDS`] bands or one with a number that is not one;
+    /// values out of range are held to it.
+    pub fn set_equalizer(&self, curve: Option<&EqCurve>) -> Result<()> {
+        let params = match curve {
+            Some(curve) => EqParams::from_curve(curve)?,
+            None => EqParams::flat(),
+        };
+        self.send(Command::Equalizer(params))
+    }
+
+    /// The compressor's settings, or `None` to turn it off. It runs after
+    /// the equaliser. A change of threshold, ratio or knee moves the target
+    /// reduction, which the attack and release smooth; makeup glides over
+    /// about 15 ms. Off lets the reduction release and is then not run at
+    /// all. Refuses a setting that is not a number; values out of range are
+    /// held to it.
+    pub fn set_compressor(&self, settings: Option<&CompressorSettings>) -> Result<()> {
+        let settings = settings.map(CompressorSettings::validated).transpose()?;
+        self.send(Command::Compressor(settings))
+    }
+
+    /// What a [`crate::visualizer::Visualizer`] reads: every rendered frame,
+    /// mono, aligned to the heard position.
+    pub fn visualizer_tap(&self) -> VisualizerTap {
+        VisualizerTap::new(Arc::clone(&self.tap))
     }
 
     /// The heard position in the current track, in milliseconds.
@@ -327,9 +366,10 @@ pub struct Engine {
     reaper: Option<SyncSender<Garbage>>,
     shared: Arc<Shared>,
     transport: Transport,
-    /// Pause and resume ramp, 0 to 1.
-    fade: f32,
-    fade_step: f32,
+    /// Pause and resume ramp.
+    fade: Fade,
+    declick_frames: u32,
+    pause_frames: u32,
     volume: f32,
     volume_target: f32,
     primary: Option<Deck>,
@@ -341,6 +381,9 @@ pub struct Engine {
     latency: u64,
     timeline: Timeline,
     scratch: Vec<f32>,
+    eq: Equalizer,
+    compressor: Compressor,
+    tap: Arc<TapRing>,
     /// The loaded track and those chained since, newest last.
     remembered: VecDeque<TrackSpec>,
     /// What follows the current track, and the overlap when it blends in.
@@ -362,6 +405,7 @@ impl Engine {
             current: AtomicU64::new(0),
             transport: AtomicU8::new(0),
         });
+        let tap = Arc::new(TapRing::new(config.sample_rate));
         let reaper = match config.decode {
             DecodeMode::Inline => None,
             DecodeMode::Threaded => {
@@ -380,8 +424,12 @@ impl Engine {
             reaper,
             shared: Arc::clone(&shared),
             transport: Transport::Stopped,
-            fade: 1.0,
-            fade_step: 1.0 / (DECLICK_SECONDS * config.sample_rate as f32),
+            fade: Fade::full(
+                frames_of(DECLICK_SECONDS, config.sample_rate),
+                FadeShape::Linear,
+            ),
+            declick_frames: frames_of(DECLICK_SECONDS, config.sample_rate),
+            pause_frames: frames_of(PAUSE_FADE_SECONDS, config.sample_rate),
             volume: 1.0,
             volume_target: 1.0,
             primary: None,
@@ -391,6 +439,9 @@ impl Engine {
             latency: 0,
             timeline: Timeline::new(),
             scratch: vec![0.0; BLOCK * config.channels],
+            eq: Equalizer::new(config.sample_rate, config.channels),
+            compressor: Compressor::new(config.sample_rate, config.channels),
+            tap: Arc::clone(&tap),
             remembered: VecDeque::with_capacity(REMEMBERED),
             chained: None,
         };
@@ -398,6 +449,7 @@ impl Engine {
             config,
             commands: commands_tx,
             shared,
+            tap,
         };
         (engine, handle, events_rx)
     }
@@ -450,11 +502,15 @@ impl Engine {
                     self.transport = Transport::Playing;
                     // Replacing something audible fades the new one in;
                     // starting from silence is sample-exact from frame one.
-                    self.fade = if audible { 0.0 } else { 1.0 };
+                    self.fade = if audible {
+                        Fade::silent(self.declick_frames, FadeShape::Linear)
+                    } else {
+                        Fade::full(self.declick_frames, FadeShape::Linear)
+                    };
                 } else {
                     // Loaded and held: nothing sounds until play.
                     self.transport = Transport::Paused;
-                    self.fade = 0.0;
+                    self.fade = Fade::silent(self.pause_frames, FadeShape::EqualPower);
                 }
             }
             Command::SetNext(plan) => {
@@ -521,6 +577,8 @@ impl Engine {
             Command::Play => {
                 if self.primary.is_some() && self.transport != Transport::Playing {
                     self.transport = Transport::Playing;
+                    // From wherever a pause's fade had got to.
+                    self.fade.reshape(self.pause_frames, FadeShape::EqualPower);
                     self.anchor_here(true);
                 }
             }
@@ -528,7 +586,8 @@ impl Engine {
                 if self.transport == Transport::Playing {
                     // The fade runs out in render, which then pauses.
                     self.transport = Transport::Paused;
-                    if self.fade <= 0.0 {
+                    self.fade.reshape(self.pause_frames, FadeShape::EqualPower);
+                    if self.fade.is_silent() {
                         self.anchor_here(false);
                     }
                 }
@@ -544,6 +603,8 @@ impl Engine {
                 });
             }
             Command::Volume(volume) => self.volume_target = volume,
+            Command::Equalizer(params) => self.eq.set(params),
+            Command::Compressor(settings) => self.compressor.set(settings),
         }
     }
 
@@ -685,35 +746,43 @@ impl Engine {
         let channels = self.config.channels;
         let frames = out.len() / channels;
 
-        // Decks run while playing, and while a pause is still fading out.
-        let fading_out = self.transport == Transport::Paused && self.fade > 0.0;
+        // Decks run while playing, and while a pause is still fading out:
+        // to the fade's last frame and no further, so a resume carries on
+        // from the first frame that was not heard.
+        let fading_out = self.transport == Transport::Paused && !self.fade.is_silent();
         let running =
             self.primary.is_some() && (self.transport == Transport::Playing || fading_out);
+        let deck_frames = if fading_out {
+            frames.min(self.fade.at as usize)
+        } else {
+            frames
+        };
         if running {
             let mut done = 0;
-            while done < frames {
-                match self.render_span(out, done, frames - done) {
+            while done < deck_frames {
+                match self.render_span(out, done, deck_frames - done) {
                     Some(advanced) => done += advanced,
                     None => break,
                 }
             }
         }
 
+        // The equaliser and the compressor on the mix, before the fades and
+        // the volume, so neither changes what they do.
+        self.eq.process(out);
+        self.compressor.process(out);
+
         // Pause and resume fade, then master volume, per frame.
-        let fade_target = if self.transport == Transport::Paused {
-            0.0
-        } else {
-            1.0
-        };
+        let fading_in = self.transport != Transport::Paused;
         let volume_step = (self.volume_target - self.volume) / frames.max(1) as f32;
-        for frame in out.chunks_exact_mut(channels) {
-            if self.fade < fade_target {
-                self.fade = (self.fade + self.fade_step).min(1.0);
-            } else if self.fade > fade_target {
-                self.fade = (self.fade - self.fade_step).max(0.0);
-            }
+        let mono = 1.0 / channels as f32;
+        for (index, frame) in out.chunks_exact_mut(channels).enumerate() {
+            let fade = self.fade.step(fading_in);
+            // The visualizer's copy: faded, before the volume.
+            let sum: f32 = frame.iter().sum();
+            self.tap.write(self.clock + index as u64, sum * mono * fade);
             self.volume += volume_step;
-            let gain = self.fade * self.volume;
+            let gain = fade * self.volume;
             if gain != 1.0 {
                 for sample in frame {
                     *sample *= gain;
@@ -722,7 +791,7 @@ impl Engine {
         }
         self.volume = self.volume_target;
         self.clock += frames as u64;
-        if fading_out && self.fade == 0.0 {
+        if fading_out && self.fade.is_silent() {
             // Paused: the position holds where the decks stopped.
             self.anchor_here(false);
         }
@@ -881,6 +950,7 @@ impl Engine {
     /// Sends what has become audible and updates the shared position.
     fn publish(&mut self) {
         let heard = self.clock.saturating_sub(self.latency);
+        self.tap.publish(self.clock, heard);
         let events = &mut self.timeline.events;
         let due = events
             .iter()
@@ -929,6 +999,98 @@ impl Engine {
                     .events
                     .try_send(EngineEvent::Position { id, ms: ms as u64 });
             }
+        }
+    }
+}
+
+fn frames_of(seconds: f64, rate: u32) -> u32 {
+    ((seconds * f64::from(rate)).round() as u32).max(1)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum FadeShape {
+    Linear,
+    /// sin(p·π/2): constant power across a fade, so the music seems to ease
+    /// off evenly rather than hang on and then drop.
+    EqualPower,
+}
+
+/// A fade counted in whole frames, so where it ends is exact.
+#[derive(Clone, Copy, Debug)]
+struct Fade {
+    length: u32,
+    /// 0 (silent) to `length` (full).
+    at: u32,
+    shape: FadeShape,
+}
+
+impl Fade {
+    fn full(length: u32, shape: FadeShape) -> Self {
+        Self {
+            length,
+            at: length,
+            shape,
+        }
+    }
+
+    fn silent(length: u32, shape: FadeShape) -> Self {
+        Self {
+            length,
+            at: 0,
+            shape,
+        }
+    }
+
+    fn is_silent(&self) -> bool {
+        self.at == 0
+    }
+
+    fn level(&self, at: u32) -> f32 {
+        if at >= self.length {
+            return 1.0;
+        }
+        let progress = f64::from(at) / f64::from(self.length);
+        match self.shape {
+            FadeShape::Linear => progress as f32,
+            FadeShape::EqualPower => curve::incoming(progress) as f32,
+        }
+    }
+
+    /// Another length and shape, from the level this one has reached, so
+    /// changing fades midway does not jump.
+    fn reshape(&mut self, length: u32, shape: FadeShape) {
+        if (length, shape) == (self.length, self.shape) {
+            return;
+        }
+        let level = f64::from(self.level(self.at));
+        let progress = match shape {
+            FadeShape::Linear => level,
+            FadeShape::EqualPower => level.asin() / std::f64::consts::FRAC_PI_2,
+        };
+        *self = Self {
+            length,
+            at: (progress * f64::from(length)).round() as u32,
+            shape,
+        };
+    }
+
+    /// The level for the next frame. Fading in, the first frame is already
+    /// one step up and the `length`th is full; fading out, the first is
+    /// still full and the `length`th one step above silence. The two are
+    /// mirror images, and a fade-out of `length` frames sounds for exactly
+    /// `length` frames.
+    fn step(&mut self, up: bool) -> f32 {
+        if up {
+            if self.at < self.length {
+                self.at += 1;
+            }
+            self.level(self.at)
+        } else if self.at > 0 {
+            let level = self.level(self.at);
+            self.at -= 1;
+            level
+        } else {
+            0.0
         }
     }
 }

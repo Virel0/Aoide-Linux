@@ -157,10 +157,13 @@ version = "0.1.0"
 dependencies = [
  "cpal",
  "flacenc",
+ "realfft",
  "reqwest",
  "rtrb",
  "rubato",
  "rustls",
+ "serde",
+ "serde_json",
  "symphonia",
  "tempfile",
  "tokio",
