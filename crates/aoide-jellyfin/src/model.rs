@@ -16,6 +16,8 @@ pub enum ItemKind {
     Playlist,
     /// A library. Its `collection_type` says what kind.
     CollectionFolder,
+    /// A folder on disk, met when browsing by folder.
+    Folder,
     #[default]
     #[serde(other)]
     Unknown,
@@ -31,6 +33,9 @@ pub struct Item {
     pub name: String,
     #[serde(rename = "Type", default, deserialize_with = "nullable")]
     pub kind: ItemKind,
+    /// Libraries, folders, albums and playlists are folders; tracks are not.
+    #[serde(default, deserialize_with = "nullable")]
+    pub is_folder: bool,
     pub album: Option<String>,
     pub album_id: Option<String>,
     pub album_artist: Option<String>,
@@ -76,6 +81,7 @@ impl ItemKind {
             ItemKind::MusicGenre => "MusicGenre",
             ItemKind::Playlist => "Playlist",
             ItemKind::CollectionFolder => "CollectionFolder",
+            ItemKind::Folder => "Folder",
             ItemKind::Unknown => return None,
         })
     }

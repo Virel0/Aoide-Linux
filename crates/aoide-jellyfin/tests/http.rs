@@ -1445,3 +1445,43 @@ async fn a_saved_filter_runs_as_a_list_query() {
             .is_empty()
     );
 }
+
+// MARK: - Folders
+
+#[tokio::test]
+async fn folder_children_are_one_level_folders_first() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("userId", USER))
+        .and(query_param("parentId", "lib1"))
+        .and(query_param("sortBy", "IsFolder,SortName"))
+        .and(query_param("sortOrder", "Ascending"))
+        .and(query_param("startIndex", "0"))
+        .and(query_param("limit", "200"))
+        .and(|request: &Request| query_value(request, "recursive").is_none())
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                { "Id": "f1", "Name": "Bootlegs", "Type": "Folder", "IsFolder": true },
+                { "Id": "al1", "Name": "Loveless", "Type": "MusicAlbum", "IsFolder": true },
+                { "Id": "t1", "Name": "intro.flac", "Type": "Audio", "IsFolder": false },
+            ],
+            "TotalRecordCount": 3
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let page = signed_in(&server)
+        .folder_children("lib1", 0, Some(200))
+        .await
+        .unwrap();
+    let kinds: Vec<_> = page.items.iter().map(|i| (i.kind, i.is_folder)).collect();
+    assert_eq!(
+        kinds,
+        [
+            (ItemKind::Folder, true),
+            (ItemKind::MusicAlbum, true),
+            (ItemKind::Audio, false)
+        ]
+    );
+}

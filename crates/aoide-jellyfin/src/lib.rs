@@ -12,6 +12,7 @@ mod auth;
 mod client;
 mod error;
 mod filters;
+mod folders;
 mod library;
 mod lyrics;
 mod maintenance;
