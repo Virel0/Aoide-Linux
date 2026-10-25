@@ -274,6 +274,7 @@ mod tests {
                 track_in_title: false,
                 appearance: crate::appearance::Appearance::Dark,
                 accent: crate::appearance::Accent::Teal,
+                internet_lyrics: false,
             },
         };
         config.save(&path).unwrap();

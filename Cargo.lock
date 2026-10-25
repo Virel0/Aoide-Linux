@@ -140,6 +140,7 @@ version = "0.1.0"
 dependencies = [
  "aoide-audio",
  "aoide-jellyfin",
+ "aoide-lyrics",
  "aoide-mpris",
  "aoide-sidecar",
  "aoide-store",

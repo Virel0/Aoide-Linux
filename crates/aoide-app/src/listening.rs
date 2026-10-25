@@ -36,6 +36,11 @@ pub struct State {
     /// Private listening: no playback reports to Jellyfin and no play
     /// events in the history while on. Lasts until switched off or quit.
     pub private: bool,
+    /// The internet lyrics finder, made when first needed.
+    pub finder: Option<std::sync::Arc<aoide_lyrics::LyricsFinder>>,
+    /// Where the lyrics showing came from, when not the server: the track
+    /// and the provider's name.
+    pub lyrics_source: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +55,7 @@ pub enum Msg {
     Transcode(crate::sound::Transcode),
     Private(bool),
     Interface(crate::appearance::InterfaceSettings),
+    LyricsFound(String, Result<Option<crate::lyrics_online::Found>, String>),
     Sleep(Choice),
     SleepMinutes(String),
     SleepCustom,
@@ -155,6 +161,24 @@ impl App {
             (Verdict::Drop, _) => self.sleep_set(None),
             (Verdict::Keep, _) => Task::none(),
         }
+    }
+
+    /// What a lyrics lookup needs past the server: the finder and its
+    /// cache, or `None` while internet lyrics are off.
+    pub(crate) fn lyrics_online(&mut self) -> Option<crate::lyrics_online::Online> {
+        if !self.config.interface.internet_lyrics {
+            return None;
+        }
+        if self.listening.finder.is_none() {
+            self.listening.finder = crate::lyrics_online::finder();
+        }
+        Some(crate::lyrics_online::Online {
+            finder: self.listening.finder.clone()?,
+            dir: self
+                .paths
+                .as_ref()
+                .and_then(crate::lyrics_online::cache_dir),
+        })
     }
 
     /// Private listening on or off. On: the song playing is reported
@@ -304,9 +328,19 @@ impl App {
             }
             Msg::LoadDevices => list_devices(),
             Msg::Private(on) => self.set_private(on),
-            Msg::Interface(interface) => {
-                self.interface_changed(interface);
-                Task::none()
+            Msg::Interface(interface) => self.interface_changed(interface),
+            Msg::LyricsFound(item, result) => {
+                self.listening.lyrics_source = match &result {
+                    Ok(Some(crate::lyrics_online::Found {
+                        provider: Some(provider),
+                        ..
+                    })) => Some((item.clone(), provider.clone())),
+                    _ => None,
+                };
+                Task::done(Message::Lyrics(
+                    item,
+                    result.map(|found| found.map(|f| f.lyrics)),
+                ))
             }
             Msg::Transcode(transcode) => {
                 self.config.sound.transcode = transcode.sanitised();

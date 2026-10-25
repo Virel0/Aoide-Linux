@@ -1150,6 +1150,8 @@ impl App {
     /// if they are showing and not already here.
     pub(crate) fn track_changed(&mut self) -> Task<Message> {
         let current = self.playback.current().map(|(_, q)| q.meta.id.clone());
+        let meta = self.playback.current().map(|(_, q)| q.meta.clone());
+        let online = self.lyrics_online();
         let Some(signed) = self.session.as_mut() else {
             return Task::none();
         };
@@ -1165,14 +1167,22 @@ impl App {
         });
         signed.lyric_line = None;
         let client = signed.connection.client.clone();
+        let Some(meta) = meta else {
+            return Task::none();
+        };
         Task::perform(
             async move {
-                let result = client.lyrics(&item).await;
+                let result =
+                    crate::lyrics_online::find(client, online, meta, aoide_store::now_millis())
+                        .await;
                 (item, result)
             },
             |(item, result)| match result {
                 Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
-                result => Message::Lyrics(item, result.map_err(|e| session::describe(&e))),
+                result => Message::Listening(crate::listening::Msg::LyricsFound(
+                    item,
+                    result.map_err(|e| session::describe(&e)),
+                )),
             },
         )
     }

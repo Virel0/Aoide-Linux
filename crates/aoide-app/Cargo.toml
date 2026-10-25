@@ -15,6 +15,8 @@ workspace = true
 [dependencies]
 aoide-audio = { path = "../aoide-audio" }
 aoide-jellyfin = { path = "../aoide-jellyfin" }
+# Internet lyrics (LRCLIB) for songs the server has none for.
+aoide-lyrics = { path = "../aoide-lyrics" }
 # MPRIS, single instance and sleep inhibit; on macOS it builds and reports
 # itself unavailable.
 aoide-mpris = { path = "../aoide-mpris" }

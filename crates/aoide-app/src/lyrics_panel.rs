@@ -73,6 +73,17 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             column = column.push(text(line.text.as_str()).size(15));
         }
     }
+    if let Some((_, provider)) = app
+        .listening
+        .lyrics_source
+        .as_ref()
+        .filter(|(item, _)| *item == state.item)
+    {
+        column = column.push(
+            iced::widget::container(widgets::secondary(format!("Lyrics from {provider}")).size(12))
+                .padding(iced::Padding::ZERO.top(14)),
+        );
+    }
     scrollable(column.padding(iced::Padding::ZERO.right(12)))
         .id(SCROLL)
         .height(Fill)

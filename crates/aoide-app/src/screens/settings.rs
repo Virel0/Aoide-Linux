@@ -195,6 +195,7 @@ pub fn view<'a>(
             move |ms| message(Message::LyricOffset(ms)),
         )
         .step(50),
+        crate::lyrics_online::settings_row(&extras),
     ];
     let lyrics_rows = if offset != 0 {
         lyrics_rows.push(
