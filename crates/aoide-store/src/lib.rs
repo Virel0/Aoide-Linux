@@ -17,6 +17,7 @@ mod error;
 mod field_stamps;
 mod finish_rate;
 mod fractional_index;
+mod handoff;
 mod history;
 mod images;
 mod json;
@@ -46,6 +47,7 @@ pub use error::{Result, StoreError};
 pub use field_stamps::{FieldStamps, METADATA_COLUMNS};
 pub use finish_rate::{FinishCounts, FinishRate};
 pub use fractional_index::FractionalIndex;
+pub use handoff::{PickUp, QueueBroadcast, QueueFreshness, QueueSnapshot, ResumableQueue};
 pub use history::{
     AlbumPlays, ArtistPlays, DayPlays, PlayWeighting, Recap, TrackPlays, TrackStats,
 };

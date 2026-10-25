@@ -4,6 +4,7 @@
 //! against a local mock server. Nothing here touches the network.
 
 mod end_to_end;
+mod handoff;
 mod held_entities;
 mod http;
 mod next_discover;

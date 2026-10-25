@@ -8,6 +8,7 @@
 mod client;
 mod engine;
 mod error;
+mod handoff;
 mod types;
 
 #[cfg(test)]
@@ -16,8 +17,9 @@ mod tests;
 pub use client::{MAX_IDS_PER_CALL, SidecarClient};
 pub use engine::{ImageByteSource, SyncEngine, SyncError, SyncTransport};
 pub use error::SidecarError;
+pub use handoff::{QueueSource, queues_from_server, resumable_queues};
 pub use types::{
     AnalysisCoverage, AudioAnalysis, AudioAnalysisResponse, DiscoverCandidate, DiscoverFactors,
     DiscoverResponse, Measurement, NextCandidate, NextFactors, NextMode, NextRequest, NextResponse,
-    ProfileSummary, SoundBounds, SoundBoundsResponse, SyncStatus, iso_week,
+    ProfileSummary, QueueEntry, SoundBounds, SoundBoundsResponse, SyncStatus, iso_week,
 };

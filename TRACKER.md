@@ -136,7 +136,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Share-revoked edits held back, shares re-read every 5 min | 3 | ⬜ | |
 | Triggers: launch, focus, at most once a minute; "Sync now" | 1 | 🟨 | Launch and window focus, at most once a minute; Sync Now in Settings starts one at once unless one is running, and Settings says the last outcome in words ("Synced: sent 34 changes."). Seen against the stand-in server's empty sync log; not yet run against a real sidecar |
 | Sync status panel | 2 | ⬜ | |
-| Handoff: publish this device's queue; pick up another's | 2 | ⬜ | Electron only published while one page was open; publish always |
+| Handoff: publish this device's queue; pick up another's | 2 | 🟨 | Library done; UI pending. `QueueBroadcast` (store) writes the queue row debounced from every player change, never from a screen; `SyncEngine::publish_queue` pushes just that row. `resumable_queues` reads `GET /aoide/queue` (server clock) and falls back to the op log's rows; `ResumableQueue::pick_up` keeps earlier tracks and starts at the named one. Not yet run against a real sidecar |
 
 ## Lyrics
 

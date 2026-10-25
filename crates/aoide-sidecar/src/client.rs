@@ -12,7 +12,7 @@ use serde::de::DeserializeOwned;
 use crate::error::SidecarError;
 use crate::types::{
     AnalysisCoverage, AudioAnalysisResponse, DiscoverResponse, NextRequest, NextResponse,
-    SoundBounds, SoundBoundsResponse, SyncStatus,
+    QueueEntry, SoundBounds, SoundBoundsResponse, SyncStatus, list_from,
 };
 
 /// How many ids the measurement endpoints take per call.
@@ -168,6 +168,18 @@ impl SidecarClient {
             .body(bytes);
         let (status, body) = self.execute(request, &path).await?;
         check(status, &body, &path)
+    }
+
+    // MARK: - Handoff
+
+    /// `GET /aoide/queue`: one entry per device, most recently updated first by the
+    /// server's clock. Entries this build cannot read are skipped, not fatal.
+    pub async fn queues(&self) -> Result<Vec<QueueEntry>, SidecarError> {
+        let body: serde_json::Value = self.get_json("aoide/queue", &[]).await?;
+        Ok(list_from(&body, &["entries", "queues"])
+            .iter()
+            .filter_map(QueueEntry::from_json)
+            .collect())
     }
 
     // MARK: - Infinity and Discover

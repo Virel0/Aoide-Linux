@@ -286,6 +286,26 @@ impl<T: SyncTransport> SyncEngine<T> {
         }
     }
 
+    /// Pushes this device's waiting `queueState` op, and nothing else, so another
+    /// device can pick up what is playing without waiting for the next full sync.
+    /// Call it after [`aoide_store::QueueBroadcast`] writes a row. Refused with
+    /// [`SyncError::AlreadyRunning`] while a sync runs — that sync pushes the row
+    /// anyway. Returns how many ops the server acknowledged.
+    pub async fn publish_queue(&self) -> Result<usize, SyncError> {
+        if self.running.swap(true, Ordering::AcqRel) {
+            return Err(SyncError::AlreadyRunning);
+        }
+        let _guard = RunningGuard(&self.running);
+        let everything_else: BTreeSet<String> = SyncEntity::ALL
+            .into_iter()
+            .filter(|entity| *entity != SyncEntity::QueueState)
+            .map(|entity| entity.local_table().to_owned())
+            .collect();
+        let pushed = self.push_pending(&everything_else).await;
+        self.transition(SyncPhase::Idle);
+        Ok(pushed?.pushed)
+    }
+
     async fn run(&self) -> Result<SyncReport, SyncError> {
         // Before push, never after: an op naming a hash the server does not hold
         // leaves every other device with a cover it can never fetch.

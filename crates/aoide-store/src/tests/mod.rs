@@ -4,6 +4,7 @@
 mod curation_store;
 mod field_merge;
 mod fractional_index;
+mod handoff;
 mod play_definition;
 mod play_history;
 mod playlists;
