@@ -18,6 +18,7 @@ use crate::widgets;
 
 #[derive(Debug)]
 pub struct State {
+    id: String,
     name: String,
     pub albums: Load<Vec<Tile>>,
     /// Their most played songs here; empty until there are plays.
@@ -40,13 +41,15 @@ pub enum Message {
 pub fn open(ctx: &Ctx<'_>, id: &str, name: &str) -> (State, Task<App>) {
     let client = ctx.client.clone();
     let id = id.to_owned();
+    let asked = id.clone();
     let task = fetch(
         ctx.key,
-        async move { client.artist_albums(&id).await },
+        async move { client.artist_albums(&asked).await },
         |r| PageMsg::Artist(Message::Albums(r)),
     );
     (
         State {
+            id: id.clone(),
             name: name.to_owned(),
             albums: Load::Loading,
             top: Vec::new(),
@@ -131,7 +134,14 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
-        let mut body = column![widgets::title_bar(&self.name, view.can_go_back)].spacing(20);
+        let mut body = column![
+            widgets::title_bar(&self.name, view.can_go_back),
+            crate::radio::start_button(crate::radio::Station::new(
+                aoide_jellyfin::MixSeed::Artist(self.id.clone()),
+                self.name.clone(),
+            )),
+        ]
+        .spacing(20);
         if let Some(finish) = &self.finish {
             body = body.push(widgets::secondary(finish.as_str()).size(13));
         }

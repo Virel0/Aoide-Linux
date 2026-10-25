@@ -17,6 +17,7 @@ mod playback;
 mod player_bar;
 mod playing;
 mod queue_panel;
+mod radio;
 mod screens;
 mod session;
 mod shell;

@@ -233,8 +233,8 @@ impl State {
 fn resume_grid<'a>(cards: &'a [crate::handoff::Card], view: &View<'a>) -> Element<'a, App> {
     use crate::handoff::Msg;
     use aoide_store::ResumeTile;
-    use iced::widget::{container, grid};
-    let tiles = cards.iter().map(|card| {
+    use iced::widget::container;
+    let tile = |card: &'a crate::handoff::Card| -> Element<'a, App> {
         let words = column![
             text(card.tile.title())
                 .size(14)
@@ -279,16 +279,22 @@ fn resume_grid<'a>(cards: &'a [crate::handoff::Card], view: &View<'a>) -> Elemen
             .padding(0)
             .on_press(App::Handoff(Msg::Resume(card.tile.clone())))
             .into()
-    });
-    column![
-        text("Jump Back In").size(20).font(widgets::BOLD),
-        grid(tiles)
-            .columns(3)
-            .spacing(10)
-            .height(grid::Sizing::EvenlyDistribute(iced::Length::Fixed(64.0))),
-    ]
-    .spacing(10)
-    .into()
+    };
+    // Rows of three, the last one padded so its tiles keep their width.
+    let mut rows = column![].spacing(10);
+    for chunk in cards.chunks(3) {
+        let mut line = row![].spacing(10);
+        for card in chunk {
+            line = line.push(container(tile(card)).width(Fill));
+        }
+        for _ in chunk.len()..3 {
+            line = line.push(iced::widget::space().width(Fill));
+        }
+        rows = rows.push(line);
+    }
+    column![text("Jump Back In").size(20).font(widgets::BOLD), rows]
+        .spacing(10)
+        .into()
 }
 
 /// The genres as a row of chips, scrolled sideways like the album shelves.

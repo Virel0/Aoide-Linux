@@ -434,6 +434,9 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
         action("Play Last", RowAction::PlayLast).into(),
         action("Add to Playlist…", RowAction::ShowPlaylists).into(),
     ]);
+    if menu.single().is_some() || menu.collection.is_some() {
+        actions.push(action("Start Radio", RowAction::StartRadio).into());
+    }
     if let Some(track) = menu.single() {
         let flags = menu.flags.unwrap_or_default();
         let favourite = view

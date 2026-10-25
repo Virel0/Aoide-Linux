@@ -227,6 +227,8 @@ pub enum RowAction {
     JellyfinPlaylists(Result<Vec<(String, String)>, String>),
     /// Add the menu's songs to this Jellyfin playlist.
     AddToJellyfin(String),
+    /// Instant Mix from the menu's song, album, artist or playlist.
+    StartRadio,
 }
 
 /// The playlists to offer, filtered by name once there are enough to need it.

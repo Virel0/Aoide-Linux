@@ -163,6 +163,7 @@ pub enum Message {
     SyncPanel(crate::screens::sync_status::Msg),
     /// A Jellyfin playlist changed (this one, or which ones there are).
     JellyfinPlaylistChanged(Option<String>),
+    Radio(crate::radio::Msg),
 }
 
 /// The player bar's controls.
@@ -465,6 +466,7 @@ impl App {
             Message::Discover(message) => self.discover(message),
             Message::SyncPanel(message) => self.sync_panel(message),
             Message::JellyfinPlaylistChanged(id) => self.jellyfin_playlists_changed(id),
+            Message::Radio(message) => self.radio(message),
         }
     }
 
@@ -964,6 +966,14 @@ impl App {
             RowAction::JellyfinPlaylists(_) | RowAction::AddToJellyfin(_) => {
                 self.jellyfin_menu_action(action)
             }
+            RowAction::StartRadio => match signed
+                .menu
+                .as_ref()
+                .and_then(crate::radio::Station::of_menu)
+            {
+                Some(station) => self.radio(crate::radio::Msg::Start(station)),
+                None => Task::none(),
+            },
             RowAction::Filter(filter) => {
                 if let Some(menu) = signed.menu.as_mut() {
                     menu.filter = filter;
