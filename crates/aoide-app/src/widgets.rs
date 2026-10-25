@@ -304,18 +304,19 @@ pub fn track_row<'a>(
 ) -> Element<'a, Message> {
     let playing = view.playing == Some(track.id.as_str());
     let lead: Element<'a, Message> = if style.numbered {
-        let label = if playing {
-            "♪".to_owned()
+        let label: Element<'a, Message> = if playing {
+            icon(Icon::Song, 14.0, Tone::Accent)
         } else {
-            track
-                .track_number
-                .map(|n| n.to_string())
-                .unwrap_or_default()
-        };
-        container(secondary(label).size(13))
-            .width(28)
-            .align_x(Center)
+            secondary(
+                track
+                    .track_number
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
+            )
+            .size(13)
             .into()
+        };
+        container(label).width(28).align_x(Center).into()
     } else {
         art(
             track
@@ -403,12 +404,11 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
             .on_press(Message::Row(action))
     };
     let check = |label: &'static str, on: bool, act: RowAction| {
-        let text_label = if on {
-            format!("✓ {label}")
-        } else {
-            label.to_owned()
-        };
-        button(text(text_label).size(13))
+        let mut body = row![].spacing(4).align_y(Center);
+        if on {
+            body = body.push(icon(Icon::Check, 13.0, Tone::Accent));
+        }
+        button(body.push(text(label).size(13)))
             .style(theme::tonal)
             .padding([6, 10])
             .on_press(Message::Row(act))
