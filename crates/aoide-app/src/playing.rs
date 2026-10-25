@@ -235,6 +235,7 @@ impl App {
                 )
                 .ok()
             })
+            .map(|built| crate::sound::transcoded(built, &self.config.sound.transcode))
             .collect();
         let result = match pending.how {
             Destination::Play {
@@ -373,9 +374,12 @@ impl App {
                     let row = queued.meta.track_ref(aoide_store::now_millis());
                     let source = queued.source;
                     let at = aoide_store::now_millis();
-                    self.store.send(move |w| {
-                        let _ = w.recorder.started(&w.store, entry, &row, source, at);
-                    });
+                    // Private listening opens no play events.
+                    if !self.listening.private {
+                        self.store.send(move |w| {
+                            let _ = w.recorder.started(&w.store, entry, &row, source, at);
+                        });
+                    }
                     tasks.push(self.check_infinity());
                     tasks.push(self.save_queue());
                     tasks.push(self.track_changed());
@@ -418,6 +422,7 @@ impl App {
             }
             EngineEvent::DeviceError { .. } | EngineEvent::DeviceRestored => {}
         }
+        tasks.push(self.sleep_on_event(&event));
         Task::batch(tasks)
     }
 
@@ -436,6 +441,10 @@ impl App {
         let Some(signed) = &self.session else {
             return Task::none();
         };
+        // Private listening: Jellyfin hears nothing.
+        if self.listening.private {
+            return Task::none();
+        }
         Task::batch(reports.into_iter().map(|report| {
             let client = signed.connection.client.clone();
             Task::perform(send_report(client, report), |result| match result {
@@ -520,7 +529,8 @@ impl App {
 
     /// Stops reporting: signing out or quitting. Returns the report to send.
     pub(crate) fn final_report(&mut self) -> Option<Report> {
-        self.session.as_mut().and_then(|s| s.reporter.stopped())
+        let report = self.session.as_mut().and_then(|s| s.reporter.stopped());
+        report.filter(|_| !self.listening.private)
     }
 
     /// Hands what is playing to the desktop. The cover goes as the cached

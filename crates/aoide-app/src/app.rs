@@ -56,6 +56,9 @@ pub struct App {
     pub(crate) system: crate::system::State,
     /// Smart search's key and model picker.
     pub(crate) smart: crate::smart::State,
+    /// The player bar's menus, the sleep timer, private listening, the
+    /// full-screen player.
+    pub(crate) listening: crate::listening::State,
 }
 
 /// An open page and its place in the stack.
@@ -166,6 +169,7 @@ pub enum Message {
     Palette(crate::palette::Message),
     /// Settings → System's file, log and cache rows.
     System(crate::maintenance::Message),
+    Listening(crate::listening::Msg),
 }
 
 /// The player bar's controls.
@@ -210,8 +214,12 @@ impl App {
             }
         };
         let artwork = Artwork::new(paths.as_ref().map(|p| p.artwork_dir.clone()));
-        let mut playback = Playback::start(config.volume);
+        let mut playback = Playback::start(config.volume, config.sound.device.clone());
         let _ = playback.set_settings(config.settings.player());
+        let _ = playback.set_level_volume(config.settings.level_volume);
+        if let Err(error) = playback.apply_sound(&config.sound) {
+            notice = Some(format!("The equaliser couldn't be set: {error}"));
+        }
         // A development build can keep the token in memory instead, so a
         // rebuilt binary doesn't meet the Keychain's "allow this app" prompt.
         let keyring: Arc<dyn CredentialStore> =
@@ -253,18 +261,20 @@ impl App {
             session: None,
             system,
             smart: crate::smart::State::default(),
+            listening: crate::listening::State::default(),
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
         let update = Task::done(Message::Update(crate::updates::Message::Tick));
-        (app, Task::batch([theme, restore, key, update]))
+        let listening = crate::listening::boot();
+        (app, Task::batch([theme, restore, key, update, listening]))
     }
 
     pub fn title(&self) -> String {
-        "Aoide".to_owned()
+        self.window_title()
     }
 
     pub fn theme(&self) -> Theme {
-        theme::for_mode(self.mode)
+        crate::appearance::theme(self.mode, &self.config.interface)
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -277,6 +287,7 @@ impl App {
             crate::discord::status(self.system.discord.as_ref()).map(Message::Discord),
             crate::updates::ticks(&self.config.system.updates).map(Message::Update),
             crate::palette::keys().map(Message::Palette),
+            self.listening_subscription(),
         ])
     }
 
@@ -286,7 +297,8 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         // Position ticks arrive four times a second and change no artwork.
-        let quiet = matches!(message, Message::Engine(EngineEvent::Position { .. }));
+        let quiet = matches!(message, Message::Engine(EngineEvent::Position { .. }))
+            || crate::listening::is_quiet(&message);
         let task = self.handle(message);
         // The desktop hears only what changed.
         self.publish();
@@ -480,6 +492,7 @@ impl App {
             Message::Update(message) => self.update_message(message),
             Message::Palette(message) => self.palette_message(message),
             Message::System(message) => self.maintenance_message(message),
+            Message::Listening(msg) => self.listening(msg),
         }
     }
 
@@ -748,6 +761,9 @@ impl App {
         if let PageMsg::Settings(message) = message {
             return self.settings_message(key, message);
         }
+        if let PageMsg::Equalizer(message) = message {
+            return self.equalizer_message(key, message);
+        }
         let store = self.store.clone();
         let Some(signed) = self.session.as_mut() else {
             return Task::none();
@@ -822,9 +838,20 @@ impl App {
     /// A setting changed: saved, and handed to whatever it governs.
     fn settings_changed(&mut self, which: screens::settings::Toggle) -> Task<Message> {
         self.save_config();
-        let _ = self.playback.set_settings(self.config.settings.player());
+        let _ = self.playback.set_settings(self.player_settings());
         match which {
             screens::settings::Toggle::Infinity => self.infinity_switched(),
+            screens::settings::Toggle::LevelVolume => {
+                let switched = match self.session.as_ref() {
+                    Some(signed) => self
+                        .playback
+                        .switch_level_volume(&self.config.settings, &signed.measures),
+                    None => self
+                        .playback
+                        .set_level_volume(self.config.settings.level_volume),
+                };
+                self.result(switched)
+            }
             _ => Task::none(),
         }
     }
@@ -1156,6 +1183,8 @@ impl App {
     /// if they are showing and not already here.
     pub(crate) fn track_changed(&mut self) -> Task<Message> {
         let current = self.playback.current().map(|(_, q)| q.meta.id.clone());
+        let meta = self.playback.current().map(|(_, q)| q.meta.clone());
+        let online = self.lyrics_online();
         let Some(signed) = self.session.as_mut() else {
             return Task::none();
         };
@@ -1171,14 +1200,22 @@ impl App {
         });
         signed.lyric_line = None;
         let client = signed.connection.client.clone();
+        let Some(meta) = meta else {
+            return Task::none();
+        };
         Task::perform(
             async move {
-                let result = client.lyrics(&item).await;
+                let result =
+                    crate::lyrics_online::find(client, online, meta, aoide_store::now_millis())
+                        .await;
                 (item, result)
             },
             |(item, result)| match result {
                 Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
-                result => Message::Lyrics(item, result.map_err(|e| session::describe(&e))),
+                result => Message::Listening(crate::listening::Msg::LyricsFound(
+                    item,
+                    result.map_err(|e| session::describe(&e)),
+                )),
             },
         )
     }

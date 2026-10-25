@@ -166,6 +166,10 @@ pub struct Config {
     pub volume: f32,
     /// Settings → System: the tray and the other desktop services.
     pub system: crate::system::SystemSettings,
+    /// The equaliser and the compressor.
+    pub sound: crate::sound::SoundSettings,
+    /// Settings → General: the window title, the look.
+    pub interface: crate::appearance::InterfaceSettings,
 }
 
 impl Default for Config {
@@ -178,6 +182,8 @@ impl Default for Config {
             settings: Settings::default(),
             volume: 1.0,
             system: crate::system::SystemSettings::default(),
+            sound: crate::sound::SoundSettings::default(),
+            interface: crate::appearance::InterfaceSettings::default(),
         }
     }
 }
@@ -202,6 +208,7 @@ impl Config {
             config.volume = 1.0;
         }
         config.volume = config.volume.clamp(0.0, 1.0);
+        config.sound = config.sound.sanitised();
         config
     }
 
@@ -260,6 +267,21 @@ mod tests {
             },
             volume: 0.5,
             system: crate::system::SystemSettings::default(),
+            sound: {
+                let mut sound = crate::sound::SoundSettings::default();
+                sound.equalizer.enabled = true;
+                sound.equalizer.choose("Loudness");
+                sound.compressor.enabled = true;
+                sound
+            },
+            interface: crate::appearance::InterfaceSettings {
+                track_in_title: false,
+                appearance: crate::appearance::Appearance::Dark,
+                accent: crate::appearance::Accent::Teal,
+                internet_lyrics: false,
+                romaji: true,
+                furigana: false,
+            },
         };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);

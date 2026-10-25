@@ -5,6 +5,15 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+# Lyric translation on this machine (Firefox Translations' models through
+# fxtranslate, downloaded from Mozilla on first use). Off by default.
+local-translation = ["aoide-integrations/local-translation"]
+# Readings over kanji in Japanese lyrics, and romaji that reads kanji, through
+# aoide-lyrics' lindera with IPADIC: about 48 MB more binary, and the
+# dictionary is downloaded at build time (aoide-lyrics' docs). Off by default.
+furigana = ["aoide-lyrics/furigana"]
+
 [[bin]]
 name = "aoide"
 path = "src/main.rs"
@@ -14,9 +23,13 @@ workspace = true
 
 [dependencies]
 aoide-audio = { path = "../aoide-audio" }
-# Discord Rich Presence, OpenRouter (search by description, mixes), the update notice.
+# Discord Rich Presence, OpenRouter (search by description, mixes), the update
+# notice; lyric translation: the lyrics' language always, translating with the
+# `local-translation` feature above.
 aoide-integrations = { path = "../aoide-integrations" }
 aoide-jellyfin = { path = "../aoide-jellyfin" }
+# Internet lyrics (LRCLIB) for songs the server has none for.
+aoide-lyrics = { path = "../aoide-lyrics" }
 # MPRIS, single instance and sleep inhibit; on macOS it builds and reports
 # itself unavailable.
 aoide-mpris = { path = "../aoide-mpris" }
@@ -25,8 +38,9 @@ aoide-store = { path = "../aoide-store" }
 # Per-user config, data and cache directories (XDG on Linux).
 directories = "6"
 # `tokio` runs every Task on the runtime the Jellyfin client needs; `image` without
-# its codec bundle, the three artwork formats are picked below; `svg` for the icons.
-iced = { version = "0.14", features = ["tokio", "image-without-codecs", "svg"] }
+# its codec bundle, the three artwork formats are picked below; `svg` for the icons;
+# `canvas` for the equaliser's curve and the visualizer.
+iced = { version = "0.14", features = ["tokio", "image-without-codecs", "svg", "canvas"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # The log facade (already in the tree through iced); the app's own logger is logging.rs.
 log = "0.4.34"

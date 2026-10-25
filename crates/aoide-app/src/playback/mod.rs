@@ -11,6 +11,8 @@ pub mod lyrics;
 pub mod queue;
 pub mod recorder;
 pub mod report;
+pub mod sleep_timer;
+pub mod sound;
 pub mod tracks;
 
 use std::collections::{HashMap, HashSet};
@@ -80,10 +82,10 @@ pub struct Playback {
 }
 
 impl Playback {
-    /// Opens the default output device. Without one the app still runs; it
-    /// says why nothing plays.
-    pub fn start(volume: f32) -> Self {
-        match Output::start_default() {
+    /// Opens the chosen output device (the default when it can't be). Without
+    /// one the app still runs; it says why nothing plays.
+    pub fn start(volume: f32, device: aoide_audio::DeviceChoice) -> Self {
+        match Output::start_on(device) {
             Ok((output, handle, events)) => {
                 let mut player = Player::new(handle);
                 let _ = player.set_volume(volume);

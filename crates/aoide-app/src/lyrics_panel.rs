@@ -35,28 +35,50 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     };
     let offset = app.config.settings.lyric_offset_ms;
     let mut column = Column::new().spacing(6).width(Fill);
+    // Above the lines, not among them: it stays put as they follow along.
+    let toolbar = crate::lyrics_extras::toolbar(app, &state.item);
     if lyrics.is_synced() {
         let lit = lyrics::current_line(lyrics, app.playback.position_ms(), offset);
         for (index, line) in lyrics.lines.iter().enumerate() {
             let is_lit = lit == Some(index);
-            let label = text(if line.text.trim().is_empty() {
-                "♪"
-            } else {
-                line.text.as_str()
-            })
-            .size(if is_lit { 18 } else { 16 })
-            .font(if is_lit {
-                widgets::BOLD
-            } else {
-                widgets::REGULAR
-            })
-            .style(move |t| text::Style {
-                color: Some(if is_lit {
-                    theme::accent(t)
+            let ruby = crate::lyrics_extras::ruby_line(
+                app,
+                &state.item,
+                index,
+                if is_lit { 18.0 } else { 16.0 },
+                if is_lit {
+                    widgets::BOLD
                 } else {
-                    theme::secondary(t)
-                }),
-            });
+                    widgets::REGULAR
+                },
+                if is_lit {
+                    theme::accent
+                } else {
+                    theme::secondary
+                },
+            );
+            let label: Element<'a, Message> = match ruby {
+                Some(ruby) => ruby,
+                None => text(if line.text.trim().is_empty() {
+                    "♪"
+                } else {
+                    line.text.as_str()
+                })
+                .size(if is_lit { 18 } else { 16 })
+                .font(if is_lit {
+                    widgets::BOLD
+                } else {
+                    widgets::REGULAR
+                })
+                .style(move |t| text::Style {
+                    color: Some(if is_lit {
+                        theme::accent(t)
+                    } else {
+                        theme::secondary(t)
+                    }),
+                })
+                .into(),
+            };
             column = column.push(
                 button(label)
                     .padding([2, 4])
@@ -67,14 +89,30 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
                             .map(|ms| Message::Player(Transport::Seek(ms))),
                     ),
             );
+            column = column.extend(crate::lyrics_extras::under(app, &state.item, index));
         }
     } else {
-        for line in &lyrics.lines {
+        for (index, line) in lyrics.lines.iter().enumerate() {
             column = column.push(text(line.text.as_str()).size(15));
+            column = column.extend(crate::lyrics_extras::under(app, &state.item, index));
         }
     }
-    scrollable(column.padding(iced::Padding::ZERO.right(12)))
+    if let Some((_, provider)) = app
+        .listening
+        .lyrics_source
+        .as_ref()
+        .filter(|(item, _)| *item == state.item)
+    {
+        column = column.push(
+            iced::widget::container(widgets::secondary(format!("Lyrics from {provider}")).size(12))
+                .padding(iced::Padding::ZERO.top(14)),
+        );
+    }
+    let lines = scrollable(column.padding(iced::Padding::ZERO.right(12)))
         .id(SCROLL)
-        .height(Fill)
-        .into()
+        .height(Fill);
+    match toolbar {
+        Some(toolbar) => Column::new().push(toolbar).push(lines).spacing(10).into(),
+        None => lines.into(),
+    }
 }

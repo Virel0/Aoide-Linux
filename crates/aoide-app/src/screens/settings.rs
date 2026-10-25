@@ -147,6 +147,7 @@ pub fn view<'a>(
     sync: crate::sync::Status<'a>,
     view: &View<'a>,
     system: Element<'a, App>,
+    extras: crate::listening::SettingsExtras<'a>,
 ) -> Element<'a, App> {
     let key = view.key;
     let message = move |m: Message| App::Page(key, PageMsg::Settings(m));
@@ -167,6 +168,8 @@ pub fn view<'a>(
                 Toggle::KeepAlbumsWhole
             ),
             switch("Infinity", settings.infinity, Toggle::Infinity),
+            crate::screens::equalizer::settings_row(&extras.config.sound),
+            crate::player_menu::transcode_rows(&extras.config.sound.transcode),
         ],
         "Crossfade fades one song into the next instead of stopping between them, longer when \
          the two are at the same tempo. Keep Albums Whole leaves consecutive tracks of one album \
@@ -178,10 +181,12 @@ pub fn view<'a>(
         column![
             switch("Skip Silence", settings.skip_silence, Toggle::SkipSilence),
             switch("Level Volume", settings.level_volume, Toggle::LevelVolume),
+            crate::player_menu::device_row(&extras),
         ],
         "Skip Silence plays only the span of each track your server measured as sound. Level \
          Volume turns loud records down to the same loudness; a quieter track is left alone, \
-         never turned up. Tracks your server hasn't measured yet play as they are.",
+         never turned up. A file with its own ReplayGain tags plays by them instead, album gain \
+         first, never louder than its peak allows. Tracks with neither play as they are.",
     );
     let offset = settings.lyric_offset_ms;
     let lyrics_rows = column![
@@ -195,6 +200,7 @@ pub fn view<'a>(
             move |ms| message(Message::LyricOffset(ms)),
         )
         .step(50),
+        crate::lyrics_online::settings_row(&extras),
     ];
     let lyrics_rows = if offset != 0 {
         lyrics_rows.push(
@@ -319,6 +325,7 @@ pub fn view<'a>(
     widgets::page(
         column![
             widgets::title_bar("Settings", view.can_go_back),
+            crate::appearance::general_section(&extras),
             playback,
             sound,
             lyrics,

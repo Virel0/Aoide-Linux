@@ -16,6 +16,9 @@ use crate::{now_playing, player_bar, screens, theme, widgets};
 const SIDEBAR_WIDTH: f32 = 220.0;
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
+    if let Some(full) = &app.listening.full {
+        return crate::full_player::view(app, signed, full);
+    }
     let main = row![sidebar(signed), content(app, signed)].height(Fill);
     let main = match signed.panel {
         Some(panel) => main
@@ -24,10 +27,13 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         None => main,
     };
     let window = column![main, player_bar::view(app, signed)];
-    let window: Element<'a, Message> = match signed.menu.as_ref().filter(|m| m.collection.is_some())
-    {
-        Some(menu) => stack![window, collection_menu(app, signed, menu)].into(),
-        None => window.into(),
+    let window: Element<'a, Message> = if let Some(popover) = crate::player_menu::overlay(app) {
+        stack![window, popover].into()
+    } else {
+        match signed.menu.as_ref().filter(|m| m.collection.is_some()) {
+            Some(menu) => stack![window, collection_menu(app, signed, menu)].into(),
+            None => window.into(),
+        }
     };
     // The release notes (and the other sheets of Settings → System) on top.
     match crate::system::overlay(app) {
@@ -198,7 +204,15 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             },
             &view,
             crate::system::settings_sections(app),
+            crate::listening::SettingsExtras {
+                config: &app.config,
+                listening: &app.listening,
+                device_fell_back: app.playback.device_fell_back(),
+            },
         ),
+        Page::Equalizer(state) => {
+            screens::equalizer::view(state, &app.config.sound, app.playback.sample_rate(), &view)
+        }
         page => page.view(&view),
     };
     container(body.push(page))

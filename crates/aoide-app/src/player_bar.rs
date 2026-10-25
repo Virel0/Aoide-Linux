@@ -29,7 +29,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     let current = playback.current().map(|(_, q)| &q.meta);
 
     let now = row![
-        widgets::art(
+        crate::player_menu::open_full(widgets::art(
             current
                 .and_then(|m| m.artwork.as_ref())
                 .map(|(i, t)| ArtKey::new(i, t))
@@ -37,7 +37,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             &app.artwork,
             Length::Fixed(56.0),
             6.0,
-        ),
+        )),
         column![
             text(current.map_or("Not Playing", |m| m.title.as_str()))
                 .size(14)
@@ -47,6 +47,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
                 .size(12)
                 .wrapping(text::Wrapping::None),
         ]
+        .extend(crate::player_menu::status_line(app))
         .spacing(2)
         .clip(true),
     ]
@@ -141,17 +142,26 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             panel_on(Panel::Lyrics),
             Transport::Panel(Panel::Lyrics)
         ),
-        icon(Icon::Volume, 18.0, Tone::Secondary),
+        crate::player_menu::menu_button(
+            Icon::Volume,
+            app.listening.menu == Some(crate::listening::BarMenu::Volume),
+            crate::listening::BarMenu::Volume
+        ),
         slider(0.0..=1.0, playback.volume(), |v| Message::Player(
             Transport::Volume(v)
         ))
         .step(0.01_f32)
         .width(100)
         .style(theme::scrubber),
+        crate::player_menu::menu_button(
+            Icon::More,
+            app.listening.menu == Some(crate::listening::BarMenu::More),
+            crate::listening::BarMenu::More
+        ),
     ]
     .spacing(6)
     .align_y(Center)
-    .width(Length::Fixed(320.0));
+    .width(Length::Fixed(360.0));
 
     container(
         row![now, container(middle).center_x(Fill), tools]
