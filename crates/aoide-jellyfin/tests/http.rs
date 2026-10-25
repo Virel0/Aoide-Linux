@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use aoide_jellyfin::{
-    Credentials, Device, Error, ItemKind, JellyfinClient, ListQuery, MixSeed, PlaylistEdit,
-    ServerAddress, Sort, SortOrder,
+    Credentials, Device, Error, ItemKind, ItemRefresh, JellyfinClient, ListQuery, MixSeed,
+    PlaylistEdit, ServerAddress, Sort, SortOrder,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, header, method, path, query_param};
@@ -1223,4 +1223,105 @@ async fn favourite_songs_albums_and_artists_are_lists_with_is_favorite() {
             .items
             .is_empty()
     );
+}
+
+// MARK: - Library maintenance
+
+#[tokio::test]
+async fn a_library_rescan_starts_the_scan_task_by_its_key() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/ScheduledTasks"))
+        .and(exact_header("Authorization", signed_in_header()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "Name": "Clean Cache Directory", "Key": "DeleteCacheFiles", "Id": "t-cache", "State": "Idle" },
+            // The name is translated on a French server; the key is not.
+            { "Name": "Actualiser la médiathèque", "Key": "RefreshLibrary", "Id": "t-scan", "State": "Idle" },
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/ScheduledTasks/Running/t-scan"))
+        .and(header("Content-Length", "0"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    signed_in(&server).refresh_library().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_server_without_the_scan_task_says_so_and_starts_nothing() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/ScheduledTasks"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "Name": "Other", "Key": "Other", "Id": "t1" }
+        ])))
+        .mount(&server)
+        .await;
+    assert_eq!(
+        signed_in(&server).refresh_library().await,
+        Err(Error::NotFound {
+            path: "ScheduledTasks/RefreshLibrary".into()
+        })
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn an_item_refresh_always_names_its_modes() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Items/al1/Refresh"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(3)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Items/al2/Refresh"))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    for refresh in [
+        ItemRefresh::ScanFiles,
+        ItemRefresh::FillMissing,
+        ItemRefresh::ReplaceAll { images: true },
+    ] {
+        client.refresh_item("al1", refresh).await.unwrap();
+    }
+    let sent: Vec<Vec<Option<String>>> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| {
+            [
+                "metadataRefreshMode",
+                "imageRefreshMode",
+                "replaceAllMetadata",
+                "replaceAllImages",
+            ]
+            .iter()
+            .map(|name| query_value(r, name))
+            .collect()
+        })
+        .collect();
+    let some = |values: [&str; 4]| values.map(|v| Some(v.to_owned())).to_vec();
+    assert_eq!(
+        sent,
+        [
+            some(["Default", "Default", "false", "false"]),
+            some(["FullRefresh", "FullRefresh", "false", "false"]),
+            some(["FullRefresh", "FullRefresh", "true", "true"]),
+        ]
+    );
+    // Not an administrator.
+    assert!(matches!(
+        client.refresh_item("al2", ItemRefresh::ScanFiles).await,
+        Err(Error::Http { status: 403, .. })
+    ));
 }
