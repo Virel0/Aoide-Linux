@@ -364,10 +364,13 @@ impl App {
                     let row = queued.meta.track_ref(aoide_store::now_millis());
                     let source = queued.source;
                     let at = aoide_store::now_millis();
+                    let activity = aoide_store::Activity::parse(self.config.activity.as_deref());
                     // Private listening opens no play events.
                     if !self.listening.private {
                         self.store.send(move |w| {
-                            let _ = w.recorder.started(&w.store, entry, &row, source, at);
+                            let _ = w
+                                .recorder
+                                .started(&w.store, entry, &row, source, activity, at);
                         });
                     }
                     tasks.push(self.check_infinity());

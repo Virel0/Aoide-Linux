@@ -56,6 +56,8 @@ pub enum Msg {
     ChooseDevice(DeviceChoice),
     Transcode(crate::sound::Transcode),
     Private(bool),
+    /// What the listener is doing, for the next plays; `None` untags.
+    Activity(Option<aoide_store::Activity>),
     Interface(crate::appearance::InterfaceSettings),
     LyricsFound(String, Result<Option<crate::lyrics_online::Found>, String>),
     /// New lyrics are in the panel.
@@ -343,6 +345,12 @@ impl App {
             }
             Msg::LoadDevices => list_devices(),
             Msg::Private(on) => self.set_private(on),
+            Msg::Activity(activity) => {
+                self.listening.menu = None;
+                self.config.activity = activity.map(|a| a.as_str().to_owned());
+                self.save_config();
+                Task::none()
+            }
             Msg::Interface(interface) => self.interface_changed(interface),
             Msg::LyricsFound(item, result) => {
                 self.listening.lyrics_source = match &result {

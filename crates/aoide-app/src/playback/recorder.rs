@@ -10,7 +10,7 @@
 //! plain blocking code.
 
 use aoide_audio::EntryId;
-use aoide_store::{Millis, PlayEvent, PlaySource, Store, TrackRef};
+use aoide_store::{Activity, Millis, PlayEvent, PlaySource, Store, TrackRef};
 
 #[derive(Debug, Clone, PartialEq)]
 struct OpenPlay {
@@ -48,6 +48,7 @@ impl PlayRecorder {
         entry: EntryId,
         track: &TrackRef,
         source: PlaySource,
+        activity: Option<Activity>,
         now: Millis,
     ) -> aoide_store::Result<()> {
         if self.current == Some(entry) && !self.current_ended {
@@ -66,7 +67,13 @@ impl PlayRecorder {
         {
             return Ok(());
         }
-        let event = store.begin_play(&track.jellyfin_id, &track.content_key, source, None, now)?;
+        let event = store.begin_play(
+            &track.jellyfin_id,
+            &track.content_key,
+            source,
+            activity,
+            now,
+        )?;
         self.open = Some(OpenPlay {
             event,
             entry,
@@ -165,6 +172,7 @@ mod tests {
                 EntryId(1),
                 &track("a", 200_000),
                 PlaySource::Album,
+                None,
                 1_000,
             )
             .unwrap();
@@ -175,6 +183,7 @@ mod tests {
                 EntryId(2),
                 &track("b", 200_000),
                 PlaySource::Album,
+                None,
                 5_000,
             )
             .unwrap();
@@ -197,6 +206,7 @@ mod tests {
                 EntryId(1),
                 &track("a", 300_000),
                 PlaySource::Album,
+                None,
                 0,
             )
             .unwrap();
@@ -207,17 +217,45 @@ mod tests {
     }
 
     #[test]
+    fn the_activity_set_when_a_play_begins_is_written_on_it() {
+        let store = store();
+        let mut recorder = PlayRecorder::default();
+        let a = track("a", 300_000);
+        recorder
+            .started(
+                &store,
+                EntryId(1),
+                &a,
+                PlaySource::Album,
+                Some(Activity::Focus),
+                0,
+            )
+            .unwrap();
+        recorder.stopped(&store, 1).unwrap();
+        let tag: Option<String> = store
+            .read(|conn| {
+                conn.query_row(
+                    "SELECT activity FROM playEvent WHERE jellyfinId = 'a'",
+                    [],
+                    |row| row.get(0),
+                )
+            })
+            .unwrap();
+        assert_eq!(tag.as_deref(), Some("focus"));
+    }
+
+    #[test]
     fn a_seek_continues_the_play() {
         let store = store();
         let mut recorder = PlayRecorder::default();
         let a = track("a", 300_000);
         recorder
-            .started(&store, EntryId(1), &a, PlaySource::Album, 0)
+            .started(&store, EntryId(1), &a, PlaySource::Album, None, 0)
             .unwrap();
         recorder.progress(EntryId(1), 30_000);
         // A seek is a load of the same entry: the engine reports a start again.
         recorder
-            .started(&store, EntryId(1), &a, PlaySource::Album, 1)
+            .started(&store, EntryId(1), &a, PlaySource::Album, None, 1)
             .unwrap();
         recorder.progress(EntryId(1), 200_000);
         recorder.stopped(&store, 2).unwrap();
@@ -230,12 +268,12 @@ mod tests {
         let mut recorder = PlayRecorder::default();
         let a = track("a", 100_000);
         recorder
-            .started(&store, EntryId(1), &a, PlaySource::Album, 0)
+            .started(&store, EntryId(1), &a, PlaySource::Album, None, 0)
             .unwrap();
         recorder.progress(EntryId(1), 99_500);
         recorder.ended(EntryId(1));
         recorder
-            .started(&store, EntryId(1), &a, PlaySource::Album, 100_000)
+            .started(&store, EntryId(1), &a, PlaySource::Album, None, 100_000)
             .unwrap();
         recorder.progress(EntryId(1), 10_000);
         recorder.stopped(&store, 110_000).unwrap();
@@ -255,6 +293,7 @@ mod tests {
                 EntryId(1),
                 &track("a", 200_000),
                 PlaySource::Album,
+                None,
                 0,
             )
             .unwrap();
@@ -267,6 +306,7 @@ mod tests {
                 EntryId(2),
                 &track("b", 200_000),
                 PlaySource::Album,
+                None,
                 1,
             )
             .unwrap();
@@ -284,6 +324,7 @@ mod tests {
                 EntryId(1),
                 &track("a", 200_000),
                 PlaySource::Album,
+                None,
                 0,
             )
             .unwrap();
@@ -305,6 +346,7 @@ mod tests {
                 EntryId(1),
                 &track("a", 200_000),
                 PlaySource::Album,
+                None,
                 0,
             )
             .unwrap();

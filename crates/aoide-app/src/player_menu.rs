@@ -1,6 +1,7 @@
 //! The player bar's popovers: drawn over the window just above the bar, at
 //! its right-hand end; a click anywhere else closes them.
 
+use aoide_store::Activity;
 use iced::widget::{
     Column, button, column, container, mouse_area, opaque, pick_list, row, rule, text, text_input,
 };
@@ -81,9 +82,36 @@ fn more(app: &App) -> Element<'_, Message> {
         )
         .padding([0, 10]),
         rule::horizontal(1),
-        heading("Sleep Timer"),
+        heading("What You're Doing"),
     ]
     .spacing(2);
+    // None first and always there: taking a tag off is as cheap as putting
+    // it on, since one left on files every later play under it.
+    let activity = Activity::parse(app.config.activity.as_deref());
+    list = list.push(check_item(
+        activity.is_none(),
+        "None",
+        Message::Listening(Msg::Activity(None)),
+    ));
+    for option in Activity::ALL {
+        list = list.push(check_item(
+            activity == Some(option),
+            option.display_name(),
+            Message::Listening(Msg::Activity(Some(option))),
+        ));
+    }
+    list = list
+        .push(
+            container(
+                crate::widgets::secondary(
+                    "Each song you start is tagged with it, on this computer only.",
+                )
+                .size(12),
+            )
+            .padding([0, 10]),
+        )
+        .push(rule::horizontal(1))
+        .push(heading("Sleep Timer"));
     if let Some(timer) = &app.listening.sleep {
         let left = match timer {
             SleepTimer::At { .. } => format!("{} left", timer.label(app.now())),
@@ -171,6 +199,16 @@ pub fn status_line(app: &App) -> Option<Element<'_, Message>> {
             Icon::Private,
             "Private".to_owned(),
             Msg::Private(false),
+        ));
+        any = true;
+    }
+    // Shown while set, so a tag left on is seen rather than quietly
+    // colouring a week of listening.
+    if let Some(activity) = Activity::parse(app.config.activity.as_deref()) {
+        line = line.push(chip(
+            Icon::Check,
+            activity.display_name().to_owned(),
+            Msg::Activity(None),
         ));
         any = true;
     }

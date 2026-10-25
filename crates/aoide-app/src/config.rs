@@ -175,6 +175,10 @@ pub struct Config {
     pub interface: crate::appearance::InterfaceSettings,
     /// Saved filters, listed in the sidebar.
     pub collections: Vec<crate::screens::collections::SavedFilter>,
+    /// What the listener is doing (`Activity`'s stored word), tagged on each
+    /// play as it begins. This computer's alone, not synced: the phone may be
+    /// in a car while the desk is at work. `None` is untagged, the default.
+    pub activity: Option<String>,
 }
 
 impl Default for Config {
@@ -190,6 +194,7 @@ impl Default for Config {
             sound: crate::sound::SoundSettings::default(),
             interface: crate::appearance::InterfaceSettings::default(),
             collections: Vec::new(),
+            activity: None,
         }
     }
 }
@@ -290,6 +295,7 @@ mod tests {
                 furigana: false,
             },
             collections: Vec::new(),
+            activity: Some("gaming".into()),
         };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);
