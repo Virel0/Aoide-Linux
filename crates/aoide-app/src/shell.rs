@@ -159,15 +159,21 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         footer =
             footer.push(container(widgets::secondary(status.as_str()).size(11)).padding([0, 10]));
     }
-    container(
-        column![scrollable(body).height(Fill), footer]
-            .spacing(8)
-            .padding([16, 10]),
-    )
-    .width(Length::Fixed(SIDEBAR_WIDTH))
-    .height(Fill)
-    .style(theme::side)
-    .into()
+    // The scrollbar has its own lane beside the list, so it never covers
+    // the selected item's end.
+    let list = scrollable(body)
+        .direction(scrollable::Direction::Vertical(
+            scrollable::Scrollbar::new()
+                .width(6)
+                .scroller_width(6)
+                .spacing(4),
+        ))
+        .height(Fill);
+    container(column![list, footer].spacing(8).padding([16, 10]))
+        .width(Length::Fixed(SIDEBAR_WIDTH))
+        .height(Fill)
+        .style(theme::side)
+        .into()
 }
 
 fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
