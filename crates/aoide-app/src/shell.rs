@@ -174,13 +174,21 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
 
 fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     let mut body = Column::new().width(Fill).height(Fill);
-    if signed.unknown_owner {
+    if signed.unknown_owner && signed.confirm_erase {
+        body = body.push(banner(
+            "Erase the listening history and playlists on this computer? This can't be undone.",
+            Some((
+                ("Cancel", Message::ConfirmErase(false)),
+                ("Erase", Message::ResolveOwner { keep: false }),
+            )),
+        ));
+    } else if signed.unknown_owner {
         body = body.push(banner(
             "This computer has listening history and playlists from before accounts were \
              recorded. Are they yours?",
             Some((
                 ("Keep Them", Message::ResolveOwner { keep: true }),
-                ("Erase Them", Message::ResolveOwner { keep: false }),
+                ("Erase Them", Message::ConfirmErase(true)),
             )),
         ));
     }

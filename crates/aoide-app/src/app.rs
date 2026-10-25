@@ -88,6 +88,8 @@ pub(crate) struct Signed {
     /// The store held data from before accounts were claimed: only the
     /// listener can say whose it is.
     pub unknown_owner: bool,
+    /// Erase Them was pressed: asking once more before erasing.
+    pub confirm_erase: bool,
     /// The music library to stay inside; `None` until found, or if the
     /// server has none (everything is shown then).
     pub library: Option<String>,
@@ -141,6 +143,8 @@ pub enum Message {
     ResolveOwner {
         keep: bool,
     },
+    /// Erase Them pressed (true), or the erase called off (false).
+    ConfirmErase(bool),
     SignOut,
     TokenRejected,
     /// Sync with the sidecar now, not at the next launch or focus.
@@ -402,6 +406,12 @@ impl App {
                 }
                 Task::batch([self.request_sync(), self.after_claim()])
             }
+            Message::ConfirmErase(ask) => {
+                if let Some(signed) = self.session.as_mut() {
+                    signed.confirm_erase = ask;
+                }
+                Task::none()
+            }
             Message::ResolveOwner { keep } => {
                 let Some(signed) = self.session.as_mut() else {
                     return Task::none();
@@ -565,6 +575,7 @@ impl App {
             syncing: None,
             sync_status: None,
             unknown_owner: false,
+            confirm_erase: false,
             library: None,
             library_known: false,
             section: Section::Home,
