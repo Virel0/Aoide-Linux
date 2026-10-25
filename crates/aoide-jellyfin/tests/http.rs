@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use aoide_jellyfin::{
-    Credentials, Device, Error, ItemKind, JellyfinClient, ListQuery, ServerAddress, Sort, SortOrder,
+    Credentials, Device, Error, ItemKind, JellyfinClient, ListQuery, PlaylistEdit, ServerAddress,
+    Sort, SortOrder,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, header, method, path, query_param};
@@ -799,4 +800,269 @@ async fn the_stream_url_authenticates_with_apikey_against_a_server_that_refuses_
     // A plain GET with no headers, the way a media player fetches it.
     let response = reqwest::get(url).await.unwrap();
     assert_eq!(response.status().as_u16(), 200);
+}
+
+// MARK: - Jellyfin playlists
+
+#[tokio::test]
+async fn creating_a_playlist_sends_name_ids_and_owner_in_the_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists"))
+        .and(exact_header("Authorization", signed_in_header()))
+        .and(body_json(json!({
+            "Name": "Road trip",
+            "Ids": ["s1", "s2"],
+            "UserId": USER,
+            "MediaType": "Audio",
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "Id": "pl9" })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let id = signed_in(&server)
+        .create_playlist("Road trip", &["s1", "s2"])
+        .await
+        .unwrap();
+    assert_eq!(id, "pl9");
+}
+
+#[tokio::test]
+async fn editing_a_playlist_sends_only_what_changed() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl1"))
+        .and(body_json(json!({ "Name": "Renamed" })))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl1"))
+        .and(body_json(json!({ "Name": "Both", "IsPublic": true })))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    let rename = PlaylistEdit {
+        name: Some("Renamed".into()),
+        ..PlaylistEdit::default()
+    };
+    client.edit_playlist("pl1", &rename).await.unwrap();
+    let both = PlaylistEdit {
+        name: Some("Both".into()),
+        is_public: Some(true),
+    };
+    client.edit_playlist("pl1", &both).await.unwrap();
+    // An empty edit is not a request.
+    client
+        .edit_playlist("pl1", &PlaylistEdit::default())
+        .await
+        .unwrap();
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn deleting_a_playlist_checks_it_is_one_first() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Playlists/pl1"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "OpenAccess": false, "Shares": [], "ItemIds": [] })),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Items/pl1"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // A song's id: not a playlist, so the server's playlist lookup is a 404.
+    Mock::given(method("GET"))
+        .and(path("/Playlists/song1"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Items/song1"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    client.delete_playlist("pl1").await.unwrap();
+    assert_eq!(
+        client.delete_playlist("song1").await,
+        Err(Error::NotFound {
+            path: "Playlists/song1".into()
+        })
+    );
+}
+
+#[tokio::test]
+async fn playlist_entries_carry_their_entry_ids() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Playlists/pl1/Items"))
+        .and(query_param("userId", USER))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![
+            json!({ "Id": "s1", "Name": "One", "Type": "Audio", "PlaylistItemId": "e1" }),
+            json!({ "Id": "s1", "Name": "One", "Type": "Audio", "PlaylistItemId": "e2" }),
+            // A server that leaves the entry id out: the item id stands in.
+            json!({ "Id": "s3", "Name": "Three", "Type": "Audio" }),
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let entries = signed_in(&server).playlist_entries("pl1").await.unwrap();
+    let pairs: Vec<_> = entries
+        .iter()
+        .map(|e| {
+            (
+                e.entry_id.as_str(),
+                e.item.id.as_str(),
+                e.item.name.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        pairs,
+        [
+            ("e1", "s1", "One"),
+            ("e2", "s1", "One"),
+            ("s3", "s3", "Three")
+        ]
+    );
+}
+
+#[tokio::test]
+async fn adding_to_a_playlist_chunks_and_keeps_the_order() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl1/Items"))
+        .and(query_param("userId", USER))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(3)
+        .mount(&server)
+        .await;
+    let ids: Vec<String> = (0..150).map(|n| format!("s{n}")).collect();
+    let client = signed_in(&server);
+    client.add_to_playlist("pl1", &ids, Some(4)).await.unwrap();
+    client
+        .add_to_playlist("pl1", &["last"], None)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let sent: Vec<(usize, Option<String>)> = requests
+        .iter()
+        .map(|r| {
+            (
+                query_value(r, "ids").unwrap().split(',').count(),
+                query_value(r, "position"),
+            )
+        })
+        .collect();
+    assert_eq!(
+        sent,
+        [(100, Some("4".into())), (50, Some("104".into())), (1, None)]
+    );
+    assert_eq!(
+        query_value(&requests[1], "ids").unwrap().split(',').next(),
+        Some("s100")
+    );
+}
+
+#[tokio::test]
+async fn removing_goes_by_entry_id_and_moving_by_index() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/Playlists/pl1/Items"))
+        .and(query_param("entryIds", "e1,e2"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl1/Items/e3/Move/0"))
+        .and(header("Content-Length", "0"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    client
+        .remove_from_playlist("pl1", &["e1", "e2"])
+        .await
+        .unwrap();
+    let none: [&str; 0] = [];
+    client.remove_from_playlist("pl1", &none).await.unwrap();
+    client.move_playlist_entry("pl1", "e3", 0).await.unwrap();
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn a_cover_uploads_as_base64_under_its_image_type() {
+    let server = MockServer::start().await;
+    let image = [0xFF_u8, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+    Mock::given(method("POST"))
+        .and(path("/Items/pl1/Images/Primary"))
+        .and(header("Content-Type", "image/jpeg"))
+        .and(exact_header("Authorization", signed_in_header()))
+        .and(|request: &Request| request.body == b"/9j/4AAQ")
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Items/pl1/Images/Primary"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Items/pl2/Images/Primary"))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    client
+        .set_playlist_cover("pl1", &image, "image/jpeg")
+        .await
+        .unwrap();
+    client.delete_playlist_cover("pl1").await.unwrap();
+    // Not an administrator.
+    assert!(matches!(
+        client.set_playlist_cover("pl2", &image, "image/jpeg").await,
+        Err(Error::Http { status: 403, .. })
+    ));
+}
+
+#[tokio::test]
+async fn playlist_edits_need_credentials_and_send_nothing_without_them() {
+    let server = MockServer::start().await;
+    let client = client_at(&server.uri());
+    assert_eq!(
+        client.create_playlist("x", &["a"]).await,
+        Err(Error::NotSignedIn)
+    );
+    assert_eq!(client.delete_playlist("pl1").await, Err(Error::NotSignedIn));
+    assert_eq!(
+        client.move_playlist_entry("pl1", "e1", 2).await,
+        Err(Error::NotSignedIn)
+    );
+    assert_eq!(
+        client.remove_from_playlist("pl1", &["e1"]).await,
+        Err(Error::NotSignedIn)
+    );
+    assert_eq!(
+        client.set_playlist_cover("pl1", b"x", "image/png").await,
+        Err(Error::NotSignedIn)
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
 }

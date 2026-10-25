@@ -9,6 +9,8 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+# Image uploads: Jellyfin reads the body as base64. The version reqwest already uses.
+base64 = "0.23.1"
 # rustls with the ring provider and the platform certificate verifier, as
 # aoide-audio and aoide-sidecar use it: one TLS stack in the app. Not reqwest's
 # `rustls` feature, which brings aws-lc-rs into every crate of the workspace.

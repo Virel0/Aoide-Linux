@@ -16,6 +16,7 @@ mod lyrics;
 mod media;
 mod model;
 mod playback;
+mod playlists;
 pub mod ticks;
 
 pub use address::ServerAddress;
@@ -26,6 +27,7 @@ pub use library::{ListQuery, SearchResults, Sort, SortOrder};
 pub use lyrics::{LyricLine, LyricWord, Lyrics};
 pub use media::StreamQuality;
 pub use model::{Item, ItemKind, NameId, Page, UserData};
+pub use playlists::{PlaylistEdit, PlaylistEntry};
 /// The URL type every media URL is returned as.
 pub use reqwest::Url;
 

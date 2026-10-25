@@ -7,7 +7,7 @@ use crate::{Item, Page, Result, UserData};
 
 /// Fields missing from Jellyfin's default item response that a music client needs.
 /// Asked for per call rather than everything, to keep big library pages small.
-const STANDARD_FIELDS: &str =
+pub(crate) const STANDARD_FIELDS: &str =
     "Genres,AlbumArtist,Artists,ParentId,ChildCount,PrimaryImageAspectRatio";
 
 /// How many ids go in one `/Items?ids=` request. A few hundred 32-character ids
