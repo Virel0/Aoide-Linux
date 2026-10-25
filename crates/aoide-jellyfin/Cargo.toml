@@ -9,6 +9,8 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+# Image uploads: Jellyfin reads the body as base64. The version reqwest already uses.
+base64 = "0.23.1"
 # rustls with the ring provider and the platform certificate verifier, as
 # aoide-audio and aoide-sidecar use it: one TLS stack in the app. Not reqwest's
 # `rustls` feature, which brings aws-lc-rs into every crate of the workspace.
@@ -18,8 +20,9 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
-# Only for `try_join!` in search; the runtime is the application's.
-tokio = { version = "1.54.1", default-features = false, features = ["macros"] }
+# `try_join!` in search, and a UDP socket and a deadline for LAN discovery; the
+# runtime is the application's, and needs its I/O and time drivers on.
+tokio = { version = "1.54.1", default-features = false, features = ["macros", "net", "time"] }
 
 [dev-dependencies]
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net"] }

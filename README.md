@@ -20,6 +20,7 @@ Linux needs ALSA and D-Bus development headers (`alsa-lib` and `dbus` on Arch).
 | crate | what |
 |---|---|
 | `aoide-jellyfin` | Jellyfin HTTP client |
+| `aoide-lyrics` | internet lyrics (LRCLIB) for tracks the server has none for, and LRC parsing |
 | `aoide-sidecar` | Aoide sidecar client: sync, Infinity, Discover, measurements |
 | `aoide-store` | local SQLite store: history, playlists, taste flags, op log |
 | `aoide-audio` | decoding, output, gapless, crossfade, loudness |

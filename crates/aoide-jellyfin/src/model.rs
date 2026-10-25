@@ -16,6 +16,8 @@ pub enum ItemKind {
     Playlist,
     /// A library. Its `collection_type` says what kind.
     CollectionFolder,
+    /// A folder on disk, met when browsing by folder.
+    Folder,
     #[default]
     #[serde(other)]
     Unknown,
@@ -31,6 +33,9 @@ pub struct Item {
     pub name: String,
     #[serde(rename = "Type", default, deserialize_with = "nullable")]
     pub kind: ItemKind,
+    /// Libraries, folders, albums and playlists are folders; tracks are not.
+    #[serde(default, deserialize_with = "nullable")]
+    pub is_folder: bool,
     pub album: Option<String>,
     pub album_id: Option<String>,
     pub album_artist: Option<String>,
@@ -63,6 +68,23 @@ pub struct Item {
     /// A track's borrowed album cover.
     pub album_primary_image_tag: Option<String>,
     pub user_data: Option<UserData>,
+}
+
+impl ItemKind {
+    /// The server's name for the type, as `includeItemTypes` takes it. `None` for
+    /// [`ItemKind::Unknown`].
+    pub fn type_name(self) -> Option<&'static str> {
+        Some(match self {
+            ItemKind::Audio => "Audio",
+            ItemKind::MusicAlbum => "MusicAlbum",
+            ItemKind::MusicArtist => "MusicArtist",
+            ItemKind::MusicGenre => "MusicGenre",
+            ItemKind::Playlist => "Playlist",
+            ItemKind::CollectionFolder => "CollectionFolder",
+            ItemKind::Folder => "Folder",
+            ItemKind::Unknown => return None,
+        })
+    }
 }
 
 impl Item {
@@ -123,7 +145,7 @@ pub struct Page<T> {
 }
 
 /// A missing field and an explicit `null` both mean "the default".
-fn nullable<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+pub(crate) fn nullable<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     T: Default + Deserialize<'de>,

@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use aoide_jellyfin::{
-    Credentials, Device, Error, ItemKind, JellyfinClient, ListQuery, ServerAddress, Sort, SortOrder,
+    Credentials, Device, Error, ItemKind, ItemRefresh, JellyfinClient, ListQuery, MixSeed,
+    PlaylistEdit, ServerAddress, Sort, SortOrder,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, header, method, path, query_param};
@@ -50,6 +51,7 @@ fn fixture(name: &str) -> Value {
         "lyrics_enhanced" => include_str!("fixtures/lyrics_enhanced.json"),
         "system_info_public" => include_str!("fixtures/system_info_public.json"),
         "authenticate_by_name" => include_str!("fixtures/authenticate_by_name.json"),
+        "item_details" => include_str!("fixtures/item_details.json"),
         other => panic!("no fixture {other}"),
     };
     serde_json::from_str(text).unwrap()
@@ -799,4 +801,714 @@ async fn the_stream_url_authenticates_with_apikey_against_a_server_that_refuses_
     // A plain GET with no headers, the way a media player fetches it.
     let response = reqwest::get(url).await.unwrap();
     assert_eq!(response.status().as_u16(), 200);
+}
+
+// MARK: - Jellyfin playlists
+
+#[tokio::test]
+async fn creating_a_playlist_sends_name_ids_and_owner_in_the_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists"))
+        .and(exact_header("Authorization", signed_in_header()))
+        .and(body_json(json!({
+            "Name": "Road trip",
+            "Ids": ["s1", "s2"],
+            "UserId": USER,
+            "MediaType": "Audio",
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "Id": "pl9" })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let id = signed_in(&server)
+        .create_playlist("Road trip", &["s1", "s2"])
+        .await
+        .unwrap();
+    assert_eq!(id, "pl9");
+}
+
+#[tokio::test]
+async fn editing_a_playlist_sends_only_what_changed() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl1"))
+        .and(body_json(json!({ "Name": "Renamed" })))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl1"))
+        .and(body_json(json!({ "Name": "Both", "IsPublic": true })))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    let rename = PlaylistEdit {
+        name: Some("Renamed".into()),
+        ..PlaylistEdit::default()
+    };
+    client.edit_playlist("pl1", &rename).await.unwrap();
+    let both = PlaylistEdit {
+        name: Some("Both".into()),
+        is_public: Some(true),
+    };
+    client.edit_playlist("pl1", &both).await.unwrap();
+    // An empty edit is not a request.
+    client
+        .edit_playlist("pl1", &PlaylistEdit::default())
+        .await
+        .unwrap();
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn deleting_a_playlist_checks_it_is_one_first() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Playlists/pl1"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "OpenAccess": false, "Shares": [], "ItemIds": [] })),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Items/pl1"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // A song's id: not a playlist, so the server's playlist lookup is a 404.
+    Mock::given(method("GET"))
+        .and(path("/Playlists/song1"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Items/song1"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    client.delete_playlist("pl1").await.unwrap();
+    assert_eq!(
+        client.delete_playlist("song1").await,
+        Err(Error::NotFound {
+            path: "Playlists/song1".into()
+        })
+    );
+}
+
+#[tokio::test]
+async fn playlist_entries_carry_their_entry_ids() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Playlists/pl1/Items"))
+        .and(query_param("userId", USER))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![
+            json!({ "Id": "s1", "Name": "One", "Type": "Audio", "PlaylistItemId": "e1" }),
+            json!({ "Id": "s1", "Name": "One", "Type": "Audio", "PlaylistItemId": "e2" }),
+            // A server that leaves the entry id out: the item id stands in.
+            json!({ "Id": "s3", "Name": "Three", "Type": "Audio" }),
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let entries = signed_in(&server).playlist_entries("pl1").await.unwrap();
+    let pairs: Vec<_> = entries
+        .iter()
+        .map(|e| {
+            (
+                e.entry_id.as_str(),
+                e.item.id.as_str(),
+                e.item.name.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        pairs,
+        [
+            ("e1", "s1", "One"),
+            ("e2", "s1", "One"),
+            ("s3", "s3", "Three")
+        ]
+    );
+}
+
+#[tokio::test]
+async fn adding_to_a_playlist_chunks_and_keeps_the_order() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl1/Items"))
+        .and(query_param("userId", USER))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(3)
+        .mount(&server)
+        .await;
+    let ids: Vec<String> = (0..150).map(|n| format!("s{n}")).collect();
+    let client = signed_in(&server);
+    client.add_to_playlist("pl1", &ids, Some(4)).await.unwrap();
+    client
+        .add_to_playlist("pl1", &["last"], None)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let sent: Vec<(usize, Option<String>)> = requests
+        .iter()
+        .map(|r| {
+            (
+                query_value(r, "ids").unwrap().split(',').count(),
+                query_value(r, "position"),
+            )
+        })
+        .collect();
+    assert_eq!(
+        sent,
+        [(100, Some("4".into())), (50, Some("104".into())), (1, None)]
+    );
+    assert_eq!(
+        query_value(&requests[1], "ids").unwrap().split(',').next(),
+        Some("s100")
+    );
+}
+
+#[tokio::test]
+async fn removing_goes_by_entry_id_and_moving_by_index() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/Playlists/pl1/Items"))
+        .and(query_param("entryIds", "e1,e2"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl1/Items/e3/Move/0"))
+        .and(header("Content-Length", "0"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    client
+        .remove_from_playlist("pl1", &["e1", "e2"])
+        .await
+        .unwrap();
+    let none: [&str; 0] = [];
+    client.remove_from_playlist("pl1", &none).await.unwrap();
+    client.move_playlist_entry("pl1", "e3", 0).await.unwrap();
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn a_cover_uploads_as_base64_under_its_image_type() {
+    let server = MockServer::start().await;
+    let image = [0xFF_u8, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+    Mock::given(method("POST"))
+        .and(path("/Items/pl1/Images/Primary"))
+        .and(header("Content-Type", "image/jpeg"))
+        .and(exact_header("Authorization", signed_in_header()))
+        .and(|request: &Request| request.body == b"/9j/4AAQ")
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Items/pl1/Images/Primary"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Items/pl2/Images/Primary"))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    client
+        .set_playlist_cover("pl1", &image, "image/jpeg")
+        .await
+        .unwrap();
+    client.delete_playlist_cover("pl1").await.unwrap();
+    // Not an administrator.
+    assert!(matches!(
+        client.set_playlist_cover("pl2", &image, "image/jpeg").await,
+        Err(Error::Http { status: 403, .. })
+    ));
+}
+
+#[tokio::test]
+async fn playlist_edits_need_credentials_and_send_nothing_without_them() {
+    let server = MockServer::start().await;
+    let client = client_at(&server.uri());
+    assert_eq!(
+        client.create_playlist("x", &["a"]).await,
+        Err(Error::NotSignedIn)
+    );
+    assert_eq!(client.delete_playlist("pl1").await, Err(Error::NotSignedIn));
+    assert_eq!(
+        client.move_playlist_entry("pl1", "e1", 2).await,
+        Err(Error::NotSignedIn)
+    );
+    assert_eq!(
+        client.remove_from_playlist("pl1", &["e1"]).await,
+        Err(Error::NotSignedIn)
+    );
+    assert_eq!(
+        client.set_playlist_cover("pl1", b"x", "image/png").await,
+        Err(Error::NotSignedIn)
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+// MARK: - Radio
+
+#[tokio::test]
+async fn each_mix_seed_goes_to_its_own_endpoint() {
+    let server = MockServer::start().await;
+    for route in [
+        "/Songs/t1/InstantMix",
+        "/Albums/al1/InstantMix",
+        "/Artists/ar1/InstantMix",
+        "/Playlists/pl1/InstantMix",
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .and(query_param("userId", USER))
+            .and(query_param("limit", "40"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(page(vec![item(route, "M", "Audio")])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/MusicGenres/InstantMix"))
+        .and(query_param("id", "g1"))
+        .and(query_param("userId", USER))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![item(
+            "genre-mix",
+            "M",
+            "Audio",
+        )])))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    let first = |seed: MixSeed| {
+        let client = client.clone();
+        async move {
+            client.instant_mix_from(&seed, 40).await.unwrap()[0]
+                .id
+                .clone()
+        }
+    };
+    assert_eq!(
+        first(MixSeed::Track("t1".into())).await,
+        "/Songs/t1/InstantMix"
+    );
+    assert_eq!(
+        first(MixSeed::Album("al1".into())).await,
+        "/Albums/al1/InstantMix"
+    );
+    assert_eq!(
+        first(MixSeed::Artist("ar1".into())).await,
+        "/Artists/ar1/InstantMix"
+    );
+    assert_eq!(
+        first(MixSeed::Playlist("pl1".into())).await,
+        "/Playlists/pl1/InstantMix"
+    );
+    assert_eq!(first(MixSeed::Genre("g1".into())).await, "genre-mix");
+}
+
+#[tokio::test]
+async fn similar_items_albums_and_artists() {
+    let server = MockServer::start().await;
+    for (route, kind) in [
+        ("/Items/x1/Similar", "Audio"),
+        ("/Albums/al1/Similar", "MusicAlbum"),
+        ("/Artists/ar1/Similar", "MusicArtist"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .and(query_param("userId", USER))
+            .and(query_param("limit", "12"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(page(vec![item(route, "S", kind)])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let client = signed_in(&server);
+    assert_eq!(
+        client.similar_items("x1", 12).await.unwrap()[0].id,
+        "/Items/x1/Similar"
+    );
+    let albums = client.similar_albums("al1", 12).await.unwrap();
+    assert_eq!(albums[0].kind, ItemKind::MusicAlbum);
+    let artists = client.similar_artists("ar1", 12).await.unwrap();
+    assert_eq!(artists[0].kind, ItemKind::MusicArtist);
+}
+
+// MARK: - Favourites
+
+#[tokio::test]
+async fn favourite_songs_albums_and_artists_are_lists_with_is_favorite() {
+    let server = MockServer::start().await;
+    for kinds in ["Audio", "MusicAlbum"] {
+        Mock::given(method("GET"))
+            .and(path("/Items"))
+            .and(query_param("includeItemTypes", kinds))
+            .and(query_param("isFavorite", "true"))
+            .and(query_param("userId", USER))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(page(vec![item(kinds, "F", kinds)])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/Artists"))
+        .and(query_param("isFavorite", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![item(
+            "ar1",
+            "F",
+            "MusicArtist",
+        )])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // Without the flag nothing about favourites is sent.
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(|request: &Request| query_value(request, "isFavorite").is_none())
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![])))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    let favourites = ListQuery {
+        favorites_only: true,
+        ..ListQuery::default()
+    };
+    assert_eq!(
+        client.songs(&favourites).await.unwrap().items[0].id,
+        "Audio"
+    );
+    assert_eq!(
+        client.albums(&favourites).await.unwrap().items[0].id,
+        "MusicAlbum"
+    );
+    assert_eq!(
+        client.artists(&favourites).await.unwrap().items[0].id,
+        "ar1"
+    );
+    assert!(
+        client
+            .songs(&ListQuery::default())
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+}
+
+// MARK: - Library maintenance
+
+#[tokio::test]
+async fn a_library_rescan_starts_the_scan_task_by_its_key() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/ScheduledTasks"))
+        .and(exact_header("Authorization", signed_in_header()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "Name": "Clean Cache Directory", "Key": "DeleteCacheFiles", "Id": "t-cache", "State": "Idle" },
+            // The name is translated on a French server; the key is not.
+            { "Name": "Actualiser la médiathèque", "Key": "RefreshLibrary", "Id": "t-scan", "State": "Idle" },
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/ScheduledTasks/Running/t-scan"))
+        .and(header("Content-Length", "0"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    signed_in(&server).refresh_library().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_server_without_the_scan_task_says_so_and_starts_nothing() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/ScheduledTasks"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "Name": "Other", "Key": "Other", "Id": "t1" }
+        ])))
+        .mount(&server)
+        .await;
+    assert_eq!(
+        signed_in(&server).refresh_library().await,
+        Err(Error::NotFound {
+            path: "ScheduledTasks/RefreshLibrary".into()
+        })
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn an_item_refresh_always_names_its_modes() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Items/al1/Refresh"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(3)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Items/al2/Refresh"))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    for refresh in [
+        ItemRefresh::ScanFiles,
+        ItemRefresh::FillMissing,
+        ItemRefresh::ReplaceAll { images: true },
+    ] {
+        client.refresh_item("al1", refresh).await.unwrap();
+    }
+    let sent: Vec<Vec<Option<String>>> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| {
+            [
+                "metadataRefreshMode",
+                "imageRefreshMode",
+                "replaceAllMetadata",
+                "replaceAllImages",
+            ]
+            .iter()
+            .map(|name| query_value(r, name))
+            .collect()
+        })
+        .collect();
+    let some = |values: [&str; 4]| values.map(|v| Some(v.to_owned())).to_vec();
+    assert_eq!(
+        sent,
+        [
+            some(["Default", "Default", "false", "false"]),
+            some(["FullRefresh", "FullRefresh", "false", "false"]),
+            some(["FullRefresh", "FullRefresh", "true", "true"]),
+        ]
+    );
+    // Not an administrator.
+    assert!(matches!(
+        client.refresh_item("al2", ItemRefresh::ScanFiles).await,
+        Err(Error::Http { status: 403, .. })
+    ));
+}
+
+// MARK: - Filters
+
+#[tokio::test]
+async fn query_filters_merge_both_endpoints() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items/Filters2"))
+        .and(query_param("userId", USER))
+        .and(query_param("parentId", "lib1"))
+        .and(query_param("includeItemTypes", "MusicAlbum"))
+        .and(query_param("recursive", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Genres": [{ "Name": "Shoegaze", "Id": "g1" }, { "Name": "Dream Pop", "Id": "g2" }],
+            "Tags": ["live", "vinyl rip"],
+            "AudioLanguages": null
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items/Filters"))
+        .and(query_param("parentId", "lib1"))
+        .and(query_param("includeItemTypes", "MusicAlbum"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Genres": ["Shoegaze", "Dream Pop"],
+            "Tags": ["live"],
+            "Years": [1991, 2021, 1991, 2008],
+            "OfficialRatings": null
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let filters = signed_in(&server)
+        .query_filters(Some("lib1"), &[ItemKind::MusicAlbum])
+        .await
+        .unwrap();
+    assert_eq!(
+        filters
+            .genres
+            .iter()
+            .map(|g| (g.id.as_str(), g.name.as_str()))
+            .collect::<Vec<_>>(),
+        [("g1", "Shoegaze"), ("g2", "Dream Pop")]
+    );
+    assert_eq!(filters.years, [2021, 2008, 1991]);
+    assert_eq!(filters.tags, ["live", "vinyl rip"]);
+}
+
+#[tokio::test]
+async fn without_the_older_filters_endpoint_there_are_just_no_years() {
+    let server = MockServer::start().await;
+    Mock::given(path("/Items/Filters2"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({ "Genres": null, "Tags": ["x"] })),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(path("/Items/Filters"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let filters = signed_in(&server).query_filters(None, &[]).await.unwrap();
+    assert!(filters.genres.is_empty() && filters.years.is_empty());
+    assert_eq!(filters.tags, ["x"]);
+    for request in server.received_requests().await.unwrap() {
+        assert_eq!(query_value(&request, "parentId"), None);
+        assert_eq!(query_value(&request, "includeItemTypes"), None);
+    }
+}
+
+#[tokio::test]
+async fn a_saved_filter_runs_as_a_list_query() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("includeItemTypes", "MusicAlbum"))
+        .and(query_param("genreIds", "g1"))
+        .and(query_param("years", "1991,2021"))
+        .and(query_param("tags", "live|vinyl, rip"))
+        .and(query_param("isFavorite", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![item(
+            "al1",
+            "Loveless",
+            "MusicAlbum",
+        )])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(|request: &Request| {
+            query_value(request, "years").is_none() && query_value(request, "tags").is_none()
+        })
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    let saved = ListQuery {
+        genre_ids: vec!["g1".into()],
+        years: vec![1991, 2021],
+        tags: vec!["live".into(), "vinyl, rip".into()],
+        favorites_only: true,
+        ..ListQuery::default()
+    };
+    assert_eq!(
+        client.albums(&saved).await.unwrap().items[0].name,
+        "Loveless"
+    );
+    assert!(
+        client
+            .albums(&ListQuery::default())
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+}
+
+// MARK: - Folders
+
+#[tokio::test]
+async fn folder_children_are_one_level_folders_first() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("userId", USER))
+        .and(query_param("parentId", "lib1"))
+        .and(query_param("sortBy", "IsFolder,SortName"))
+        .and(query_param("sortOrder", "Ascending"))
+        .and(query_param("startIndex", "0"))
+        .and(query_param("limit", "200"))
+        .and(|request: &Request| query_value(request, "recursive").is_none())
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                { "Id": "f1", "Name": "Bootlegs", "Type": "Folder", "IsFolder": true },
+                { "Id": "al1", "Name": "Loveless", "Type": "MusicAlbum", "IsFolder": true },
+                { "Id": "t1", "Name": "intro.flac", "Type": "Audio", "IsFolder": false },
+            ],
+            "TotalRecordCount": 3
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let page = signed_in(&server)
+        .folder_children("lib1", 0, Some(200))
+        .await
+        .unwrap();
+    let kinds: Vec<_> = page.items.iter().map(|i| (i.kind, i.is_folder)).collect();
+    assert_eq!(
+        kinds,
+        [
+            (ItemKind::Folder, true),
+            (ItemKind::MusicAlbum, true),
+            (ItemKind::Audio, false)
+        ]
+    );
+}
+
+// MARK: - Get Info
+
+#[tokio::test]
+async fn item_details_come_from_the_single_item_endpoint() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items/a1b2c3d4e5f60718293a4b5c6d7e8f90"))
+        .and(query_param("userId", USER))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture("item_details")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let details = signed_in(&server)
+        .item_details("a1b2c3d4e5f60718293a4b5c6d7e8f90")
+        .await
+        .unwrap();
+    assert_eq!(details.item.kind, ItemKind::Audio);
+    assert_eq!(details.codec.as_deref(), Some("flac"));
+    assert_eq!(details.sample_rate, Some(96_000));
+    assert_eq!(details.play_count, 12);
+    assert_eq!(
+        details.item.duration(),
+        Some(Duration::from_millis(243_500))
+    );
 }

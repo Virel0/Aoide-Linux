@@ -2,7 +2,7 @@ use std::sync::Once;
 use std::time::Duration;
 
 use reqwest::Method;
-use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use serde::de::DeserializeOwned;
 
 use crate::error::{check_status, transport};
@@ -22,6 +22,17 @@ fn install_crypto() {
     ONCE.call_once(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
+}
+
+/// What a request carries.
+pub(crate) enum Body<'a> {
+    Empty,
+    Json(&'a serde_json::Value),
+    /// Bytes sent as they are, under their own content type.
+    Raw {
+        content_type: &'a str,
+        bytes: Vec<u8>,
+    },
 }
 
 /// One Jellyfin server, optionally signed in.
@@ -97,6 +108,21 @@ impl JellyfinClient {
         query: &[(&str, String)],
         body: Option<&serde_json::Value>,
     ) -> Result<Vec<u8>> {
+        let body = match body {
+            Some(json) => Body::Json(json),
+            None => Body::Empty,
+        };
+        self.send_body(method, segments, query, body).await
+    }
+
+    /// [`send`](Self::send) with any kind of body, such as an image upload.
+    pub(crate) async fn send_body(
+        &self,
+        method: Method,
+        segments: &[&str],
+        query: &[(&str, String)],
+        body: Body<'_>,
+    ) -> Result<Vec<u8>> {
         let header = self
             .device
             .authorization_header(self.credentials.as_ref().map(|c| c.access_token.as_str()));
@@ -108,11 +134,15 @@ impl JellyfinClient {
             .header("X-Emby-Authorization", header.as_str())
             .header(ACCEPT, "application/json");
         request = match body {
-            Some(body) => request.json(body),
+            Body::Json(body) => request.json(body),
+            Body::Raw {
+                content_type,
+                bytes,
+            } => request.header(CONTENT_TYPE, content_type).body(bytes),
             // `Content-Length: 0` spelled out, since hyper leaves it off an empty
             // body and some proxies answer a POST without one with 411.
-            None if has_body_slot => request.header(CONTENT_LENGTH, "0").body(Vec::new()),
-            None => request,
+            Body::Empty if has_body_slot => request.header(CONTENT_LENGTH, "0").body(Vec::new()),
+            Body::Empty => request,
         };
 
         let response = request.send().await.map_err(transport)?;
@@ -142,6 +172,16 @@ impl JellyfinClient {
         query: &[(&str, String)],
     ) -> Result<T> {
         self.send_decoded(Method::GET, segments, query, None).await
+    }
+
+    /// A request whose answer has no body worth reading (most are 204).
+    pub(crate) async fn send_empty(
+        &self,
+        method: Method,
+        segments: &[&str],
+        query: &[(&str, String)],
+    ) -> Result<()> {
+        self.send(method, segments, query, None).await.map(drop)
     }
 
     pub(crate) async fn post_json(
