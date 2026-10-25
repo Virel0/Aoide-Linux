@@ -369,6 +369,8 @@ mod tests {
             id: "p1".into(),
             name: "Road Trip".into(),
             count: 3,
+            smart: false,
+            folder_id: None,
         }];
         let all = commands(&playlists);
         for section in Section::LIBRARY.iter().chain([&Section::Settings]) {

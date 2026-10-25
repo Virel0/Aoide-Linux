@@ -119,6 +119,12 @@ pub(crate) struct Signed {
     pub lyrics: Option<LyricsState>,
     /// The lyric line last scrolled to.
     pub lyric_line: Option<usize>,
+    /// Handoff and the resume grid.
+    pub handoff: crate::handoff::Handoff,
+    /// This week's Discover list.
+    pub discover: crate::screens::discover::Discover,
+    /// The Get Info sheet, while it is open.
+    pub info: Option<crate::info::Sheet>,
 }
 
 #[derive(Debug, Clone)]
@@ -170,6 +176,19 @@ pub enum Message {
     /// Settings → System's file, log and cache rows.
     System(crate::maintenance::Message),
     Listening(crate::listening::Msg),
+    Handoff(crate::handoff::Msg),
+    Discover(crate::screens::discover::Msg),
+    SyncPanel(crate::screens::sync_status::Msg),
+    /// A Jellyfin playlist changed (this one, or which ones there are).
+    JellyfinPlaylistChanged(Option<String>),
+    Radio(crate::radio::Msg),
+    Covers(crate::covers::Msg),
+    Sharing(crate::screens::share::Msg),
+    /// Match an imported playlist for the import page with this key.
+    ImportMatch(u64, Box<aoide_sidecar::ImportedPlaylist>),
+    Collections(crate::screens::collections::Msg),
+    Info(crate::info::Msg),
+    Rescan(crate::rescan::Msg),
 }
 
 /// The player bar's controls.
@@ -316,7 +335,10 @@ impl App {
                 Task::none()
             }
             Message::Window(id, event) => self.window_event(id, event),
-            Message::Engine(event) => self.engine_event(event),
+            Message::Engine(event) => {
+                let task = self.engine_event(event.clone());
+                Task::batch([task, self.handoff_engine_event(&event)])
+            }
             Message::Artwork(key, bytes) => {
                 self.artwork.arrived(key, bytes);
                 Task::none()
@@ -410,10 +432,11 @@ impl App {
                 let changed = result.as_ref().is_ok_and(|r| r.applied > 0);
                 signed.sync_status =
                     Some(result.as_ref().map(sync::describe).map_err(Clone::clone));
+                let panels = self.refresh_sync_panels();
                 if changed {
-                    self.load_playlists()
+                    Task::batch([self.load_playlists(), panels])
                 } else {
-                    Task::none()
+                    panels
                 }
             }
             Message::Libraries(result) => {
@@ -493,6 +516,17 @@ impl App {
             Message::Palette(message) => self.palette_message(message),
             Message::System(message) => self.maintenance_message(message),
             Message::Listening(msg) => self.listening(msg),
+            Message::Handoff(message) => self.handoff(message),
+            Message::Discover(message) => self.discover(message),
+            Message::SyncPanel(message) => self.sync_panel(message),
+            Message::JellyfinPlaylistChanged(id) => self.jellyfin_playlists_changed(id),
+            Message::Radio(message) => self.radio(message),
+            Message::Covers(message) => self.covers(message),
+            Message::Sharing(message) => self.sharing(message),
+            Message::ImportMatch(key, playlist) => self.import_match(key, *playlist),
+            Message::Collections(message) => self.collections(message),
+            Message::Info(message) => self.info(message),
+            Message::Rescan(message) => self.rescan(message),
         }
     }
 
@@ -508,9 +542,19 @@ impl App {
         self.save_config();
 
         let sidecar = SidecarClient::new(&connection.account.server, connection.token()).ok();
-        let sync = sidecar
-            .clone()
-            .map(|client| Arc::new(SyncEngine::new(self.store.shared(), client)));
+        let blobs = crate::covers::open_blobs(self.paths.as_ref());
+        let sync = sidecar.clone().map(|client| {
+            // The user's id tells a share granted to them from one they granted.
+            let engine = SyncEngine::new(self.store.shared(), client)
+                .with_user_id(connection.account.user_id.clone());
+            // Chosen covers are uploaded from where they are kept.
+            Arc::new(match blobs {
+                Some(blobs) => engine.with_image_bytes(Arc::new(blobs)),
+                None => engine,
+            })
+        });
+        let handoff =
+            crate::handoff::Handoff::open(self.paths.as_ref(), &connection.account.server);
         self.session = Some(Signed {
             connection,
             sidecar,
@@ -539,6 +583,9 @@ impl App {
             infinity: InfinityTrigger::default(),
             lyrics: None,
             lyric_line: None,
+            handoff,
+            discover: Default::default(),
+            info: None,
         });
 
         let mut tasks = Vec::new();
@@ -556,6 +603,11 @@ impl App {
 
     /// What runs once the store is known to be this account's.
     fn after_claim(&mut self) -> Task<Message> {
+        // Before the playlists are read: the store thread runs jobs in order.
+        let now = aoide_store::now_millis();
+        self.store.send(move |w| {
+            let _ = w.store.ensure_built_in_playlists(now);
+        });
         Task::batch([self.load_playlists(), self.restore_queue()])
     }
 
@@ -598,10 +650,20 @@ impl App {
                 store
                     .call(|w| {
                         let lists = w.store.playlists().unwrap_or_default();
+                        let now = aoide_store::now_millis();
                         lists
                             .into_iter()
                             .map(|p| PlaylistSummary {
-                                count: w.store.item_count(&p.id).unwrap_or(0),
+                                // A smart playlist's count is what its rules match now.
+                                count: if p.is_smart {
+                                    w.store
+                                        .match_count_of(&p, now, aoide_store::Calendar::Local)
+                                        .unwrap_or(0)
+                                } else {
+                                    w.store.item_count(&p.id).unwrap_or(0)
+                                },
+                                smart: p.is_smart,
+                                folder_id: p.folder_id,
                                 id: p.id,
                                 name: p.name,
                             })
@@ -637,6 +699,8 @@ impl App {
                     let now = aoide_store::now_millis();
                     self.store.send(move |w| {
                         let _ = w.recorder.stopped(&w.store, now);
+                        // What waited to be published was this account's.
+                        w.broadcast = aoide_store::QueueBroadcast::new();
                         let _ = w.store.clear_queue(now);
                     });
                 }
@@ -677,6 +741,10 @@ impl App {
         let Some(engine) = signed.sync.clone() else {
             return Task::none();
         };
+        if signed.handoff.publishing {
+            signed.handoff.sync_wanted = true;
+            return Task::none();
+        }
         // Not before the store is known to be this account's.
         if signed.unknown_owner || !signed.throttle.request(now) {
             return Task::none();
@@ -688,7 +756,7 @@ impl App {
 
     /// Sync Now: at once unless a sync is running; the screen goes on as
     /// the sync runs.
-    fn sync_now(&mut self) -> Task<Message> {
+    pub(crate) fn sync_now(&mut self) -> Task<Message> {
         let now = self.now();
         let Some(signed) = self.session.as_mut() else {
             return Task::none();
@@ -696,6 +764,10 @@ impl App {
         let Some(engine) = signed.sync.clone() else {
             return Task::none();
         };
+        if signed.handoff.publishing {
+            signed.handoff.sync_wanted = true;
+            return Task::none();
+        }
         if signed.unknown_owner || !signed.throttle.request_now(now) {
             return Task::none();
         }
@@ -840,7 +912,9 @@ impl App {
         self.save_config();
         let _ = self.playback.set_settings(self.player_settings());
         match which {
-            screens::settings::Toggle::Infinity => self.infinity_switched(),
+            screens::settings::Toggle::Infinity | screens::settings::Toggle::InfinityAlbums => {
+                self.infinity_switched()
+            }
             screens::settings::Toggle::LevelVolume => {
                 let switched = match self.session.as_ref() {
                     Some(signed) => self
@@ -948,7 +1022,12 @@ impl App {
                 } else {
                     PlayRequest::shuffled(&menu.tracks, aoide_store::PlaySource::Shuffle)
                 };
-                self.play(request)
+                let context = menu
+                    .collection
+                    .as_ref()
+                    .and_then(|(c, title)| crate::handoff::collection_context(c, title));
+                let remembered = self.remembered(context);
+                Task::batch([self.play(request), remembered])
             }
             RowAction::FlagsLoaded(id, flags) => {
                 if let Some(menu) = signed.menu.as_mut()
@@ -982,8 +1061,26 @@ impl App {
                 if let Some(menu) = signed.menu.as_mut() {
                     menu.adding = !menu.adding;
                 }
-                Task::none()
+                self.offer_jellyfin_playlists()
             }
+            RowAction::JellyfinPlaylists(_) | RowAction::AddToJellyfin(_) => {
+                self.jellyfin_menu_action(action)
+            }
+            RowAction::GetInfo => match signed.menu.as_ref().and_then(Menu::single).cloned() {
+                Some(track) => self.info(crate::info::Msg::Open {
+                    id: track.id,
+                    title: track.title,
+                }),
+                None => Task::none(),
+            },
+            RowAction::StartRadio => match signed
+                .menu
+                .as_ref()
+                .and_then(crate::radio::Station::of_menu)
+            {
+                Some(station) => self.radio(crate::radio::Msg::Start(station)),
+                None => Task::none(),
+            },
             RowAction::Filter(filter) => {
                 if let Some(menu) = signed.menu.as_mut() {
                     menu.filter = filter;
@@ -1171,10 +1268,11 @@ impl App {
             self.notice = Some(error);
         }
         match control {
-            Transport::Toggle => self.report_pause_state(),
+            Transport::Toggle => Task::batch([self.report_pause_state(), self.save_queue()]),
             Transport::Next | Transport::Previous | Transport::Shuffle | Transport::Repeat => {
                 Task::batch([self.check_infinity(), self.save_queue()])
             }
+            Transport::Seek(_) | Transport::ScrubEnd => self.save_queue(),
             _ => Task::none(),
         }
     }
@@ -1312,7 +1410,7 @@ impl App {
             C::Raise => return self.show_window(),
             C::Quit => return self.quit(),
         };
-        self.result(result)
+        Task::batch([self.result(result), self.save_queue()])
     }
 
     fn result(&mut self, result: Result<(), String>) -> Task<Message> {
@@ -1369,6 +1467,8 @@ impl App {
             store
                 .call(move |w| {
                     let _ = w.recorder.stopped(&w.store, now);
+                    // The queue as it was left, for the other devices.
+                    let _ = w.broadcast.flush_now(&w.store, now);
                 })
                 .await;
         })

@@ -1,5 +1,9 @@
 //! One Aoide playlist: its songs in order, Play and Shuffle, rename, delete,
 //! and, while editing, its notes and each entry moved up, down or out.
+//!
+//! A smart playlist is its rules, evaluated against the local history when
+//! the page opens (`Store::resolve_smart`): its songs are listed in the
+//! rules' order and cannot be moved or removed one by one.
 
 use std::collections::HashMap;
 
@@ -34,6 +38,13 @@ pub struct State {
     /// Showing the notes editor and each entry's move and remove buttons.
     editing: bool,
     notes: text_editor::Content,
+    /// For a smart playlist: what its rules matched when the page opened.
+    smart: Option<Vec<String>>,
+    /// The cover as drawn (`covers`): a chosen picture, an item, or the
+    /// first track's album.
+    cover: Option<crate::artwork::ArtKey>,
+    /// What the last cover change said: done, or why not.
+    cover_note: Option<Result<String, String>>,
 }
 
 const LIST: ListStyle = ListStyle {
@@ -41,8 +52,26 @@ const LIST: ListStyle = ListStyle {
     show_album: true,
 };
 
-/// The playlist row and its entries, as the store has them.
-pub type Rows = (Option<Playlist>, Vec<PlaylistItem>);
+/// The playlist row and its entries, as the store has them, and for a smart
+/// playlist the ids its rules match now (or why they could not be read).
+pub type Rows = (
+    Option<Playlist>,
+    Vec<PlaylistItem>,
+    Option<Result<Vec<String>, String>>,
+);
+
+/// Reads a playlist for its page, evaluating a smart one's rules as of `now`
+/// on the local calendar.
+pub fn read_rows(store: &aoide_store::Store, id: &str, now: i64) -> aoide_store::Result<Rows> {
+    let playlist = store.playlist(id)?;
+    let items = store.items(id)?;
+    let smart = playlist.as_ref().filter(|p| p.is_smart).map(|p| {
+        store
+            .resolve_smart(p, now, aoide_store::Calendar::Local)
+            .map_err(|e| e.to_string())
+    });
+    Ok((playlist, items, smart))
+}
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -62,6 +91,12 @@ pub enum Message {
         up: bool,
     },
     Remove(String),
+    /// Ask for the cover to draw.
+    FindCover,
+    Cover(Option<crate::artwork::ArtKey>),
+    ChooseCover,
+    RemoveCover,
+    CoverNote(Result<String, String>),
 }
 
 /// Where `moving` goes to land just before (`up`) or just after `neighbour`,
@@ -88,12 +123,28 @@ pub fn open(ctx: &Ctx<'_>, id: &str) -> (State, Task<App>) {
         error: None,
         editing: false,
         notes: text_editor::Content::new(),
+        smart: None,
+        cover: None,
+        cover_note: None,
     };
     let task = state.load_rows(ctx);
     (state, task)
 }
 
 impl State {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// The songs' covers and the playlist's own.
+    pub fn artwork(&self) -> Vec<crate::artwork::ArtKey> {
+        let mut keys: Vec<_> = self.cover.clone().into_iter().collect();
+        if let Load::Ready(tracks) = &self.tracks {
+            keys.extend(super::track_art(tracks));
+        }
+        keys
+    }
+
     fn load_rows(&self, ctx: &Ctx<'_>) -> Task<App> {
         let store = ctx.store.clone();
         let id = self.id.clone();
@@ -102,16 +153,22 @@ impl State {
             async move {
                 store
                     .call(move |w| {
-                        let read = || -> aoide_store::Result<_> {
-                            Ok(Box::new((w.store.playlist(&id)?, w.store.items(&id)?)))
-                        };
-                        read().map_err(|e| e.to_string())
+                        read_rows(&w.store, &id, aoide_store::now_millis())
+                            .map(Box::new)
+                            .map_err(|e| e.to_string())
                     })
                     .await
                     .unwrap_or_else(|| Err("the library is closing".into()))
             },
             move |r| App::Page(key, PageMsg::Playlist(Message::Rows(r))),
         )
+    }
+
+    fn find_cover(&self, key: u64) -> Task<App> {
+        Task::done(App::Covers(crate::covers::Msg::Resolve {
+            key,
+            ids: vec![self.id.clone()],
+        }))
     }
 
     fn write(
@@ -141,24 +198,76 @@ impl State {
                 Task::none()
             }
             Message::Rows(Ok(rows)) => {
-                let (playlist, items) = *rows;
+                let (playlist, items, smart) = *rows;
                 self.playlist = playlist;
-                let ids: Vec<String> = items
-                    .iter()
-                    .filter(|item| !item.is_unresolved())
-                    .map(|item| item.linked_jellyfin_id().to_owned())
-                    .collect();
+                let ids: Vec<String> = match smart {
+                    Some(Ok(ids)) => {
+                        self.smart = Some(ids.clone());
+                        ids
+                    }
+                    Some(Err(error)) => {
+                        self.tracks = Load::Failed(format!(
+                            "This smart playlist's rules couldn't be read: {error}"
+                        ));
+                        return Task::none();
+                    }
+                    None => {
+                        self.smart = None;
+                        items
+                            .iter()
+                            .filter(|item| !item.is_unresolved())
+                            .map(|item| item.linked_jellyfin_id().to_owned())
+                            .collect()
+                    }
+                };
                 self.items = items;
                 let client = ctx.client.clone();
-                fetch(
-                    ctx.key,
-                    async move { client.items_by_ids(&ids).await },
-                    move |r| PageMsg::Playlist(Message::Tracks(r)),
-                )
+                Task::batch([
+                    fetch(
+                        ctx.key,
+                        async move { client.items_by_ids(&ids).await },
+                        move |r| PageMsg::Playlist(Message::Tracks(r)),
+                    ),
+                    self.find_cover(ctx.key),
+                ])
+            }
+            Message::FindCover => self.find_cover(ctx.key),
+            Message::Cover(cover) => {
+                self.cover = cover;
+                Task::none()
+            }
+            Message::ChooseCover => {
+                self.cover_note = None;
+                Task::done(App::Covers(crate::covers::Msg::Choose {
+                    key: ctx.key,
+                    playlist: self.id.clone(),
+                }))
+            }
+            Message::RemoveCover => {
+                self.cover_note = None;
+                Task::done(App::Covers(crate::covers::Msg::Remove {
+                    key: ctx.key,
+                    playlist: self.id.clone(),
+                }))
+            }
+            Message::CoverNote(note) => {
+                self.cover_note = Some(note);
+                // The row changed: read it again, for its hash.
+                self.load_rows(ctx)
             }
             Message::Tracks(result) => {
-                match result {
-                    Ok(found) => {
+                match (result, &self.smart) {
+                    (Ok(found), Some(ids)) => {
+                        // The rules' order; nothing to edit entry by entry.
+                        let tracks: Vec<TrackMeta> = crate::handoff::ordered(found, ids)
+                            .iter()
+                            .map(TrackMeta::from_item)
+                            .collect();
+                        self.missing = ids.len() - tracks.len();
+                        self.entries.clear();
+                        self.tracks = Load::Ready(tracks);
+                    }
+                    (Ok(found), None) => {
                         let found: HashMap<String, TrackMeta> = found
                             .iter()
                             .map(|item| (item.id.clone(), TrackMeta::from_item(item)))
@@ -176,7 +285,7 @@ impl State {
                         self.entries = entries;
                         self.tracks = Load::Ready(tracks);
                     }
-                    Err(error) => self.tracks = Load::Failed(error),
+                    (Err(error), _) => self.tracks = Load::Failed(error),
                 }
                 Task::none()
             }
@@ -322,9 +431,9 @@ impl State {
             .into(),
             None => widgets::title_bar(name, view.can_go_back),
         };
-        let mut body = column![title].spacing(16);
+        let mut head = column![title].spacing(12);
         if self.editing {
-            body = body.push(
+            head = head.push(
                 text_editor(&self.notes)
                     .placeholder("Notes")
                     .on_action(move |a| message(Message::Notes(a)))
@@ -332,12 +441,18 @@ impl State {
                     .padding(8),
             );
         } else if let Some(notes) = self.playlist.as_ref().and_then(|p| p.notes.as_deref()) {
-            body = body.push(widgets::secondary(notes));
+            head = head.push(widgets::secondary(notes));
         }
+        // Plays from a smart playlist are filed as smart, as on the phone.
+        let source = if self.smart.is_some() {
+            PlaySource::Smart
+        } else {
+            PlaySource::Playlist
+        };
         let mut tools = row![widgets::play_buttons(
             tracks,
             format!("{key}:playlist"),
-            PlaySource::Playlist
+            source
         )]
         .spacing(10)
         .align_y(Center);
@@ -383,17 +498,65 @@ impl State {
                 .on_press(message(Message::Delete))
                 .into()
         });
-        body = body.push(tools);
+        let small = |label: &'a str, m: Option<Message>| {
+            button(text(label).size(13))
+                .style(theme::tonal)
+                .padding([6, 12])
+                .on_press_maybe(m.map(message))
+        };
+        let has_picture = self
+            .playlist
+            .as_ref()
+            .is_some_and(|p| p.image_hash.is_some());
+        let share = button(text("Share…").size(13))
+            .style(theme::tonal)
+            .padding([6, 12])
+            .on_press_maybe(self.playlist.as_ref().map(|p| {
+                App::Open(super::Route::Share {
+                    id: p.id.clone(),
+                    name: p.name.clone(),
+                })
+            }));
+        let cover_tools = row![
+            small("Choose Cover…", Some(Message::ChooseCover)),
+            small("Remove Cover", has_picture.then_some(Message::RemoveCover)),
+            share,
+        ]
+        .spacing(8);
+        head = head.push(tools).push(cover_tools);
+        if let Some(note) = &self.cover_note {
+            head = head.push(match note {
+                Ok(note) => widgets::secondary(note.as_str()).size(13).into(),
+                Err(error) => widgets::failure(error),
+            });
+        }
+        let mut body = column![
+            row![
+                widgets::art(
+                    self.cover.as_ref(),
+                    view.artwork,
+                    Length::Fixed(180.0),
+                    10.0
+                ),
+                head.width(Length::Fill)
+            ]
+            .spacing(24)
+        ]
+        .spacing(16);
         if let Some(menu) = view.menu.filter(|m| m.anchor == format!("{key}:playlist")) {
             body = body.push(widgets::menu_strip(menu, view));
         }
         if let Some(error) = &self.error {
             body = body.push(widgets::failure(error));
         }
-        if self.playlist.as_ref().is_some_and(|p| p.is_smart) {
-            body = body.push(widgets::empty(
-                "A smart playlist. Its rules are kept and synced; showing what they match comes with Round 2.",
-            ));
+        if self.smart.is_some() {
+            body = body.push(
+                widgets::secondary(
+                    "A smart playlist: its songs are whatever its rules match in your listening, \
+                 worked out each time it opens, so they can't be moved or removed one by one.",
+                )
+                .size(13),
+            );
         }
         if self.missing > 0 {
             body = body.push(widgets::secondary(format!(
@@ -409,13 +572,38 @@ impl State {
         body = body.push(match &self.tracks {
             Load::Loading => widgets::loading(),
             Load::Failed(error) => widgets::failure(error),
+            Load::Ready(tracks) if tracks.is_empty() && self.smart.is_some() => widgets::empty(
+                "Nothing matches its rules yet. Songs appear as your listening fits them.",
+            ),
             Load::Ready(tracks) if tracks.is_empty() => {
                 widgets::empty("No songs yet. Add some from any song's … menu.")
             }
-            Load::Ready(tracks) if self.editing => self.editable(tracks, view),
-            Load::Ready(tracks) => widgets::track_list(tracks, view, LIST, PlaySource::Playlist),
+            Load::Ready(tracks) if self.editing && self.smart.is_none() => {
+                self.editable(tracks, view)
+            }
+            Load::Ready(tracks) => widgets::track_list(tracks, view, LIST, source),
         });
-        widgets::page(body)
+        crate::handoff::played_from(widgets::page(body), self.context())
+    }
+
+    /// What playing from this page is remembered as: the playlist, drawn by
+    /// its first track's cover.
+    fn context(&self) -> Option<aoide_store::RecentContext> {
+        let playlist = self.playlist.as_ref()?;
+        let mut context = aoide_store::RecentContext::new(
+            aoide_store::RecentContextKind::LocalPlaylist,
+            playlist.id.clone(),
+            playlist.name.clone(),
+            aoide_store::now_millis(),
+        );
+        context.smart = Some(playlist.is_smart);
+        context.artwork_item_id = playlist.artwork_item_id.clone().or_else(|| {
+            self.tracks
+                .ready()
+                .and_then(|t| t.first())
+                .and_then(|t| t.album_id.clone().or_else(|| Some(t.id.clone())))
+        });
+        Some(context)
     }
 
     /// The songs with each entry's Up, Down and Remove.
@@ -465,6 +653,38 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_smart_playlist_is_evaluated_from_the_history_on_open() {
+        let store = aoide_store::Store::in_memory("desk").unwrap();
+        let now = 1_792_540_800_000;
+        let created = store.ensure_built_in_playlists(now).unwrap();
+        assert!(!created.is_empty());
+        let heavy = aoide_store::BuiltInPlaylist::HeavyRotation;
+        // Played often, lately: Heavy Rotation's kind of song.
+        let track = aoide_store::TrackRef::new("t1", "k1", "Lantern", "Mara Vey", "Saltwater", now);
+        store.cache_tracks(&[track]).unwrap();
+        let link = aoide_store::TrackLink::new("t1", "k1");
+        for n in 0..6 {
+            let at = now - (n + 1) * 3_600_000;
+            store
+                .record_play(
+                    &link,
+                    at,
+                    180_000,
+                    Some(180_000),
+                    PlaySource::Album,
+                    Some(true),
+                )
+                .unwrap();
+        }
+        let (playlist, items, smart) = read_rows(&store, heavy.id(), now).unwrap();
+        assert!(playlist.unwrap().is_smart);
+        assert!(items.is_empty(), "rules, not entries");
+        assert_eq!(smart.unwrap().unwrap(), ["t1"]);
+        let plain = store.create_playlist("Mine", None, None, now).unwrap();
+        assert!(read_rows(&store, &plain.id, now).unwrap().2.is_none());
+    }
 
     fn ids(names: &[&str]) -> Vec<String> {
         names.iter().map(|n| (*n).to_owned()).collect()

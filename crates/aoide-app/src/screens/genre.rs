@@ -11,6 +11,7 @@ use crate::widgets;
 
 #[derive(Debug)]
 pub struct State {
+    id: String,
     name: String,
     pub albums: Load<Vec<Tile>>,
 }
@@ -35,6 +36,7 @@ pub fn open(ctx: &Ctx<'_>, id: &str, name: &str) -> (State, Task<App>) {
     );
     (
         State {
+            id: id.to_owned(),
             name: name.to_owned(),
             albums: Load::Loading,
         },
@@ -54,7 +56,14 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
-        let body = column![widgets::title_bar(&self.name, view.can_go_back)].spacing(20);
+        let body = column![
+            widgets::title_bar(&self.name, view.can_go_back),
+            crate::radio::start_button(crate::radio::Station::new(
+                aoide_jellyfin::MixSeed::Genre(self.id.clone()),
+                self.name.clone(),
+            )),
+        ]
+        .spacing(20);
         let body = body.push(match &self.albums {
             Load::Loading => widgets::loading(),
             Load::Failed(error) => widgets::failure(error),

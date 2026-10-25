@@ -1,6 +1,7 @@
-//! Home: shelves of albums — recently added, recently played, most played,
-//! recently released, a random handful — and some genres to wander into.
-//! A shelf with nothing on it is left out.
+//! Home: the resume grid (the last few things played from, led by another
+//! device's queue when it is newer), then shelves of albums — recently added,
+//! recently played, most played, recently released, a random handful — and
+//! some genres to wander into. A shelf with nothing on it is left out.
 
 use std::collections::hash_map::RandomState;
 use std::hash::BuildHasher;
@@ -29,6 +30,10 @@ pub struct State {
     random: Load<Vec<Tile>>,
     /// Id and name, a random few.
     genres: Load<Vec<(String, String)>>,
+    /// The resume grid; empty draws nothing.
+    resume: Vec<crate::handoff::Card>,
+    /// How many songs this week's Discover holds; `None` hides the tile.
+    discover: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +44,8 @@ pub enum Message {
     Released(Result<Vec<Item>, String>),
     Random(Result<Vec<Item>, String>),
     Genres(Result<Vec<Item>, String>),
+    Resume(Vec<crate::handoff::Card>),
+    Discover(Option<usize>),
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
@@ -69,6 +76,8 @@ pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
     );
     let (la, lb, lc) = (library.clone(), library.clone(), library);
     let tasks = Task::batch([
+        Task::done(App::Handoff(crate::handoff::Msg::LoadResume(key))),
+        Task::done(App::Discover(super::discover::Msg::Home(key))),
         fetch(
             key,
             async move { a.recently_added(la.as_deref(), SHELF as u32).await },
@@ -109,6 +118,8 @@ pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
             released: Load::Loading,
             random: Load::Loading,
             genres: Load::Loading,
+            resume: Vec::new(),
+            discover: None,
         },
         tasks,
     )
@@ -150,6 +161,8 @@ impl State {
                     pick(genres, GENRES)
                 }));
             }
+            Message::Resume(cards) => self.resume = cards,
+            Message::Discover(count) => self.discover = count,
         }
         Task::none()
     }
@@ -165,16 +178,27 @@ impl State {
     }
 
     pub fn artwork(&self) -> Vec<ArtKey> {
-        self.shelves()
-            .into_iter()
-            .filter_map(|(_, shelf)| shelf.ready())
-            .flatten()
-            .filter_map(|t| t.art.clone())
+        self.resume
+            .iter()
+            .filter_map(|card| card.art.clone())
+            .chain(
+                self.shelves()
+                    .into_iter()
+                    .filter_map(|(_, shelf)| shelf.ready())
+                    .flatten()
+                    .filter_map(|t| t.art.clone()),
+            )
             .collect()
     }
 
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
         let mut body = column![widgets::title_bar("Home", view.can_go_back)].spacing(28);
+        if !self.resume.is_empty() {
+            body = body.push(resume_grid(&self.resume, view));
+        }
+        if let Some(count) = self.discover {
+            body = body.push(super::discover::tile(count));
+        }
         for (title, shelf) in self.shelves() {
             match shelf {
                 Load::Loading => body = body.push(widgets::loading()),
@@ -202,6 +226,75 @@ impl State {
         }
         widgets::page(body)
     }
+}
+
+/// Two rows of three: each tile plays at once. A context's `×` takes it out
+/// of the recents; another device's queue has none, it goes when it is old.
+fn resume_grid<'a>(cards: &'a [crate::handoff::Card], view: &View<'a>) -> Element<'a, App> {
+    use crate::handoff::Msg;
+    use aoide_store::ResumeTile;
+    use iced::widget::container;
+    let tile = |card: &'a crate::handoff::Card| -> Element<'a, App> {
+        let words = column![
+            text(card.tile.title())
+                .size(14)
+                .font(widgets::SEMIBOLD)
+                .wrapping(text::Wrapping::WordOrGlyph)
+                .style(|t: &iced::Theme| text::Style {
+                    color: Some(t.palette().text),
+                }),
+            widgets::secondary(card.tile.detail())
+                .size(12)
+                .wrapping(text::Wrapping::None),
+        ]
+        .spacing(2)
+        .width(Fill)
+        .clip(true);
+        let mut line = row![
+            widgets::art(
+                card.art.as_ref(),
+                view.artwork,
+                iced::Length::Fixed(52.0),
+                6.0
+            ),
+            words,
+        ]
+        .spacing(10)
+        .align_y(iced::Center);
+        if let ResumeTile::Context(context) = &card.tile {
+            line = line.push(
+                button(crate::icons::icon(
+                    crate::icons::Icon::Close,
+                    12.0,
+                    crate::icons::Tone::Secondary,
+                ))
+                .style(theme::row)
+                .padding(4)
+                .on_press(App::Handoff(Msg::Forget(context.key()))),
+            );
+        }
+        button(container(line).padding(6))
+            .width(Fill)
+            .style(theme::tonal)
+            .padding(0)
+            .on_press(App::Handoff(Msg::Resume(card.tile.clone())))
+            .into()
+    };
+    // Rows of three, the last one padded so its tiles keep their width.
+    let mut rows = column![].spacing(10);
+    for chunk in cards.chunks(3) {
+        let mut line = row![].spacing(10);
+        for card in chunk {
+            line = line.push(container(tile(card)).width(Fill));
+        }
+        for _ in chunk.len()..3 {
+            line = line.push(iced::widget::space().width(Fill));
+        }
+        rows = rows.push(line);
+    }
+    column![text("Jump Back In").size(20).font(widgets::BOLD), rows]
+        .spacing(10)
+        .into()
 }
 
 /// The genres as a row of chips, scrolled sideways like the album shelves.

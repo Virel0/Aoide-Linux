@@ -36,6 +36,7 @@ pub enum Toggle {
     Infinity,
     SkipSilence,
     LevelVolume,
+    InfinityAlbums,
 }
 
 impl Toggle {
@@ -46,6 +47,7 @@ impl Toggle {
             Toggle::Infinity => settings.infinity = on,
             Toggle::SkipSilence => settings.skip_silence = on,
             Toggle::LevelVolume => settings.level_volume = on,
+            Toggle::InfinityAlbums => settings.infinity_albums = on,
         }
     }
 }
@@ -291,6 +293,7 @@ pub fn view<'a>(
             .style(theme::tonal)
             .padding([6, 14])
             .on_press_maybe((sync.available && !sync.running).then_some(App::SyncNow)),
+            super::sync_status::settings_link(),
         ]
         .spacing(10)
         .align_y(Center),
@@ -327,14 +330,56 @@ pub fn view<'a>(
             widgets::title_bar("Settings", view.can_go_back),
             crate::appearance::general_section(&extras),
             playback,
+            infinity_albums_section(settings, key),
             sound,
             lyrics,
             hidden,
             system,
-            account
+            account,
+            server_section(),
         ]
         .spacing(24)
         .max_width(720),
+    )
+}
+
+/// The server's own maintenance: what an administrator can start from here.
+fn server_section<'a>() -> Element<'a, App> {
+    section(
+        "Server",
+        column![
+            row![
+                text("Rescan Library").width(Fill),
+                button(text("Rescan"))
+                    .style(theme::tonal)
+                    .padding([6, 14])
+                    .on_press(App::Rescan(crate::rescan::Msg::Start)),
+            ]
+            .align_y(Center),
+        ],
+        "Asks the server to look for new and changed music now, rather than at its next \
+         scheduled scan. Only a server administrator can.",
+    )
+}
+
+/// Infinity's albums mode: its own row and the reason it ranks here.
+fn infinity_albums_section<'a>(settings: &Settings, key: u64) -> Element<'a, App> {
+    section(
+        "Infinity",
+        column![
+            toggler(settings.infinity_albums)
+                .label("Add Whole Albums")
+                .width(Fill)
+                .on_toggle(move |on| {
+                    App::Page(
+                        key,
+                        PageMsg::Settings(Message::Toggle(Toggle::InfinityAlbums, on)),
+                    )
+                }),
+        ],
+        "When Infinity keeps the queue going, it adds two whole albums at a time instead of \
+         single songs: records like the one playing, chosen by what you finish. They are chosen \
+         on this computer, because your server's picks are song by song.",
     )
 }
 
@@ -350,6 +395,7 @@ mod tests {
         Toggle::Infinity.apply(&mut settings, true);
         Toggle::SkipSilence.apply(&mut settings, false);
         Toggle::LevelVolume.apply(&mut settings, false);
+        Toggle::InfinityAlbums.apply(&mut settings, true);
         assert_eq!(
             settings,
             Settings {
@@ -359,6 +405,7 @@ mod tests {
                 skip_silence: false,
                 level_volume: false,
                 lyric_offset_ms: 0,
+                infinity_albums: true,
             }
         );
     }

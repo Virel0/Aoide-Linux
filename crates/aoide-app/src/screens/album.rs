@@ -14,16 +14,20 @@ use crate::widgets::{self, ListStyle};
 
 #[derive(Debug)]
 pub struct State {
+    pub id: String,
     pub title: String,
     album: Option<Item>,
     pub art: Option<ArtKey>,
     pub tracks: Load<Vec<TrackMeta>>,
+    /// "You finish 78% of this album's songs", once there is enough history.
+    finish: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     Album(Result<Vec<Item>, String>),
     Tracks(Result<Vec<Item>, String>),
+    Finish(Option<String>),
 }
 
 pub fn open(ctx: &Ctx<'_>, id: &str, title: &str) -> (State, Task<App>) {
@@ -39,17 +43,19 @@ pub fn open(ctx: &Ctx<'_>, id: &str, title: &str) -> (State, Task<App>) {
     ]);
     (
         State {
+            id: id.to_owned(),
             title: title.to_owned(),
             album: None,
             art: None,
             tracks: Load::Loading,
+            finish: None,
         },
         tasks,
     )
 }
 
 impl State {
-    pub fn update(&mut self, message: Message) -> Task<App> {
+    pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {
         match message {
             Message::Album(Ok(items)) => {
                 if let Some(album) = items.into_iter().next() {
@@ -66,7 +72,16 @@ impl State {
                     album_order(&mut tracks);
                     tracks
                 }));
+                if let Load::Ready(tracks) = &self.tracks {
+                    let ids = tracks.iter().map(|t| t.id.clone()).collect();
+                    let key = ctx.key;
+                    return Task::perform(
+                        crate::finish::finish_of(ctx.store.clone(), ids, "this album's songs"),
+                        move |line| App::Page(key, PageMsg::Album(Message::Finish(line))),
+                    );
+                }
             }
+            Message::Finish(line) => self.finish = line,
         }
         Task::none()
     }
@@ -111,13 +126,20 @@ impl State {
                     .into()
             });
         }
-        info = info
-            .push(widgets::secondary(facts.join(" · ")).size(13))
-            .push(widgets::play_buttons(
-                tracks,
-                format!("{}:album", view.key),
-                PlaySource::Album,
-            ));
+        info = info.push(widgets::secondary(facts.join(" · ")).size(13));
+        if let Some(finish) = &self.finish {
+            info = info.push(widgets::secondary(finish.as_str()).size(13));
+        }
+        info = info.push(
+            row![
+                widgets::play_buttons(tracks, format!("{}:album", view.key), PlaySource::Album),
+                crate::radio::start_button(crate::radio::Station::new(
+                    aoide_jellyfin::MixSeed::Album(self.id.clone()),
+                    self.title.clone(),
+                )),
+            ]
+            .spacing(10),
+        );
 
         let mut body = column![
             widgets::title_bar("", view.can_go_back),
@@ -148,7 +170,23 @@ impl State {
                 &disc_headings(tracks),
             ),
         });
-        widgets::page(body)
+        crate::handoff::played_from(widgets::page(body), Some(self.context()))
+    }
+
+    /// What playing from this page is remembered as.
+    fn context(&self) -> aoide_store::RecentContext {
+        let mut context = aoide_store::RecentContext::new(
+            aoide_store::RecentContextKind::Album,
+            self.id.clone(),
+            self.title.clone(),
+            aoide_store::now_millis(),
+        );
+        context.subtitle = self.album.as_ref().and_then(|a| {
+            a.album_artist
+                .clone()
+                .or_else(|| a.album_artists.first().map(|n| n.name.clone()))
+        });
+        context
     }
 }
 

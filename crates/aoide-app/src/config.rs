@@ -57,6 +57,8 @@ pub struct Settings {
     pub level_volume: bool,
     /// Lyrics shown this much later (positive) or earlier (negative).
     pub lyric_offset_ms: i32,
+    /// Infinity adds whole albums chosen by taste instead of single songs.
+    pub infinity_albums: bool,
 }
 
 impl Settings {
@@ -85,6 +87,7 @@ impl Default for Settings {
             skip_silence: true,
             level_volume: true,
             lyric_offset_ms: 0,
+            infinity_albums: false,
         }
     }
 }
@@ -170,6 +173,8 @@ pub struct Config {
     pub sound: crate::sound::SoundSettings,
     /// Settings → General: the window title, the look.
     pub interface: crate::appearance::InterfaceSettings,
+    /// Saved filters, listed in the sidebar.
+    pub collections: Vec<crate::screens::collections::SavedFilter>,
 }
 
 impl Default for Config {
@@ -184,6 +189,7 @@ impl Default for Config {
             system: crate::system::SystemSettings::default(),
             sound: crate::sound::SoundSettings::default(),
             interface: crate::appearance::InterfaceSettings::default(),
+            collections: Vec::new(),
         }
     }
 }
@@ -264,6 +270,7 @@ mod tests {
                 skip_silence: false,
                 level_volume: false,
                 lyric_offset_ms: -250,
+                infinity_albums: true,
             },
             volume: 0.5,
             system: crate::system::SystemSettings::default(),
@@ -282,6 +289,7 @@ mod tests {
                 romaji: true,
                 furigana: false,
             },
+            collections: Vec::new(),
         };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);

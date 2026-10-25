@@ -88,7 +88,7 @@ fn tile_menu(tile: &Tile, route: &Route) -> Option<Message> {
         Route::Album { id, .. } => Collection::Album(id.clone()),
         Route::Artist { id, .. } => Collection::Artist(id.clone()),
         Route::Playlist { id } => Collection::Playlist(id.clone()),
-        Route::Genre { .. } | Route::Equalizer => return None,
+        _ => return None,
     };
     Some(Message::Row(RowAction::OpenCollection {
         anchor: format!("tile:{}", tile.id),
@@ -434,6 +434,9 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
         action("Play Last", RowAction::PlayLast).into(),
         action("Add to Playlist…", RowAction::ShowPlaylists).into(),
     ]);
+    if menu.single().is_some() || menu.collection.is_some() {
+        actions.push(action("Start Radio", RowAction::StartRadio).into());
+    }
     if let Some(track) = menu.single() {
         let flags = menu.flags.unwrap_or_default();
         let favourite = view
@@ -467,6 +470,7 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
         if track.artist_id.is_some() {
             actions.push(action("Go to Artist", RowAction::GoToArtist).into());
         }
+        actions.push(action("Get Info", RowAction::GetInfo).into());
     }
     actions.push(
         button(icon(Icon::Close, 14.0, Tone::Secondary))
@@ -499,6 +503,8 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
                     .style(theme::field),
             );
         }
+        let heading = |label: &'static str| secondary(label).size(12).font(SEMIBOLD);
+        lists = lists.push(heading("Aoide Playlists"));
         for playlist in actions::matching(view.playlists, |p| p.name.as_str(), &menu.filter) {
             lists = lists.push(
                 button(text(playlist.name.as_str()).size(13))
@@ -507,6 +513,22 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
                     .padding([4, 8])
                     .on_press(Message::Row(RowAction::AddTo(playlist.id.clone()))),
             );
+        }
+        lists = lists.push(heading("Jellyfin Playlists"));
+        match &menu.jellyfin {
+            None => {}
+            Some(Err(error)) => lists = lists.push(secondary(error.as_str()).size(12)),
+            Some(Ok(jellyfin)) => {
+                for (id, name) in actions::matching(jellyfin, |p| p.1.as_str(), &menu.filter) {
+                    lists = lists.push(
+                        button(text(name.as_str()).size(13))
+                            .width(Fill)
+                            .style(theme::row)
+                            .padding([4, 8])
+                            .on_press(Message::Row(RowAction::AddToJellyfin(id.clone()))),
+                    );
+                }
+            }
         }
         let create = row![
             text_input("New playlist…", &menu.new_name)

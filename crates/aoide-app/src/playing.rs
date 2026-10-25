@@ -338,21 +338,11 @@ impl App {
         })
     }
 
-    /// Writes the queue as it stands, when it has changed enough to matter.
+    /// Writes the queue as it stands, when it has changed enough to matter:
+    /// through the handoff broadcast, which settles a burst of changes into
+    /// one row and publishes it (see `handoff`).
     pub(crate) fn save_queue(&self) -> Task<Message> {
-        if self.session.is_none() {
-            return Task::none();
-        }
-        let (ids, position) = self.playback.saved_form();
-        let elapsed = i64::try_from(self.playback.position_ms()).unwrap_or(0);
-        let name = crate::app::device_name();
-        let now = aoide_store::now_millis();
-        self.store.send(move |w| {
-            let _ = w
-                .store
-                .save_queue_if_changed(&name, &ids, position, elapsed, now);
-        });
-        Task::none()
+        self.broadcast_queue()
     }
 
     pub(crate) fn engine_event(&mut self, event: EngineEvent) -> Task<Message> {
@@ -482,6 +472,9 @@ impl App {
         let Some((_, seed)) = current else {
             return Task::none();
         };
+        if self.config.settings.infinity_albums {
+            return self.top_up_with_albums();
+        }
         let ask = infinity::Ask {
             seed,
             queue,

@@ -12,16 +12,18 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 
-use aoide_store::Store;
+use aoide_store::{QueueBroadcast, Store};
 use tokio::sync::oneshot;
 
 use crate::playback::recorder::PlayRecorder;
 
-/// What the store thread owns: the store, and the one piece of state that
-/// belongs next to it, the play being recorded.
+/// What the store thread owns: the store, and the state that belongs next to
+/// it: the play being recorded, and this device's queue waiting to be
+/// published for handoff.
 pub struct Worker {
     pub store: Arc<Store>,
     pub recorder: PlayRecorder,
+    pub broadcast: QueueBroadcast,
 }
 
 type Job = Box<dyn FnOnce(&mut Worker) + Send>;
@@ -61,6 +63,7 @@ impl StoreHandle {
         let mut worker = Worker {
             store: Arc::clone(&store),
             recorder: PlayRecorder::default(),
+            broadcast: QueueBroadcast::new(),
         };
         thread::Builder::new()
             .name("aoide-store".into())

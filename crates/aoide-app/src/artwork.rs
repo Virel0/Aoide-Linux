@@ -131,6 +131,15 @@ impl Artwork {
         }
     }
 
+    /// Bytes that came from somewhere other than a download (a playlist's
+    /// chosen cover): kept under `key`, and never asked for from the server.
+    pub fn insert(&mut self, key: ArtKey, bytes: Vec<u8>) {
+        self.seen.insert(key.clone());
+        self.clock += 1;
+        self.handles
+            .insert(key, (image::Handle::from_bytes(bytes), self.clock));
+    }
+
     /// Signed out: another account's covers should not linger in memory.
     pub fn clear(&mut self) {
         self.handles.clear();
