@@ -258,7 +258,9 @@ impl App {
             ),
             None => (
                 Phase::SignedOut,
-                iced::widget::operation::focus(login::SERVER),
+                iced::widget::operation::focus(
+                    login::State::new(config.last_server.clone()).first_field(),
+                ),
             ),
         };
         let system = crate::system::State::new(&desktop, &config);
@@ -362,7 +364,7 @@ impl App {
                 Ok(Some(connection)) => self.enter(Event::Restored, connection),
                 Ok(None) => {
                     self.phase = session::transition(self.phase, Event::NothingToRestore).0;
-                    iced::widget::operation::focus(login::SERVER)
+                    iced::widget::operation::focus(self.login.first_field())
                 }
                 Err(error) => {
                     self.phase = session::transition(self.phase, Event::NothingToRestore).0;
