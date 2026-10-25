@@ -33,6 +33,9 @@ pub struct State {
     pub sleep_minutes: String,
     /// The full-screen player, while it is open.
     pub full: Option<crate::full_player::FullPlayer>,
+    /// Private listening: no playback reports to Jellyfin and no play
+    /// events in the history while on. Lasts until switched off or quit.
+    pub private: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -45,6 +48,7 @@ pub enum Msg {
     Devices(Result<Vec<OutputDevice>, String>),
     ChooseDevice(DeviceChoice),
     Transcode(crate::sound::Transcode),
+    Private(bool),
     Sleep(Choice),
     SleepMinutes(String),
     SleepCustom,
@@ -150,6 +154,34 @@ impl App {
             (Verdict::Drop, _) => self.sleep_set(None),
             (Verdict::Keep, _) => Task::none(),
         }
+    }
+
+    /// Private listening on or off. On: the song playing is reported
+    /// stopped and its play event closed, as if it ended here, and nothing
+    /// after that is reported or recorded. Off: reporting and recording
+    /// start again with the next song, so a song half heard in private
+    /// isn't counted from its middle.
+    fn set_private(&mut self, on: bool) -> Task<Message> {
+        self.listening.menu = None;
+        if on == self.listening.private {
+            return Task::none();
+        }
+        let task = if on {
+            let report = self.final_report();
+            let task = self.send_reports(report.into_iter().collect());
+            let at = aoide_store::now_millis();
+            self.store.send(move |w| {
+                let _ = w.recorder.stopped(&w.store, at);
+            });
+            task
+        } else {
+            if let Some(signed) = self.session.as_mut() {
+                signed.reporter = crate::playback::report::Reporter::default();
+            }
+            Task::none()
+        };
+        self.listening.private = on;
+        task
     }
 
     /// Pauses for the sleep timer and forgets it.
@@ -270,6 +302,7 @@ impl App {
                 }
             }
             Msg::LoadDevices => list_devices(),
+            Msg::Private(on) => self.set_private(on),
             Msg::Transcode(transcode) => {
                 self.config.sound.transcode = transcode.sanitised();
                 self.save_config();

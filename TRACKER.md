@@ -92,7 +92,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Feature | Round | Status | Notes |
 |---|---|---|---|
 | Report playback to Jellyfin (playing, progress, stopped) | 1 | ✅ | Started, progress every 10 s and on pause/resume, stopped. Exercised in the app against a local stand-in server, not yet a real Jellyfin. |
-| Private mode (stop reporting) | 2 | ⬜ | |
+| Private mode (stop reporting) | 2 | ✅ | Private Listening in the player bar's `…` menu, shown while on as "Private" under the song in the player bar (× turns it off). Switching on reports the song playing as stopped and closes its play event; then no Jellyfin playback report (started, progress, pause, stopped, nor the last one on quit or sign-out) and no play event until it is off, when both start again with the next song. Lasts until switched off or the app quits (not saved). Counted against the stand-in server: two track changes in private sent no `/Sessions/Playing*` and added no `playEvent` row; after switching off both resumed |
 | Local play history: events opened/closed, completed/skipped classification | 1 | ✅ | Opened at the heard start, closed with the furthest point reached, classified by the store; Don't Count Plays opens none |
 | Activity tag on plays (Gaming, Focus, Chores, Commute) | 3 | ⬜ | |
 | Finish rate on album and artist headers | 2 | ⬜ | |

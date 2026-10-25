@@ -68,6 +68,18 @@ fn more(app: &App) -> Element<'_, Message> {
             "Full-Screen Player",
             Message::Listening(Msg::OpenFull)
         ),
+        check_item(
+            app.listening.private,
+            "Private Listening",
+            Message::Listening(Msg::Private(!app.listening.private))
+        ),
+        container(
+            crate::widgets::secondary(
+                "Nothing you play is reported to your server or kept in your history while it's on."
+            )
+            .size(12)
+        )
+        .padding([0, 10]),
         rule::horizontal(1),
         heading("Sleep Timer"),
     ]
@@ -138,22 +150,35 @@ fn more(app: &App) -> Element<'_, Message> {
 /// What the player bar says under the song: the sleep timer while it is
 /// set, with a way to turn it off.
 pub fn status_line(app: &App) -> Option<Element<'_, Message>> {
-    let timer = app.listening.sleep.as_ref()?;
-    let chip = row![
-        icon(Icon::Moon, 12.0, Tone::Accent),
-        text(timer.label(app.now()))
-            .size(11)
-            .style(|t: &iced::Theme| text::Style {
+    let chip = |glyph: Icon, label: String, off: Msg| {
+        row![
+            icon(glyph, 12.0, Tone::Accent),
+            text(label).size(11).style(|t: &iced::Theme| text::Style {
                 color: Some(theme::accent(t)),
             }),
-        button(icon(Icon::Close, 10.0, Tone::Secondary))
-            .padding(2)
-            .style(theme::row)
-            .on_press(Message::Listening(Msg::SleepCancel)),
-    ]
-    .spacing(4)
-    .align_y(Center);
-    Some(chip.into())
+            button(icon(Icon::Close, 10.0, Tone::Secondary))
+                .padding(2)
+                .style(theme::row)
+                .on_press(Message::Listening(off)),
+        ]
+        .spacing(4)
+        .align_y(Center)
+    };
+    let mut line = row![].spacing(10).align_y(Center);
+    let mut any = false;
+    if app.listening.private {
+        line = line.push(chip(
+            Icon::Private,
+            "Private".to_owned(),
+            Msg::Private(false),
+        ));
+        any = true;
+    }
+    if let Some(timer) = &app.listening.sleep {
+        line = line.push(chip(Icon::Moon, timer.label(app.now()), Msg::SleepCancel));
+        any = true;
+    }
+    any.then(|| line.into())
 }
 
 /// A bar button that opens one of its popovers.
