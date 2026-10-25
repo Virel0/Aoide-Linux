@@ -65,6 +65,22 @@ pub struct Item {
     pub user_data: Option<UserData>,
 }
 
+impl ItemKind {
+    /// The server's name for the type, as `includeItemTypes` takes it. `None` for
+    /// [`ItemKind::Unknown`].
+    pub fn type_name(self) -> Option<&'static str> {
+        Some(match self {
+            ItemKind::Audio => "Audio",
+            ItemKind::MusicAlbum => "MusicAlbum",
+            ItemKind::MusicArtist => "MusicArtist",
+            ItemKind::MusicGenre => "MusicGenre",
+            ItemKind::Playlist => "Playlist",
+            ItemKind::CollectionFolder => "CollectionFolder",
+            ItemKind::Unknown => return None,
+        })
+    }
+}
+
 impl Item {
     pub fn duration(&self) -> Option<Duration> {
         self.run_time_ticks.map(ticks::to_duration)
@@ -123,7 +139,7 @@ pub struct Page<T> {
 }
 
 /// A missing field and an explicit `null` both mean "the default".
-fn nullable<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+pub(crate) fn nullable<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     T: Default + Deserialize<'de>,

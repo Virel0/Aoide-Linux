@@ -1325,3 +1325,123 @@ async fn an_item_refresh_always_names_its_modes() {
         Err(Error::Http { status: 403, .. })
     ));
 }
+
+// MARK: - Filters
+
+#[tokio::test]
+async fn query_filters_merge_both_endpoints() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items/Filters2"))
+        .and(query_param("userId", USER))
+        .and(query_param("parentId", "lib1"))
+        .and(query_param("includeItemTypes", "MusicAlbum"))
+        .and(query_param("recursive", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Genres": [{ "Name": "Shoegaze", "Id": "g1" }, { "Name": "Dream Pop", "Id": "g2" }],
+            "Tags": ["live", "vinyl rip"],
+            "AudioLanguages": null
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items/Filters"))
+        .and(query_param("parentId", "lib1"))
+        .and(query_param("includeItemTypes", "MusicAlbum"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Genres": ["Shoegaze", "Dream Pop"],
+            "Tags": ["live"],
+            "Years": [1991, 2021, 1991, 2008],
+            "OfficialRatings": null
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let filters = signed_in(&server)
+        .query_filters(Some("lib1"), &[ItemKind::MusicAlbum])
+        .await
+        .unwrap();
+    assert_eq!(
+        filters
+            .genres
+            .iter()
+            .map(|g| (g.id.as_str(), g.name.as_str()))
+            .collect::<Vec<_>>(),
+        [("g1", "Shoegaze"), ("g2", "Dream Pop")]
+    );
+    assert_eq!(filters.years, [2021, 2008, 1991]);
+    assert_eq!(filters.tags, ["live", "vinyl rip"]);
+}
+
+#[tokio::test]
+async fn without_the_older_filters_endpoint_there_are_just_no_years() {
+    let server = MockServer::start().await;
+    Mock::given(path("/Items/Filters2"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({ "Genres": null, "Tags": ["x"] })),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(path("/Items/Filters"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let filters = signed_in(&server).query_filters(None, &[]).await.unwrap();
+    assert!(filters.genres.is_empty() && filters.years.is_empty());
+    assert_eq!(filters.tags, ["x"]);
+    for request in server.received_requests().await.unwrap() {
+        assert_eq!(query_value(&request, "parentId"), None);
+        assert_eq!(query_value(&request, "includeItemTypes"), None);
+    }
+}
+
+#[tokio::test]
+async fn a_saved_filter_runs_as_a_list_query() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("includeItemTypes", "MusicAlbum"))
+        .and(query_param("genreIds", "g1"))
+        .and(query_param("years", "1991,2021"))
+        .and(query_param("tags", "live|vinyl, rip"))
+        .and(query_param("isFavorite", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![item(
+            "al1",
+            "Loveless",
+            "MusicAlbum",
+        )])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(|request: &Request| {
+            query_value(request, "years").is_none() && query_value(request, "tags").is_none()
+        })
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    let saved = ListQuery {
+        genre_ids: vec!["g1".into()],
+        years: vec![1991, 2021],
+        tags: vec!["live".into(), "vinyl, rip".into()],
+        favorites_only: true,
+        ..ListQuery::default()
+    };
+    assert_eq!(
+        client.albums(&saved).await.unwrap().items[0].name,
+        "Loveless"
+    );
+    assert!(
+        client
+            .albums(&ListQuery::default())
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+}

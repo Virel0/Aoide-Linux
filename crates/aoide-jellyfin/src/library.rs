@@ -74,6 +74,10 @@ pub struct ListQuery {
     /// Only items in any of these genres (Jellyfin's `genreIds`, by genre
     /// item id); empty is every genre.
     pub genre_ids: Vec<String>,
+    /// Only items from any of these production years; empty is every year.
+    pub years: Vec<i32>,
+    /// Only items with any of these tags; empty is every tag.
+    pub tags: Vec<String>,
     /// Only the signed-in user's favourites (Jellyfin's `isFavorite=true`). Works
     /// for every list: [`songs`](JellyfinClient::songs),
     /// [`albums`](JellyfinClient::albums), [`artists`](JellyfinClient::artists),
@@ -346,6 +350,14 @@ impl JellyfinClient {
         }
         if !list.genre_ids.is_empty() {
             query.push(("genreIds", list.genre_ids.join(",")));
+        }
+        if !list.years.is_empty() {
+            let years: Vec<String> = list.years.iter().map(i32::to_string).collect();
+            query.push(("years", years.join(",")));
+        }
+        if !list.tags.is_empty() {
+            // Pipe-delimited: a tag may contain a comma.
+            query.push(("tags", list.tags.join("|")));
         }
         if list.favorites_only {
             query.push(("isFavorite", "true".to_owned()));
