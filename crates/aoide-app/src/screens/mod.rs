@@ -23,6 +23,7 @@ pub mod playlists;
 pub mod replay;
 pub mod search;
 pub mod settings;
+pub mod share;
 pub mod songs;
 pub mod sync_status;
 
@@ -97,6 +98,7 @@ pub enum Route {
     Discover,
     SyncStatus,
     JellyfinPlaylist { id: String, name: String },
+    Share { id: String, name: String },
 }
 
 /// An Aoide playlist as the sidebar and the pickers list it.
@@ -188,6 +190,7 @@ pub enum Page {
     SyncStatus(sync_status::State),
     JellyfinPlaylists(jellyfin_playlists::State),
     JellyfinPlaylist(jellyfin_playlist::State),
+    Share(share::State),
 }
 
 #[derive(Debug, Clone)]
@@ -210,6 +213,7 @@ pub enum PageMsg {
     SyncStatus(sync_status::Message),
     JellyfinPlaylists(jellyfin_playlists::Message),
     JellyfinPlaylist(jellyfin_playlist::Message),
+    Share(share::Message),
 }
 
 impl Page {
@@ -241,6 +245,7 @@ impl Page {
             Route::Playlist { id } => wrap(playlist::open(ctx, id), Page::Playlist),
             Route::Discover => wrap(discover::open(ctx), Page::Discover),
             Route::SyncStatus => wrap(sync_status::open(ctx), Page::SyncStatus),
+            Route::Share { id, name } => wrap(share::open(ctx, id, name), Page::Share),
             Route::JellyfinPlaylist { id, name } => wrap(
                 jellyfin_playlist::open(ctx, id, name),
                 Page::JellyfinPlaylist,
@@ -268,6 +273,7 @@ impl Page {
             (Page::SyncStatus(state), PageMsg::SyncStatus(m)) => state.update(m, ctx),
             (Page::JellyfinPlaylists(state), PageMsg::JellyfinPlaylists(m)) => state.update(m, ctx),
             (Page::JellyfinPlaylist(state), PageMsg::JellyfinPlaylist(m)) => state.update(m, ctx),
+            (Page::Share(state), PageMsg::Share(m)) => state.update(m, ctx),
             _ => Task::none(),
         }
     }
@@ -293,6 +299,7 @@ impl Page {
             Page::SyncStatus(state) => state.view(view),
             Page::JellyfinPlaylists(state) => state.view(view),
             Page::JellyfinPlaylist(state) => state.view(view),
+            Page::Share(state) => state.view(view),
         }
     }
 
@@ -315,7 +322,7 @@ impl Page {
             Page::Discover(state) => state.artwork(),
             Page::Favourites(state) => state.artwork(),
             Page::Replay(state) => state.artwork(),
-            Page::SyncStatus(_) | Page::JellyfinPlaylists(_) => Vec::new(),
+            Page::SyncStatus(_) | Page::JellyfinPlaylists(_) | Page::Share(_) => Vec::new(),
             Page::Playlists(state) => state.artwork(),
             Page::JellyfinPlaylist(state) => state.artwork(),
         }

@@ -508,9 +508,19 @@ impl State {
             .playlist
             .as_ref()
             .is_some_and(|p| p.image_hash.is_some());
+        let share = button(text("Share…").size(13))
+            .style(theme::tonal)
+            .padding([6, 12])
+            .on_press_maybe(self.playlist.as_ref().map(|p| {
+                App::Open(super::Route::Share {
+                    id: p.id.clone(),
+                    name: p.name.clone(),
+                })
+            }));
         let cover_tools = row![
             small("Choose Cover…", Some(Message::ChooseCover)),
             small("Remove Cover", has_picture.then_some(Message::RemoveCover)),
+            share,
         ]
         .spacing(8);
         head = head.push(tools).push(cover_tools);

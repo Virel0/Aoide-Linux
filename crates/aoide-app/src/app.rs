@@ -165,6 +165,7 @@ pub enum Message {
     JellyfinPlaylistChanged(Option<String>),
     Radio(crate::radio::Msg),
     Covers(crate::covers::Msg),
+    Sharing(crate::screens::share::Msg),
 }
 
 /// The player bar's controls.
@@ -469,6 +470,7 @@ impl App {
             Message::JellyfinPlaylistChanged(id) => self.jellyfin_playlists_changed(id),
             Message::Radio(message) => self.radio(message),
             Message::Covers(message) => self.covers(message),
+            Message::Sharing(message) => self.sharing(message),
         }
     }
 
@@ -486,7 +488,9 @@ impl App {
         let sidecar = SidecarClient::new(&connection.account.server, connection.token()).ok();
         let blobs = crate::covers::open_blobs(self.paths.as_ref());
         let sync = sidecar.clone().map(|client| {
-            let engine = SyncEngine::new(self.store.shared(), client);
+            // The user's id tells a share granted to them from one they granted.
+            let engine = SyncEngine::new(self.store.shared(), client)
+                .with_user_id(connection.account.user_id.clone());
             // Chosen covers are uploaded from where they are kept.
             Arc::new(match blobs {
                 Some(blobs) => engine.with_image_bytes(Arc::new(blobs)),

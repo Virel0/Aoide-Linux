@@ -25,6 +25,7 @@ mod shell;
 mod store_worker;
 mod sync;
 mod theme;
+mod users;
 mod widgets;
 
 use iced::window;
