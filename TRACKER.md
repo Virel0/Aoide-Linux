@@ -59,7 +59,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Equalizer (parametric, presets, preamp) | 3 | 🟨 | Engine done; UI pending. `EngineHandle::set_equalizer`: preamp and up to 10 RBJ peaking/shelf bands, gliding over 15 ms; off or flat is bit-transparent. 14 built-in presets (`eq::built_in_presets`), user presets as serde data (`EqPreset`). Measured in `tests/equalizer.rs` |
 | Compressor (threshold, ratio, attack, release, makeup, knee) | 3 | 🟨 | Engine done; UI pending. `EngineHandle::set_compressor`: feed-forward, stereo-linked, quadratic soft knee, attack/release smoothed in dB; off is bit-transparent. Presets Gentle, Moderate, Heavy, Late Night. Static curve and time constants measured in `tests/compressor.rs` |
 | Visualizer | 3 | ⬜ | Electron used audioMotion and Butterchurn; a native one is needed |
-| Fades on pause and resume | 2 | ⬜ | |
+| Fades on pause and resume | 2 | 🟨 | Engine done; UI pending (nothing to wire: every pause and play fades). 150 ms equal-power fades counted in frames; the pause completes, and the position holds, on the fade's last frame, and a resume carries on from the next. Measured in `tests/fades.rs` |
 | Auto DJ (beat-matched mixing) | — | — | Shelved on both apps (docs/arrangement.md in the iOS repo) |
 
 ## Queue

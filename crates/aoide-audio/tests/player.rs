@@ -271,14 +271,16 @@ fn a_queue_loads_held_at_a_position_and_plays_on_from_there() {
     );
 
     rig.player.play().unwrap();
-    // Faded in for 10 ms, then the ramp from half a second into track 2.
-    let out = rig.run(RATE as usize / 10);
+    // Faded in as a resume is (150 ms), then the ramp from half a second
+    // into track 2.
+    let out = rig.run(RATE as usize / 5);
     let from = RATE as u64 + 500 * 48;
-    let want = to_f32(&ramp(from, RATE as usize / 10, 2));
-    assert_eq!(&out[960..], &want[960..out.len()]);
+    let want = to_f32(&ramp(from, RATE as usize / 5, 2));
+    let fade = 150 * 48 * 2;
+    assert_eq!(&out[fade..], &want[fade..out.len()]);
     assert_eq!(rig.engine.transport(), Transport::Playing);
     assert!(
-        (590..=610).contains(&rig.player.position_ms()),
+        (690..=710).contains(&rig.player.position_ms()),
         "at {} ms",
         rig.player.position_ms()
     );
