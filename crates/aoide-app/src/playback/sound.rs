@@ -60,6 +60,11 @@ impl Playback {
         })
     }
 
+    /// What the visualizer reads, when there is an engine.
+    pub fn visualizer_tap(&self) -> Option<aoide_audio::VisualizerTap> {
+        self.player.as_ref().map(|p| p.engine().visualizer_tap())
+    }
+
     /// The engine's sample rate, which the equaliser's curve is drawn at;
     /// 48 kHz when nothing can play.
     pub fn sample_rate(&self) -> u32 {

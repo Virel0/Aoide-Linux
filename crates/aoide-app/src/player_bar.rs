@@ -29,7 +29,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     let current = playback.current().map(|(_, q)| &q.meta);
 
     let now = row![
-        widgets::art(
+        crate::player_menu::open_full(widgets::art(
             current
                 .and_then(|m| m.artwork.as_ref())
                 .map(|(i, t)| ArtKey::new(i, t))
@@ -37,7 +37,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             &app.artwork,
             Length::Fixed(56.0),
             6.0,
-        ),
+        )),
         column![
             text(current.map_or("Not Playing", |m| m.title.as_str()))
                 .size(14)

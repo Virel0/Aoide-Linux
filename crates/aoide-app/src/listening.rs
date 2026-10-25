@@ -31,6 +31,8 @@ pub struct State {
     pub sleep: Option<SleepTimer>,
     /// The custom sleep timer's minutes, as typed.
     pub sleep_minutes: String,
+    /// The full-screen player, while it is open.
+    pub full: Option<crate::full_player::FullPlayer>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +51,24 @@ pub enum Msg {
     SleepTick,
     /// Paused at a boundary: hold the new track at its start.
     SleepRewind(EntryId),
+    OpenFull,
+    CloseFull,
+    /// The full player took the window full screen.
+    MadeFullscreen,
+    FullShow(crate::full_player::Show),
+    VisualFrame,
+    WindowFocus(bool),
+    CheckHidden,
+    WindowHidden(bool),
+}
+
+/// Messages that come many times a second and change no artwork: the app
+/// skips its after-every-message work for them.
+pub fn is_quiet(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::Listening(Msg::VisualFrame | Msg::SleepTick | Msg::CheckHidden)
+    )
 }
 
 /// What runs at launch.
@@ -88,11 +108,12 @@ impl App {
     /// What the app listens for past the shared subscriptions: the sleep
     /// timer's clock, while it runs.
     pub(crate) fn listening_subscription(&self) -> Subscription<Message> {
-        match &self.listening.sleep {
+        let sleep = match &self.listening.sleep {
             Some(timer) if timer.is_timed() => iced::time::every(Duration::from_secs(1))
                 .map(|_| Message::Listening(Msg::SleepTick)),
             _ => Subscription::none(),
-        }
+        };
+        Subscription::batch([sleep, self.full_player_subscription()])
     }
 
     /// An engine event, for the sleep timer: a boundary to pause on, or the
@@ -167,6 +188,44 @@ impl App {
                         Some("Nothing is playing, so there is no end to wait for.".into());
                 }
                 self.sleep_set(timer)
+            }
+            Msg::OpenFull => self.open_full_player(),
+            Msg::CloseFull => self.close_full_player(),
+            Msg::MadeFullscreen => {
+                if let Some(full) = self.listening.full.as_mut() {
+                    full.made_fullscreen = true;
+                }
+                Task::none()
+            }
+            Msg::FullShow(show) => {
+                if let Some(full) = self.listening.full.as_mut() {
+                    full.show = show;
+                }
+                Task::none()
+            }
+            Msg::VisualFrame => {
+                self.visual_frame();
+                Task::none()
+            }
+            Msg::WindowFocus(focused) => {
+                if let Some(full) = self.listening.full.as_mut() {
+                    full.focused = focused;
+                    if focused {
+                        full.hidden = false;
+                    }
+                }
+                if focused {
+                    Task::none()
+                } else {
+                    self.check_hidden()
+                }
+            }
+            Msg::CheckHidden => self.check_hidden(),
+            Msg::WindowHidden(hidden) => {
+                if let Some(full) = self.listening.full.as_mut() {
+                    full.hidden = hidden && !full.focused;
+                }
+                Task::none()
             }
             Msg::SleepMinutes(typed) => {
                 self.listening.sleep_minutes = typed;

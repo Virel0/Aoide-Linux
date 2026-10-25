@@ -16,6 +16,9 @@ use crate::{now_playing, player_bar, screens, theme, widgets};
 const SIDEBAR_WIDTH: f32 = 220.0;
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
+    if let Some(full) = &app.listening.full {
+        return crate::full_player::view(app, signed, full);
+    }
     let main = row![sidebar(signed), content(app, signed)].height(Fill);
     let main = match signed.panel {
         Some(panel) => main

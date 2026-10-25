@@ -63,6 +63,11 @@ fn more(app: &App) -> Element<'_, Message> {
             "Equaliser…",
             Message::Listening(Msg::OpenEqualizer)
         ),
+        item(
+            Some(Icon::Expand),
+            "Full-Screen Player",
+            Message::Listening(Msg::OpenFull)
+        ),
         rule::horizontal(1),
         heading("Sleep Timer"),
     ]
@@ -271,4 +276,13 @@ pub fn device_row<'a>(extras: &crate::listening::SettingsExtras<'a>) -> Element<
     .spacing(10)
     .align_y(Center)
     .into()
+}
+
+/// The player bar's cover, which opens the full-screen player.
+pub fn open_full<'a>(art: Element<'a, Message>) -> Element<'a, Message> {
+    button(art)
+        .padding(0)
+        .style(theme::row)
+        .on_press(Message::Listening(Msg::OpenFull))
+        .into()
 }

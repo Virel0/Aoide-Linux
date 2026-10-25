@@ -275,7 +275,8 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         // Position ticks arrive four times a second and change no artwork.
-        let quiet = matches!(message, Message::Engine(EngineEvent::Position { .. }));
+        let quiet = matches!(message, Message::Engine(EngineEvent::Position { .. }))
+            || crate::listening::is_quiet(&message);
         let task = self.handle(message);
         // The desktop hears only what changed.
         self.publish();
