@@ -470,6 +470,7 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
         if track.artist_id.is_some() {
             actions.push(action("Go to Artist", RowAction::GoToArtist).into());
         }
+        actions.push(action("Get Info", RowAction::GetInfo).into());
     }
     actions.push(
         button(icon(Icon::Close, 14.0, Tone::Secondary))

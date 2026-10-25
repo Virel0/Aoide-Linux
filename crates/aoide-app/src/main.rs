@@ -9,6 +9,7 @@ mod credentials;
 mod handoff;
 mod icons;
 mod infinity_albums;
+mod info;
 mod integration;
 mod library;
 mod listening;

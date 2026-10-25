@@ -229,6 +229,8 @@ pub enum RowAction {
     AddToJellyfin(String),
     /// Instant Mix from the menu's song, album, artist or playlist.
     StartRadio,
+    /// The song's file, as the server knows it.
+    GetInfo,
 }
 
 /// The playlists to offer, filtered by name once there are enough to need it.

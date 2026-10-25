@@ -116,6 +116,8 @@ pub(crate) struct Signed {
     pub handoff: crate::handoff::Handoff,
     /// This week's Discover list.
     pub discover: crate::screens::discover::Discover,
+    /// The Get Info sheet, while it is open.
+    pub info: Option<crate::info::Sheet>,
 }
 
 #[derive(Debug, Clone)]
@@ -169,6 +171,7 @@ pub enum Message {
     /// Match an imported playlist for the import page with this key.
     ImportMatch(u64, Box<aoide_sidecar::ImportedPlaylist>),
     Collections(crate::screens::collections::Msg),
+    Info(crate::info::Msg),
 }
 
 /// The player bar's controls.
@@ -476,6 +479,7 @@ impl App {
             Message::Sharing(message) => self.sharing(message),
             Message::ImportMatch(key, playlist) => self.import_match(key, *playlist),
             Message::Collections(message) => self.collections(message),
+            Message::Info(message) => self.info(message),
         }
     }
 
@@ -534,6 +538,7 @@ impl App {
             lyric_line: None,
             handoff,
             discover: Default::default(),
+            info: None,
         });
 
         let mut tasks = Vec::new();
@@ -999,6 +1004,13 @@ impl App {
             RowAction::JellyfinPlaylists(_) | RowAction::AddToJellyfin(_) => {
                 self.jellyfin_menu_action(action)
             }
+            RowAction::GetInfo => match signed.menu.as_ref().and_then(Menu::single).cloned() {
+                Some(track) => self.info(crate::info::Msg::Open {
+                    id: track.id,
+                    title: track.title,
+                }),
+                None => Task::none(),
+            },
             RowAction::StartRadio => match signed
                 .menu
                 .as_ref()

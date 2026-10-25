@@ -24,9 +24,14 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         None => main,
     };
     let window = column![main, player_bar::view(app, signed)];
-    match signed.menu.as_ref().filter(|m| m.collection.is_some()) {
+    let window: Element<'a, Message> = match signed.menu.as_ref().filter(|m| m.collection.is_some())
+    {
         Some(menu) => stack![window, collection_menu(app, signed, menu)].into(),
         None => window.into(),
+    };
+    match &signed.info {
+        Some(sheet) => stack![window, crate::info::view(sheet)].into(),
+        None => window,
     }
 }
 
