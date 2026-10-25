@@ -20,7 +20,7 @@ pub use client::{MAX_IDS_PER_CALL, SidecarClient};
 pub use covers::{CoverFetchError, cover_bytes};
 pub use engine::{
     BlockedEdit, ImageByteSource, REVOKED_SHARE_CLAUSE, SHARE_RECHECK_MS, SyncEngine, SyncError,
-    SyncTransport, is_share_revoked,
+    SyncOverview, SyncTransport, is_share_revoked,
 };
 pub use error::SidecarError;
 pub use handoff::{QueueSource, queues_from_server, resumable_queues};

@@ -10,6 +10,7 @@ mod held_entities;
 mod http;
 mod import;
 mod next_discover;
+mod overview;
 mod shares;
 mod sidecar_stub;
 mod sync_engine;

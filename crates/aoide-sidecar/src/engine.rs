@@ -213,6 +213,62 @@ impl SyncError {
     }
 }
 
+/// A sync status panel's whole content, as plain values: render it, never compute
+/// in the view. From [`SyncEngine::overview`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncOverview {
+    /// A sync is in flight now.
+    pub running: bool,
+    /// Where it has got to: pushing, pulling, failed with a reason, or idle.
+    pub phase: SyncPhase,
+    /// When a sync last finished cleanly on this device, across restarts.
+    pub last_synced_at: Option<Millis>,
+    /// When one was last started, in this run of the app.
+    pub last_attempt_at: Option<Millis>,
+    /// The last clean sync's counts: changes sent, received, and that changed a row.
+    pub pushed: usize,
+    pub pulled: usize,
+    pub applied: usize,
+    /// Changes waiting to be sent, all of them ("Waiting to send").
+    pub waiting: i64,
+    /// Changes set aside because they can never sync, inbound and outbound. Offer
+    /// the list (`Store::quarantined_ops`) wherever this is not zero.
+    pub quarantined: i64,
+    /// Of those, the server faults worth offering a retry for.
+    pub retryable: usize,
+    /// Changes kept here because the server does not accept their kind yet
+    /// (`track_flags` on an older sidecar). They go once it does.
+    pub held_back: i64,
+    /// Those kinds, by local table name.
+    pub held_entities: Vec<String>,
+    /// Edits held because a playlist's share was revoked; see `blocked_edits`.
+    pub blocked_by_share: usize,
+    pub blocked_edits: Vec<BlockedEdit>,
+    /// Why the last sync failed, with the server's own words when it gave any. `None`
+    /// after a clean sync.
+    pub error: Option<String>,
+    /// Why the last read of the share list failed.
+    pub share_error: Option<String>,
+    /// The last failure was the server having no sidecar at all: say "your server
+    /// can't sync yet", not "try again".
+    pub sidecar_absent: bool,
+    /// The last clean sync's whole report, for a detail view.
+    pub last_report: Option<SyncReport>,
+}
+
+/// A failure as a person should read it: the server's words, not only a status.
+fn failure_text(error: &SyncError) -> String {
+    match error {
+        SyncError::Transport(transport @ SidecarError::Status { status, path, .. }) => {
+            match transport.server_text() {
+                Some(said) => format!("{path} returned HTTP {status}: {said}"),
+                None => transport.to_string(),
+            }
+        }
+        other => other.to_string(),
+    }
+}
+
 type Clock = Arc<dyn Fn() -> Millis + Send + Sync>;
 /// The bisection's result — `(quarantined, pushed)` — boxed because it recurses.
 type Isolation<'a> = Pin<Box<dyn Future<Output = Result<(usize, usize), SyncError>> + Send + 'a>>;
@@ -227,6 +283,9 @@ struct EngineState {
     shares_checked_at: Option<Millis>,
     share_error: Option<String>,
     lost_shares: BTreeSet<String>,
+    last_attempt_at: Option<Millis>,
+    last_error: Option<String>,
+    sidecar_absent: bool,
 }
 
 /// Runs syncs for one store over one transport, one at a time.
@@ -278,6 +337,9 @@ impl<T: SyncTransport> SyncEngine<T> {
                 shares_checked_at: None,
                 share_error: None,
                 lost_shares: BTreeSet::new(),
+                last_attempt_at: None,
+                last_error: None,
+                sidecar_absent: false,
             }),
         }
     }
@@ -451,19 +513,67 @@ impl<T: SyncTransport> SyncEngine<T> {
         }
         let _guard = RunningGuard(&self.running);
 
+        self.state().last_attempt_at = Some((self.clock)());
         match self.run().await {
             Ok(report) => {
-                self.state().last_report = Some(report.clone());
+                {
+                    let mut state = self.state();
+                    state.last_report = Some(report.clone());
+                    state.last_error = None;
+                    state.sidecar_absent = false;
+                }
+                // Best effort: a store that cannot write this has bigger news.
+                let _ = self.store.set_last_synced_at((self.clock)());
                 self.transition(SyncPhase::Idle);
                 Ok(report)
             }
             Err(error) => {
+                {
+                    let mut state = self.state();
+                    state.last_error = Some(failure_text(&error));
+                    state.sidecar_absent = error.is_sidecar_absent();
+                }
                 self.transition(SyncPhase::Failed {
                     reason: error.to_string(),
                 });
                 Err(error)
             }
         }
+    }
+
+    /// Everything a sync status panel shows, read now. See [`SyncOverview`].
+    pub fn overview(&self) -> Result<SyncOverview, StoreError> {
+        let counts = self.store.pending_op_counts()?;
+        let last_synced_at = self.store.last_synced_at()?;
+        let quarantined = self.store.quarantine_count()?;
+        let retryable = self.store.retryable_quarantine_count()?;
+        let state = self.state();
+        let held_back = counts
+            .iter()
+            .filter(|(table, _)| state.held_entities.contains(*table))
+            .map(|(_, count)| *count)
+            .sum();
+        let report = state.last_report.clone().unwrap_or_default();
+        Ok(SyncOverview {
+            running: self.running.load(Ordering::Acquire),
+            phase: state.phase.clone(),
+            last_synced_at,
+            last_attempt_at: state.last_attempt_at,
+            pushed: report.pushed,
+            pulled: report.pulled,
+            applied: report.applied,
+            waiting: counts.values().sum(),
+            quarantined,
+            retryable,
+            held_back,
+            held_entities: state.held_entities.iter().cloned().collect(),
+            blocked_by_share: state.blocked.len(),
+            blocked_edits: state.blocked.values().cloned().collect(),
+            error: state.last_error.clone(),
+            share_error: state.share_error.clone(),
+            sidecar_absent: state.sidecar_absent,
+            last_report: state.last_report.clone(),
+        })
     }
 
     /// Pushes this device's waiting `queueState` op, and nothing else, so another

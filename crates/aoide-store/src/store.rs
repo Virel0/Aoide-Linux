@@ -217,6 +217,29 @@ impl Store {
         })
     }
 
+    /// Ops waiting to be pushed, counted per local table.
+    pub fn pending_op_counts(&self) -> Result<std::collections::BTreeMap<String, i64>> {
+        self.read(|conn| {
+            let mut statement = conn.prepare(
+                "SELECT \"entity\", COUNT(*) FROM \"op\" WHERE \"synced\" = 0 GROUP BY \"entity\"",
+            )?;
+            let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            rows.collect()
+        })
+    }
+
+    /// When a sync last finished cleanly on this device; kept beside the cursor, and
+    /// erased with it when the account changes.
+    pub fn last_synced_at(&self) -> Result<Option<Millis>> {
+        Ok(self
+            .state("lastSyncedAt")?
+            .and_then(|value| value.parse().ok()))
+    }
+
+    pub fn set_last_synced_at(&self, at: Millis) -> Result<()> {
+        self.write_local(|tx| set_state(tx, "lastSyncedAt", &at.to_string()))
+    }
+
     /// How many ops are waiting to be pushed.
     pub fn pending_op_count(&self) -> Result<i64> {
         self.read(|conn| {
