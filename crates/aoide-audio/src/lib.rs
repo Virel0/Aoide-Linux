@@ -5,10 +5,12 @@
 //! - [`Engine`] renders f32 frames; [`EngineHandle`] drives it.
 //! - [`Player`] adds the queue, the crossfade planner and the transport rules.
 //! - [`Output`] runs an engine on the default cpal device.
-//! - [`eq`] is the parametric equaliser the engine runs after the decks.
+//! - [`eq`] and [`compressor`] are what the engine runs on the mix, in that
+//!   order, before the pause fade and the volume.
 //! - [`mix`], [`loudness`] and [`queue`] are the rules shared with the iOS and
 //!   desktop apps, held to the same parity tables.
 
+pub mod compressor;
 pub mod decode;
 pub mod engine;
 pub mod eq;
@@ -22,6 +24,7 @@ pub mod player;
 pub mod queue;
 mod resample;
 
+pub use compressor::{CompressorPreset, CompressorSettings};
 pub use decode::MediaSource;
 pub use engine::{DecodeMode, Engine, EngineConfig, EngineEvent, EngineHandle, Transport};
 pub use eq::{BandKind, EqBand, EqCurve, EqPreset};

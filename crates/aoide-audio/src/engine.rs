@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread;
 
+use crate::compressor::{Compressor, CompressorSettings};
 use crate::eq::{EqCurve, EqParams, Equalizer};
 use crate::error::{Error, Result};
 use crate::mix::{MixTransition, curve};
@@ -103,6 +104,7 @@ enum Command {
     Stop,
     Volume(f32),
     Equalizer(EqParams),
+    Compressor(Option<CompressorSettings>),
 }
 
 struct NextPlan {
@@ -195,6 +197,17 @@ impl EngineHandle {
             None => EqParams::flat(),
         };
         self.send(Command::Equalizer(params))
+    }
+
+    /// The compressor's settings, or `None` to turn it off. It runs after
+    /// the equaliser. A change of threshold, ratio or knee moves the target
+    /// reduction, which the attack and release smooth; makeup glides over
+    /// about 15 ms. Off lets the reduction release and is then not run at
+    /// all. Refuses a setting that is not a number; values out of range are
+    /// held to it.
+    pub fn set_compressor(&self, settings: Option<&CompressorSettings>) -> Result<()> {
+        let settings = settings.map(CompressorSettings::validated).transpose()?;
+        self.send(Command::Compressor(settings))
     }
 
     /// The heard position in the current track, in milliseconds.
@@ -357,6 +370,7 @@ pub struct Engine {
     timeline: Timeline,
     scratch: Vec<f32>,
     eq: Equalizer,
+    compressor: Compressor,
     /// The loaded track and those chained since, newest last.
     remembered: VecDeque<TrackSpec>,
     /// What follows the current track, and the overlap when it blends in.
@@ -408,6 +422,7 @@ impl Engine {
             timeline: Timeline::new(),
             scratch: vec![0.0; BLOCK * config.channels],
             eq: Equalizer::new(config.sample_rate, config.channels),
+            compressor: Compressor::new(config.sample_rate, config.channels),
             remembered: VecDeque::with_capacity(REMEMBERED),
             chained: None,
         };
@@ -562,6 +577,7 @@ impl Engine {
             }
             Command::Volume(volume) => self.volume_target = volume,
             Command::Equalizer(params) => self.eq.set(params),
+            Command::Compressor(settings) => self.compressor.set(settings),
         }
     }
 
@@ -717,9 +733,10 @@ impl Engine {
             }
         }
 
-        // The equaliser on the mix, before the fades and the volume, so
-        // neither changes what it does.
+        // The equaliser and the compressor on the mix, before the fades and
+        // the volume, so neither changes what they do.
         self.eq.process(out);
+        self.compressor.process(out);
 
         // Pause and resume fade, then master volume, per frame.
         let fade_target = if self.transport == Transport::Paused {

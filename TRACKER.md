@@ -57,7 +57,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Skip silence (`/aoide/sound-bounds`, ignore < 300 ms) | 1 | 🟨 | From `/aoide/sound-bounds`, fetched with the loudness, late batches included; not yet run against a real sidecar |
 | Output device picker | 2 | ⬜ | Following the default device is done: a failed stream reopens on the (new) default and plays on from the heard position, queue intact |
 | Equalizer (parametric, presets, preamp) | 3 | 🟨 | Engine done; UI pending. `EngineHandle::set_equalizer`: preamp and up to 10 RBJ peaking/shelf bands, gliding over 15 ms; off or flat is bit-transparent. 14 built-in presets (`eq::built_in_presets`), user presets as serde data (`EqPreset`). Measured in `tests/equalizer.rs` |
-| Compressor (threshold, ratio, attack, release, makeup, knee) | 3 | ⬜ | |
+| Compressor (threshold, ratio, attack, release, makeup, knee) | 3 | 🟨 | Engine done; UI pending. `EngineHandle::set_compressor`: feed-forward, stereo-linked, quadratic soft knee, attack/release smoothed in dB; off is bit-transparent. Presets Gentle, Moderate, Heavy, Late Night. Static curve and time constants measured in `tests/compressor.rs` |
 | Visualizer | 3 | ⬜ | Electron used audioMotion and Butterchurn; a native one is needed |
 | Fades on pause and resume | 2 | ⬜ | |
 | Auto DJ (beat-matched mixing) | — | — | Shelved on both apps (docs/arrangement.md in the iOS repo) |
