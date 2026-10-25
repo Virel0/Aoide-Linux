@@ -102,6 +102,10 @@ impl State {
                 .on_submit(App::Page(key, PageMsg::Playlists(Message::Create)))
                 .padding(8)
                 .style(theme::field),
+            button(text("Import…"))
+                .style(theme::tonal)
+                .padding([8, 14])
+                .on_press(App::Open(Route::Import)),
             button(text("New Playlist"))
                 .style(theme::filled)
                 .padding([8, 14])

@@ -166,6 +166,8 @@ pub enum Message {
     Radio(crate::radio::Msg),
     Covers(crate::covers::Msg),
     Sharing(crate::screens::share::Msg),
+    /// Match an imported playlist for the import page with this key.
+    ImportMatch(u64, Box<aoide_sidecar::ImportedPlaylist>),
 }
 
 /// The player bar's controls.
@@ -471,6 +473,7 @@ impl App {
             Message::Radio(message) => self.radio(message),
             Message::Covers(message) => self.covers(message),
             Message::Sharing(message) => self.sharing(message),
+            Message::ImportMatch(key, playlist) => self.import_match(key, *playlist),
         }
     }
 
