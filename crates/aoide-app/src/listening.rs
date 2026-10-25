@@ -41,6 +41,8 @@ pub struct State {
     /// Where the lyrics showing came from, when not the server: the track
     /// and the provider's name.
     pub lyrics_source: Option<(String, String)>,
+    /// The lyrics' language and their translation.
+    pub lyric_extras: crate::lyrics_extras::State,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +58,13 @@ pub enum Msg {
     Private(bool),
     Interface(crate::appearance::InterfaceSettings),
     LyricsFound(String, Result<Option<crate::lyrics_online::Found>, String>),
+    /// New lyrics are in the panel.
+    LyricsShown,
+    Translate(bool),
+    /// Only made with the `local-translation` feature.
+    #[cfg_attr(not(feature = "local-translation"), allow(dead_code))]
+    Translated(String, Result<Vec<String>, String>),
+    ModelProgress,
     Sleep(Choice),
     SleepMinutes(String),
     SleepCustom,
@@ -79,7 +88,9 @@ pub enum Msg {
 pub fn is_quiet(message: &Message) -> bool {
     matches!(
         message,
-        Message::Listening(Msg::VisualFrame | Msg::SleepTick | Msg::CheckHidden)
+        Message::Listening(
+            Msg::VisualFrame | Msg::SleepTick | Msg::CheckHidden | Msg::ModelProgress
+        )
     )
 }
 
@@ -125,7 +136,11 @@ impl App {
                 .map(|_| Message::Listening(Msg::SleepTick)),
             _ => Subscription::none(),
         };
-        Subscription::batch([sleep, self.full_player_subscription()])
+        Subscription::batch([
+            sleep,
+            self.full_player_subscription(),
+            self.lyric_extras_subscription(),
+        ])
     }
 
     /// An engine event, for the sleep timer: a boundary to pause on, or the
@@ -341,6 +356,17 @@ impl App {
                     item,
                     result.map(|found| found.map(|f| f.lyrics)),
                 ))
+                .chain(Task::done(Message::Listening(Msg::LyricsShown)))
+            }
+            Msg::LyricsShown => self.lyrics_shown(),
+            Msg::Translate(on) => self.set_translate(on),
+            Msg::Translated(item, result) => {
+                self.translated(item, result);
+                Task::none()
+            }
+            Msg::ModelProgress => {
+                self.model_progress();
+                Task::none()
             }
             Msg::Transcode(transcode) => {
                 self.config.sound.transcode = transcode.sanitised();

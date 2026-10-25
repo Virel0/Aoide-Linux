@@ -11,6 +11,7 @@ mod icons;
 mod integration;
 mod library;
 mod listening;
+mod lyrics_extras;
 mod lyrics_online;
 mod lyrics_panel;
 mod nav;

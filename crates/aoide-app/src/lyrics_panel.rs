@@ -35,6 +35,9 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     };
     let offset = app.config.settings.lyric_offset_ms;
     let mut column = Column::new().spacing(6).width(Fill);
+    if let Some(toolbar) = crate::lyrics_extras::toolbar(app, &state.item) {
+        column = column.push(toolbar);
+    }
     if lyrics.is_synced() {
         let lit = lyrics::current_line(lyrics, app.playback.position_ms(), offset);
         for (index, line) in lyrics.lines.iter().enumerate() {
@@ -67,10 +70,12 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
                             .map(|ms| Message::Player(Transport::Seek(ms))),
                     ),
             );
+            column = column.extend(crate::lyrics_extras::under(app, &state.item, index));
         }
     } else {
-        for line in &lyrics.lines {
+        for (index, line) in lyrics.lines.iter().enumerate() {
             column = column.push(text(line.text.as_str()).size(15));
+            column = column.extend(crate::lyrics_extras::under(app, &state.item, index));
         }
     }
     if let Some((_, provider)) = app
