@@ -130,20 +130,9 @@ pub fn describe(error: &Error) -> String {
             format!("{host} responded, but doesn't look like a Jellyfin server.")
         }
         Error::Unauthorized => "Your username or password wasn't accepted.".to_owned(),
-        Error::NotSignedIn => "You're not signed in.".to_owned(),
-        Error::NotFound { path } => format!("The server has no {path}."),
-        Error::Http {
-            status,
-            path,
-            detail,
-        } => match detail {
-            Some(detail) => format!("{path} returned an error (HTTP {status}): {detail}"),
-            None => format!("{path} returned an error (HTTP {status})."),
-        },
-        Error::Decoding { .. } => "The server sent a response Aoide couldn't read.".to_owned(),
-        Error::Transport(message) => format!(
-            "Couldn't reach the server. Check the address and that the server is running. ({message})"
-        ),
+        // The rest as every screen words them: a sentence, never the
+        // transport's own text.
+        other => crate::failure::describe_at(other, None).summary,
     }
 }
 
@@ -325,18 +314,24 @@ mod tests {
             describe(&Error::NotJellyfin("music.example.net".into())),
             "music.example.net responded, but doesn't look like a Jellyfin server."
         );
+        let unreachable = describe(&Error::Transport(
+            "tcp connect error: Connection refused (os error 61)".into(),
+        ));
         assert!(
-            describe(&Error::Transport("connection refused".into()))
-                .starts_with("Couldn't reach the server.")
+            unreachable.starts_with("Can't reach your server."),
+            "{unreachable}"
         );
-        assert_eq!(
-            describe(&Error::Http {
-                status: 500,
-                path: "Users/AuthenticateByName".into(),
-                detail: None
-            }),
-            "Users/AuthenticateByName returned an error (HTTP 500)."
+        assert!(!unreachable.contains("os error"), "{unreachable}");
+        let broken = describe(&Error::Http {
+            status: 500,
+            path: "Users/AuthenticateByName".into(),
+            detail: Some("System.NullReferenceException".into()),
+        });
+        assert!(
+            broken.starts_with("Your server ran into a problem"),
+            "{broken}"
         );
+        assert!(!broken.contains("NullReference"), "{broken}");
     }
 
     fn device() -> Device {
