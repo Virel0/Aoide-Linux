@@ -172,3 +172,28 @@ Last.fm; lyric provider picker; hotkey rebinding; theme gallery, fonts, zoom,
 backgrounds; the 32 bundled translations (English only, French later on both
 apps); playback speed and pitch; Feishin's fixed crossfade; analytics; Windows
 and macOS builds.
+
+## Open questions
+
+Open decisions, from the 2026-10-25 security audit and design review and
+earlier. Each is his to make; nothing here is built yet.
+
+- **Sign the packages** and the pacman database (needs a key of his and a
+  repository secret); until then each release carries SHA256SUMS files and
+  the pacman repository needs `SigLevel = Optional`.
+- **The Flatpak's keyring access**: `--talk-name=org.freedesktop.secrets`
+  reaches the whole unlocked keyring. The Secret portal would scope it to
+  the app, but needs another keyring library (oo7) in place of keyring 3.6.
+- **Title Case or sentence case** for the app's wording (it is Apple-style
+  Title Case now, with a few exceptions).
+- **Settings layout**: one long page now; sections or tabs, and switches on
+  the right, as macOS has them.
+- **Error messages**: they show raw transport errors and have no Retry.
+- **Replay**: all-caps tile labels, and "0 HOURS" under an hour.
+- **Album rows** repeat the album artist; **artist tiles** are square and
+  grey; the album's "…" sits mid-row rather than last.
+- **Light theme** greys (#dedede cards) are heavy.
+- iced 0.14 limits: no keyboard focus on buttons and tiles (Ctrl+K reaches
+  everything), no ellipsis on clipped titles, no screen-reader tree.
+- **Making the repository public**, and **when this app replaces the
+  Electron one**: after his testing.

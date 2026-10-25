@@ -255,6 +255,7 @@ pub fn settings_row<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> {
         toggler(interface.internet_lyrics)
             .label("Find Lyrics on the Internet")
             .width(Fill)
+            .style(crate::theme::switch)
             .on_toggle(move |on| {
                 let mut change = interface.clone();
                 change.internet_lyrics = on;
