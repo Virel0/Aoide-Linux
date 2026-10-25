@@ -11,6 +11,7 @@ use iced::{Element, Task};
 use super::{Ctx, Load, PageMsg, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::finish;
 use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
@@ -29,9 +30,9 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Albums(Result<Vec<Item>, String>),
+    Albums(Result<Vec<Item>, Failure>),
     /// Every song on their albums.
-    Tracks(Result<Vec<Item>, String>),
+    Tracks(Result<Vec<Item>, Failure>),
     Listening {
         finish: Option<String>,
         top: Vec<TrackMeta>,
@@ -148,7 +149,7 @@ impl State {
         if !self.top.is_empty() {
             body = body.push(
                 column![
-                    text("Top Songs").size(20).font(widgets::BOLD),
+                    text("Top songs").size(20).font(widgets::BOLD),
                     widgets::track_list(
                         &self.top,
                         view,
@@ -164,7 +165,7 @@ impl State {
         }
         let body = body.push(match &self.albums {
             Load::Loading => widgets::loading(),
-            Load::Failed(error) => widgets::failure(error),
+            Load::Failed(error) => view.failure(error),
             Load::Ready(tiles) if tiles.is_empty() => {
                 widgets::empty("No albums credited to this artist.")
             }

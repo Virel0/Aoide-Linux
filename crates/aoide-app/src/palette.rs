@@ -17,6 +17,7 @@ use crate::actions::PlayRequest;
 use crate::app::{App, Message as AppMessage, Panel, Transport};
 use crate::playback::tracks::TrackMeta;
 use crate::screens::search::Debouncer;
+use crate::screens::settings::Category;
 use crate::screens::{PlaylistSummary, Route, Section};
 use crate::theme;
 use crate::widgets;
@@ -61,16 +62,23 @@ pub fn commands(playlists: &[PlaylistSummary]) -> Vec<Entry> {
     let player =
         |label: &str, control: Transport| Entry::new("Player", label, AppMessage::Player(control));
     all.extend([
-        player("Play or Pause", Transport::Toggle),
-        player("Next Song", Transport::Next),
-        player("Previous Song", Transport::Previous),
+        player("Play or pause", Transport::Toggle),
+        player("Next song", Transport::Next),
+        player("Previous song", Transport::Previous),
         player("Shuffle", Transport::Shuffle),
         player("Repeat", Transport::Repeat),
         player("Crossfade", Transport::Crossfade),
         player("Infinity", Transport::Infinity),
-        player("Show Queue", Transport::Panel(Panel::Queue)),
-        player("Show Lyrics", Transport::Panel(Panel::Lyrics)),
+        player("Show queue", Transport::Panel(Panel::Queue)),
+        player("Show lyrics", Transport::Panel(Panel::Lyrics)),
     ]);
+    all.extend(Category::ALL.into_iter().map(|category| {
+        Entry::new(
+            "Settings",
+            category.title(),
+            AppMessage::OpenSettings(category),
+        )
+    }));
     all.extend(playlists.iter().map(|p| {
         Entry::new(
             "Playlist",
@@ -82,7 +90,7 @@ pub fn commands(playlists: &[PlaylistSummary]) -> Vec<Entry> {
 }
 
 /// Whether every word typed is in the label, ignoring case: "nx so" finds
-/// "Next Song".
+/// "Next song".
 pub fn matches(label: &str, query: &str) -> bool {
     let label = label.to_lowercase();
     query
@@ -302,7 +310,7 @@ impl App {
                         Err(aoide_jellyfin::Error::Unauthorized) => AppMessage::TokenRejected,
                         result => AppMessage::Palette(Message::Found(
                             query.clone(),
-                            result.map_err(|e| crate::session::describe(&e)),
+                            result.map_err(|e| crate::failure::describe(&e).to_string()),
                         )),
                     },
                 )
@@ -422,6 +430,29 @@ mod tests {
             all.iter()
                 .any(|e| matches!(e.action, AppMessage::Player(Transport::Toggle)))
         );
+        for category in Category::ALL {
+            assert!(
+                all.iter().any(|e| e.kind == "Settings"
+                    && matches!(e.action, AppMessage::OpenSettings(c) if c == category)),
+                "{category:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_settings_category_is_found_by_its_name_or_by_settings() {
+        let found = matching(commands(&[]), "playback");
+        assert!(
+            found
+                .iter()
+                .any(|e| matches!(e.action, AppMessage::OpenSettings(Category::Playback)))
+        );
+        let found = matching(commands(&[]), "settings sync");
+        assert!(
+            found
+                .iter()
+                .any(|e| matches!(e.action, AppMessage::OpenSettings(Category::Sync)))
+        );
     }
 
     #[test]
@@ -435,7 +466,7 @@ mod tests {
             "Songs",
             "a label that starts with it comes first"
         );
-        assert!(labels(&found).contains(&"Next Song".to_owned()));
+        assert!(labels(&found).contains(&"Next song".to_owned()));
         // The kind counts too: "go to set" finds Settings.
         assert_eq!(labels(&matching(commands(&[]), "go to set")), ["Settings"]);
     }

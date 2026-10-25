@@ -12,6 +12,7 @@ use iced::{Element, Task};
 use super::{Ctx, Load, PageMsg, Route, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
 use crate::theme;
@@ -64,10 +65,14 @@ struct Results {
 pub enum Message {
     Typed(String),
     Due(u64),
-    Found(String, Result<SearchResults, String>),
+    Found(String, Result<SearchResults, Failure>),
     /// "Search by description" was pressed.
     Describe,
-    Described(String, Result<crate::smart::Described, String>),
+    Described(String, Result<crate::smart::Described, Failure>),
+    /// Run the search that failed again.
+    Retry,
+    /// Ask again for the description that failed.
+    RetryDescribe,
 }
 
 pub fn open() -> (State, Task<App>) {
@@ -107,16 +112,7 @@ impl State {
                 if term == self.searched {
                     return Task::none();
                 }
-                self.searched = term.clone();
-                self.results = Some(Load::Loading);
-                let client = ctx.client.clone();
-                let library = ctx.library.map(str::to_owned);
-                let asked = term.clone();
-                fetch(
-                    ctx.key,
-                    async move { client.search(&asked, library.as_deref(), LIMIT).await },
-                    move |r| PageMsg::Search(Message::Found(term.clone(), r)),
-                )
+                self.search(ctx)
             }
             Message::Found(term, result) => {
                 // An answer for an older term, overtaken by typing.
@@ -141,6 +137,14 @@ impl State {
                     phrase,
                 }))
             }
+            Message::Retry => {
+                self.searched.clear();
+                self.search(ctx)
+            }
+            Message::RetryDescribe => {
+                self.described = None;
+                self.update(Message::Describe, ctx)
+            }
             Message::Described(phrase, result) => {
                 if self.described.as_ref().is_some_and(|(p, _)| *p == phrase) {
                     self.described = Some((phrase, Load::from(result)));
@@ -148,6 +152,24 @@ impl State {
                 Task::none()
             }
         }
+    }
+
+    /// Searches for what is typed, now.
+    fn search(&mut self, ctx: &Ctx<'_>) -> Task<App> {
+        let term = self.term.trim().to_owned();
+        if term.is_empty() {
+            return Task::none();
+        }
+        self.searched = term.clone();
+        self.results = Some(Load::Loading);
+        let client = ctx.client.clone();
+        let library = ctx.library.map(str::to_owned);
+        let asked = term.clone();
+        fetch(
+            ctx.key,
+            async move { client.search(&asked, library.as_deref(), LIMIT).await },
+            move |r| PageMsg::Search(Message::Found(term.clone(), r)),
+        )
     }
 
     pub fn artwork(&self) -> Vec<ArtKey> {
@@ -179,7 +201,13 @@ impl State {
         match &self.results {
             None => {}
             Some(Load::Loading) => body = body.push(widgets::loading()),
-            Some(Load::Failed(error)) => body = body.push(widgets::failure(error)),
+            Some(Load::Failed(error)) => {
+                body = body.push(widgets::failure(
+                    error,
+                    Some(App::Page(view.key, PageMsg::Search(Message::Retry))),
+                    view.details,
+                ));
+            }
             Some(Load::Ready(results)) => {
                 // Said only when a search by description found nothing either.
                 let described = self.described.as_ref().is_some_and(|(phrase, found)| {
@@ -238,7 +266,7 @@ impl State {
         let mut part = column![].spacing(12);
         if view.smart_search && looks_like_a_phrase(term) && shown.is_none() {
             part = part.push(
-                button(text("Search by Description").size(13))
+                button(text("Search by description").size(13))
                     .style(theme::tonal)
                     .padding([6, 12])
                     .on_press(App::Page(key, PageMsg::Search(Message::Describe))),
@@ -247,7 +275,13 @@ impl State {
         match shown.map(|(_, found)| found) {
             None => {}
             Some(Load::Loading) => part = part.push(widgets::secondary("Asking OpenRouter…")),
-            Some(Load::Failed(error)) => part = part.push(widgets::failure(error)),
+            Some(Load::Failed(error)) => {
+                part = part.push(widgets::failure(
+                    error,
+                    Some(App::Page(key, PageMsg::Search(Message::RetryDescribe))),
+                    view.details,
+                ));
+            }
             Some(Load::Ready(found)) => {
                 if let Some(words) = &found.understood {
                     part = part.push(widgets::secondary(format!("Understood as {words}")).size(13));
@@ -260,7 +294,7 @@ impl State {
                 }
                 if !found.songs.is_empty() {
                     part = part
-                        .push(text("Songs by Description").size(20).font(widgets::BOLD))
+                        .push(text("Songs by description").size(20).font(widgets::BOLD))
                         .push(widgets::track_list(
                             &found.songs,
                             view,

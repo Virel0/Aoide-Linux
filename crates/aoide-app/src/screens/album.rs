@@ -8,6 +8,7 @@ use iced::{Element, Length, Task};
 use super::{Ctx, Load, PageMsg, Route, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::playback::tracks::TrackMeta;
 use crate::theme;
 use crate::widgets::{self, ListStyle};
@@ -25,8 +26,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Album(Result<Vec<Item>, String>),
-    Tracks(Result<Vec<Item>, String>),
+    Album(Result<Vec<Item>, Failure>),
+    Tracks(Result<Vec<Item>, Failure>),
     Finish(Option<String>),
 }
 
@@ -130,18 +131,15 @@ impl State {
         if let Some(finish) = &self.finish {
             info = info.push(widgets::secondary(finish.as_str()).size(13));
         }
-        info = info.push(
-            row![
-                widgets::play_buttons(tracks, format!("{}:album", view.key), PlaySource::Album),
-                crate::radio::start_button(crate::radio::Station::new(
-                    aoide_jellyfin::MixSeed::Album(self.id.clone()),
-                    self.title.clone(),
-                )),
-            ]
-            .spacing(10)
-            .wrap()
-            .vertical_spacing(10),
-        );
+        info = info.push(widgets::play_buttons_with(
+            tracks,
+            format!("{}:album", view.key),
+            PlaySource::Album,
+            vec![crate::radio::start_button(crate::radio::Station::new(
+                aoide_jellyfin::MixSeed::Album(self.id.clone()),
+                self.title.clone(),
+            ))],
+        ));
 
         let mut body = column![
             widgets::title_bar("", view.can_go_back),
@@ -160,7 +158,7 @@ impl State {
         }
         body = body.push(match &self.tracks {
             Load::Loading => widgets::loading(),
-            Load::Failed(error) => widgets::failure(error),
+            Load::Failed(error) => view.failure(error),
             Load::Ready(tracks) => widgets::track_list_with_headings(
                 tracks,
                 view,

@@ -21,8 +21,8 @@ impl Heading {
     pub fn title(self) -> &'static str {
         match self {
             Heading::Played => "Played",
-            Heading::NowPlaying => "Now Playing",
-            Heading::NextUp => "Next Up",
+            Heading::NowPlaying => "Now playing",
+            Heading::NextUp => "Next up",
             Heading::Then => "Then",
         }
     }

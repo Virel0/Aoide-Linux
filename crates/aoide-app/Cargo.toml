@@ -38,8 +38,9 @@ aoide-store = { path = "../aoide-store" }
 directories = "6"
 # `tokio` runs every Task on the runtime the Jellyfin client needs; `image` without
 # its codec bundle, the three artwork formats are picked below; `svg` for the icons;
-# `canvas` for the equaliser's curve and the visualizer.
-iced = { version = "0.14", features = ["tokio", "image-without-codecs", "svg", "canvas"] }
+# `canvas` for the equaliser's curve and the visualizer; `advanced` for the one
+# custom widget, ellipsis.rs (it measures text with the renderer; no other crates).
+iced = { version = "0.14", features = ["tokio", "image-without-codecs", "svg", "canvas", "advanced"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # The log facade (already in the tree through iced); the app's own logger is logging.rs.
 log = "0.4.34"

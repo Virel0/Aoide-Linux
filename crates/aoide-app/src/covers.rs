@@ -285,7 +285,7 @@ impl App {
                         let lists = client
                             .playlists(&crate::screens::jellyfin_playlists::query())
                             .await
-                            .map_err(|e| crate::session::describe(&e))?;
+                            .map_err(|e| crate::failure::describe(&e).to_string())?;
                         let named: Vec<NamedJellyfinPlaylist> = lists
                             .items
                             .into_iter()

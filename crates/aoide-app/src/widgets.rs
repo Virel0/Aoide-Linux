@@ -3,14 +3,16 @@
 
 use aoide_store::PlaySource;
 use iced::widget::{
-    Column, button, column, container, grid, image, mouse_area, row, scrollable, space, text,
-    text_input,
+    Column, Row, button, column, container, grid, image, mouse_area, responsive, row, scrollable,
+    space, text, text_input, toggler,
 };
-use iced::{Center, ContentFit, Element, Fill, Font, Length, Shrink, font};
+use iced::{Center, ContentFit, Element, Fill, Font, Length, font};
 
 use crate::actions::{self, Collection, Menu, PlayRequest, RowAction};
 use crate::app::Message;
 use crate::artwork::{ArtKey, Artwork};
+use crate::ellipsis::ellipsis;
+use crate::failure::Failure;
 use crate::icons::{Icon, Tone, icon};
 use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
@@ -59,6 +61,21 @@ pub fn secondary<'a>(content: impl text::IntoFragment<'a>) -> text::Text<'a> {
     })
 }
 
+/// A setting's switch: the label on the left and the switch on the right,
+/// as macOS lays them out.
+pub fn switch<'a>(
+    label: impl text::IntoFragment<'a>,
+    on: bool,
+    toggle: impl Fn(bool) -> Message + 'a,
+) -> Row<'a, Message> {
+    row![
+        text(label).width(Fill),
+        toggler(on).style(theme::switch).on_toggle(toggle),
+    ]
+    .spacing(12)
+    .align_y(Center)
+}
+
 /// A cover at `size`, or a quiet square where there is none yet.
 pub fn art<'a>(
     key: Option<&ArtKey>,
@@ -81,6 +98,44 @@ pub fn art<'a>(
     }
 }
 
+/// An artist's picture, round and centred in the space it is given; a round
+/// placeholder with the artist glyph where there is no picture yet.
+pub fn round_art<'a>(key: Option<&'a ArtKey>, artwork: &'a Artwork) -> Element<'a, Message> {
+    responsive(move |space| {
+        let side = space.width.min(space.height).max(0.0);
+        let picture: Element<'a, Message> = match key.and_then(|key| artwork.get(key)) {
+            Some(handle) => image(handle.clone())
+                .width(side)
+                .height(side)
+                .content_fit(ContentFit::Cover)
+                .border_radius(side / 2.0)
+                .into(),
+            None => container(icon(Icon::Artist, (side * 0.4).max(1.0), Tone::Secondary))
+                .center(side)
+                .style(move |t| {
+                    let mut style = theme::placeholder(t);
+                    style.border.radius = (side / 2.0).into();
+                    style
+                })
+                .into(),
+        };
+        container(picture).center(Fill).into()
+    })
+    .into()
+}
+
+/// A tile's picture: an artist's round, anything else's square.
+fn tile_art<'a>(tile: &'a Tile, artwork: &'a Artwork, size: Length) -> Element<'a, Message> {
+    if tile.round {
+        container(round_art(tile.art.as_ref(), artwork))
+            .width(size)
+            .height(size)
+            .into()
+    } else {
+        art(tile.art.as_ref(), artwork, size, 8.0)
+    }
+}
+
 /// What a tile's `…` (or a right click on it) opens: the album's or
 /// artist's actions.
 fn tile_menu(tile: &Tile, route: &Route) -> Option<Message> {
@@ -100,13 +155,10 @@ fn tile_menu(tile: &Tile, route: &Route) -> Option<Message> {
 /// A tile's title and subtitle, with its `…` beside them.
 fn tile_caption<'a>(tile: &'a Tile, menu: Option<Message>) -> Element<'a, Message> {
     let words = column![
-        text(tile.title.as_str())
-            .size(14)
-            .font(SEMIBOLD)
-            .wrapping(text::Wrapping::None),
-        secondary(tile.subtitle.as_str())
+        ellipsis(tile.title.as_str()).size(14).font(SEMIBOLD),
+        ellipsis(tile.subtitle.as_str())
             .size(13)
-            .wrapping(text::Wrapping::None),
+            .color(|t| Some(theme::secondary(t))),
     ]
     .spacing(2)
     .width(Fill)
@@ -148,12 +200,9 @@ fn tile_body<'a>(
     art_size: Length,
     menu: Option<Message>,
 ) -> Column<'a, Message> {
-    column![
-        art(tile.art.as_ref(), artwork, art_size, 8.0),
-        tile_caption(tile, menu),
-    ]
-    .spacing(4)
-    .clip(true)
+    column![tile_art(tile, artwork, art_size), tile_caption(tile, menu),]
+        .spacing(4)
+        .clip(true)
 }
 
 /// A grid of tiles that fills the width, a few columns or many.
@@ -166,7 +215,7 @@ pub fn tile_grid<'a>(
         let route = open(tile);
         let menu = tile_menu(tile, &route);
         let body = column![
-            container(art(tile.art.as_ref(), artwork, Fill, 8.0)).height(Fill),
+            container(tile_art(tile, artwork, Fill)).height(Fill),
             tile_caption(tile, menu.clone()),
         ]
         .spacing(4)
@@ -236,9 +285,60 @@ pub fn loading<'a>() -> Element<'a, Message> {
     container(secondary("Loading…")).padding(20).into()
 }
 
-pub fn failure<'a>(error: &'a str) -> Element<'a, Message> {
+/// A failure whose words are all there is: the local store's, the app's own.
+pub fn plain_failure<'a>(error: &'a str) -> Element<'a, Message> {
     container(text(error))
         .padding(12)
+        .style(theme::error_box)
+        .into()
+}
+
+/// Something that failed, in words: Retry runs it again (when there is
+/// something to run), and Details shows the technical text under it.
+pub fn failure<'a>(
+    failure: &'a Failure,
+    retry: Option<Message>,
+    details_open: bool,
+) -> Element<'a, Message> {
+    let has_actions = retry.is_some() || failure.details.is_some();
+    let mut actions = row![].spacing(8).align_y(Center);
+    if let Some(retry) = retry {
+        actions = actions.push(
+            button(text("Retry").size(13))
+                .style(theme::tonal)
+                .padding([4, 12])
+                .on_press(retry),
+        );
+    }
+    if failure.details.is_some() {
+        actions = actions.push(
+            button(
+                row![
+                    text("Details").size(13),
+                    icon(
+                        if details_open { Icon::Up } else { Icon::Down },
+                        14.0,
+                        Tone::Secondary
+                    ),
+                ]
+                .spacing(4)
+                .align_y(Center),
+            )
+            .style(theme::row)
+            .padding([4, 8])
+            .on_press(Message::FailureDetails(!details_open)),
+        );
+    }
+    let mut body = column![text(failure.summary.as_str())].spacing(10);
+    if has_actions {
+        body = body.push(actions);
+    }
+    if let (true, Some(details)) = (details_open, &failure.details) {
+        body = body.push(secondary(details.as_str()).size(12));
+    }
+    container(body)
+        .padding(12)
+        .width(Fill)
         .style(theme::error_box)
         .into()
 }
@@ -299,6 +399,27 @@ pub fn track_list_with_headings<'a>(
     list.into()
 }
 
+/// A row's second line. An album's own list names the artist only where it
+/// is not the album's artist, as Apple Music does; other lists always name
+/// it, and the album too when they say so.
+fn subtitle(track: &TrackMeta, style: ListStyle) -> Option<String> {
+    if style.numbered && !style.show_album {
+        let same = track
+            .album_artist
+            .as_deref()
+            .is_some_and(|a| a.trim().eq_ignore_ascii_case(track.artist.trim()));
+        return (!same && !track.artist.is_empty()).then(|| track.artist.clone());
+    }
+    Some(if style.show_album && !track.album.is_empty() {
+        format!("{} · {}", track.artist, track.album)
+    } else {
+        track.artist.clone()
+    })
+}
+
+/// A title and a line under it, at the sizes a track row uses.
+const TWO_LINES: f32 = 34.0;
+
 /// One track row.
 pub fn track_row<'a>(
     track: &'a TrackMeta,
@@ -334,11 +455,7 @@ pub fn track_row<'a>(
             4.0,
         )
     };
-    let subtitle = if style.show_album && !track.album.is_empty() {
-        format!("{} · {}", track.artist, track.album)
-    } else {
-        track.artist.clone()
-    };
+    let subtitle = subtitle(track, style);
     let favourite = view
         .favourites
         .get(&track.id)
@@ -354,23 +471,26 @@ pub fn track_row<'a>(
                 tracks: vec![track.clone()],
             })
         });
-    let body = row![
-        lead,
-        column![
-            text(track.title.as_str())
-                .size(14)
-                .wrapping(text::Wrapping::None)
-                .style(move |t| text::Style {
-                    color: playing.then(|| theme::accent(t)),
-                }),
-            secondary(subtitle).size(12).wrapping(text::Wrapping::None),
-        ]
-        .spacing(2)
+    let mut lines = column![
+        ellipsis(track.title.as_str())
+            .size(14)
+            .color(move |t| playing.then(|| theme::accent(t))),
+    ];
+    if let Some(subtitle) = subtitle {
+        lines = lines.push(
+            ellipsis(subtitle)
+                .size(12)
+                .color(|t| Some(theme::secondary(t))),
+        );
+    }
+    // Every row as tall as one with two lines, the title centred when it is
+    // alone: an album's rows stay even where only some name an artist.
+    let lines = container(lines.spacing(2).clip(true))
         .width(Fill)
-        .clip(true),
-    ]
-    .spacing(12)
-    .align_y(Center);
+        .height(Length::Fixed(TWO_LINES))
+        .align_y(Center)
+        .clip(true);
+    let body = row![lead, lines].spacing(12).align_y(Center);
     let body = if favourite {
         body.push(icon(Icon::HeartFilled, 14.0, Tone::Accent))
     } else {
@@ -435,12 +555,12 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
         actions.push(action("Shuffle", RowAction::Shuffle).into());
     }
     actions.extend([
-        action("Play Next", RowAction::PlayNext).into(),
-        action("Play Last", RowAction::PlayLast).into(),
-        action("Add to Playlist…", RowAction::ShowPlaylists).into(),
+        action("Play next", RowAction::PlayNext).into(),
+        action("Play last", RowAction::PlayLast).into(),
+        action("Add to playlist…", RowAction::ShowPlaylists).into(),
     ]);
     if menu.single().is_some() || menu.collection.is_some() {
-        actions.push(action("Start Radio", RowAction::StartRadio).into());
+        actions.push(action("Start radio", RowAction::StartRadio).into());
     }
     if let Some(track) = menu.single() {
         let flags = menu.flags.unwrap_or_default();
@@ -451,13 +571,13 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
             .unwrap_or(track.favourite);
         actions.push(
             check(
-                "Not Interested",
+                "Not interested",
                 flags.not_interested,
                 RowAction::NotInterested,
             )
             .into(),
         );
-        actions.push(check("Don't Count Plays", flags.dont_count, RowAction::DontCount).into());
+        actions.push(check("Don't count plays", flags.dont_count, RowAction::DontCount).into());
         actions.push(
             action(
                 if favourite {
@@ -470,12 +590,12 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
             .into(),
         );
         if track.album_id.is_some() {
-            actions.push(action("Go to Album", RowAction::GoToAlbum).into());
+            actions.push(action("Go to album", RowAction::GoToAlbum).into());
         }
         if track.artist_id.is_some() {
-            actions.push(action("Go to Artist", RowAction::GoToArtist).into());
+            actions.push(action("Go to artist", RowAction::GoToArtist).into());
         }
-        actions.push(action("Get Info", RowAction::GetInfo).into());
+        actions.push(action("Get info", RowAction::GetInfo).into());
     }
     actions.push(
         button(icon(Icon::Close, 14.0, Tone::Secondary))
@@ -495,7 +615,7 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
         body = body.push(secondary("Fetching the songs…").size(13));
     }
     if let Some(error) = &menu.error {
-        body = body.push(failure(error));
+        body = body.push(plain_failure(error));
     }
     if menu.adding {
         let mut lists = column![].spacing(2);
@@ -509,7 +629,7 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
             );
         }
         let heading = |label: &'static str| secondary(label).size(12).font(SEMIBOLD);
-        lists = lists.push(heading("Aoide Playlists"));
+        lists = lists.push(heading("Aoide playlists"));
         for playlist in actions::matching(view.playlists, |p| p.name.as_str(), &menu.filter) {
             lists = lists.push(
                 button(text(playlist.name.as_str()).size(13))
@@ -519,7 +639,7 @@ pub fn menu_strip<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
                     .on_press(Message::Row(RowAction::AddTo(playlist.id.clone()))),
             );
         }
-        lists = lists.push(heading("Jellyfin Playlists"));
+        lists = lists.push(heading("Jellyfin playlists"));
         match &menu.jellyfin {
             None => {}
             Some(Err(error)) => lists = lists.push(secondary(error.as_str()).size(12)),
@@ -567,6 +687,17 @@ pub fn play_buttons<'a>(
     anchor: String,
     source: PlaySource,
 ) -> Element<'a, Message> {
+    play_buttons_with(tracks, anchor, source, Vec::new())
+}
+
+/// Play and Shuffle, then `extras` (Start radio), then the "…" menu last,
+/// as Apple Music orders an album's actions. The row wraps when narrow.
+pub fn play_buttons_with<'a>(
+    tracks: &'a [TrackMeta],
+    anchor: String,
+    source: PlaySource,
+    extras: Vec<Element<'a, Message>>,
+) -> Element<'a, Message> {
     let enabled = !tracks.is_empty();
     // Icons don't fade with a disabled button's label: quiet them here.
     let tone = |on: Tone| if enabled { on } else { Tone::Secondary };
@@ -592,6 +723,9 @@ pub fn play_buttons<'a>(
         .on_press_maybe(
             enabled.then(|| Message::Play(PlayRequest::shuffled(tracks, PlaySource::Shuffle)))
         ),
+    ]
+    .extend(extras)
+    .push(
         button(icon(Icon::More, 18.0, tone(Tone::Accent)))
             .style(theme::tonal)
             .padding([8, 10])
@@ -601,9 +735,11 @@ pub fn play_buttons<'a>(
                     tracks: tracks.to_vec(),
                 })
             })),
-    ]
+    )
     .spacing(10)
-    .width(Shrink)
+    .align_y(Center)
+    .wrap()
+    .vertical_spacing(10)
     .into()
 }
 
@@ -616,5 +752,44 @@ mod tests {
         assert_eq!(duration(0), "0:00");
         assert_eq!(duration(65_400), "1:05");
         assert_eq!(duration(3_723_000), "1:02:03");
+    }
+
+    #[test]
+    fn an_album_list_names_the_artist_only_where_it_differs() {
+        let track = |artist: &str| {
+            let mut meta = TrackMeta::from_item(
+                &serde_json::from_value(serde_json::json!({
+                    "Id": "t1", "Name": "Harbour Lights", "Type": "Audio",
+                    "Album": "Low Tide Radio", "AlbumArtist": "The Quiet Engines",
+                }))
+                .unwrap(),
+            );
+            meta.artist = artist.into();
+            meta
+        };
+        let album = ListStyle {
+            numbered: true,
+            show_album: false,
+        };
+        assert_eq!(subtitle(&track("The Quiet Engines"), album), None);
+        assert_eq!(subtitle(&track("the quiet engines "), album), None);
+        assert_eq!(
+            subtitle(&track("The Quiet Engines, Mara Vey"), album).as_deref(),
+            Some("The Quiet Engines, Mara Vey")
+        );
+        let unknown = TrackMeta {
+            album_artist: None,
+            ..track("Mara Vey")
+        };
+        assert_eq!(subtitle(&unknown, album).as_deref(), Some("Mara Vey"));
+        // Anywhere else, the artist is always there.
+        let songs = ListStyle {
+            numbered: false,
+            show_album: true,
+        };
+        assert_eq!(
+            subtitle(&track("The Quiet Engines"), songs).as_deref(),
+            Some("The Quiet Engines · Low Tide Radio")
+        );
     }
 }

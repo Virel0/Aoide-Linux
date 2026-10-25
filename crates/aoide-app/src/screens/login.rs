@@ -220,7 +220,7 @@ impl State {
                 text(if self.finding {
                     "Looking…"
                 } else {
-                    "Find Servers on This Network"
+                    "Find servers on this network"
                 })
                 .size(13),
             )

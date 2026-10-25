@@ -1,7 +1,7 @@
 //! Settings → General: how the window looks and what its title says.
 
 use iced::theme::{Mode, Palette};
-use iced::widget::{button, column, container, row, space, text, toggler};
+use iced::widget::{button, column, container, row, space, text};
 use iced::{Background, Border, Center, Color, Element, Fill, Length, Theme, color};
 use serde::{Deserialize, Serialize};
 
@@ -186,15 +186,15 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
     let set = move |change: InterfaceSettings| Message::Listening(Msg::Interface(change));
     let title = {
         let interface = interface.clone();
-        toggler(interface.track_in_title)
-            .style(theme::switch)
-            .label("Show the Song in the Window Title")
-            .width(Fill)
-            .on_toggle(move |on| {
+        widgets::switch(
+            "Show the song in the window title",
+            interface.track_in_title,
+            move |on| {
                 let mut change = interface.clone();
                 change.track_in_title = on;
                 set(change)
-            })
+            },
+        )
     };
     let appearance = {
         let interface = interface.clone();
@@ -231,7 +231,7 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
             );
         }
         row![
-            text("Accent Colour").width(Fill),
+            text("Accent colour").width(Fill),
             swatches,
             widgets::secondary(interface.accent.title())
                 .size(13)
@@ -241,12 +241,6 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
         .align_y(Center)
     };
     column![
-        text("General")
-            .size(13)
-            .font(widgets::SEMIBOLD)
-            .style(|t| text::Style {
-                color: Some(theme::secondary(t)),
-            }),
         iced::widget::container(column![appearance, accent, title].spacing(12))
             .padding(14)
             .width(Fill)

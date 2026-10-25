@@ -73,13 +73,13 @@ pub async fn fetch(client: JellyfinClient, sidecar: SidecarClient) -> Result<Wee
     let response = match sidecar.discover(DiscoverResponse::DEFAULT_LIMIT).await {
         Ok(response) => response,
         Err(SidecarError::Absent { .. }) => return Ok(Week::Unavailable),
-        Err(error) => return Err(error.to_string()),
+        Err(error) => return Err(crate::failure::sidecar(&error).to_string()),
     };
     let ids: Vec<String> = response.candidates.iter().map(|c| c.id.clone()).collect();
     let items = client
         .items_by_ids(&ids)
         .await
-        .map_err(|e| crate::session::describe(&e))?;
+        .map_err(|e| crate::failure::describe(&e).to_string())?;
     Ok(Week::Loaded {
         week: response.week,
         tracks: items.iter().map(TrackMeta::from_item).collect(),
@@ -210,7 +210,7 @@ impl State {
         }
         body = body.push(match &self.tracks {
             Load::Loading => widgets::loading(),
-            Load::Failed(error) => widgets::failure(error),
+            Load::Failed(error) => view.failure(error),
             Load::Ready(tracks) if tracks.is_empty() => {
                 widgets::empty("Nothing new this week: you've heard everything it would pick.")
             }

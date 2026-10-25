@@ -274,7 +274,7 @@ pub async fn resume(
     store: StoreHandle,
     tile: ResumeTile,
 ) -> Result<Resumed, String> {
-    let describe = |e: aoide_jellyfin::Error| crate::session::describe(&e);
+    let describe = |e: aoide_jellyfin::Error| crate::failure::describe(&e).to_string();
     let context = match tile {
         ResumeTile::Handoff(queue) => {
             let found = client

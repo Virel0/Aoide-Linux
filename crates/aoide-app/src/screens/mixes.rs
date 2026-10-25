@@ -7,7 +7,7 @@ use aoide_store::PlaySource;
 use iced::widget::{button, column, row, text, text_input};
 use iced::{Center, Element, Task};
 
-use super::{Load, PageMsg, Section, View};
+use super::{Load, PageMsg, View};
 use crate::actions::PlayRequest;
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
@@ -31,7 +31,9 @@ pub struct State {
 pub enum Message {
     Typed(String),
     Compose,
-    Composed(String, Result<Box<Mix>, String>),
+    Composed(String, Result<Box<Mix>, crate::failure::Failure>),
+    /// Compose the description that failed again.
+    Retry,
     Save,
     Saved(Result<String, String>),
     Discard,
@@ -66,6 +68,16 @@ impl State {
                 }
                 Task::none()
             }
+            Message::Retry => match self.mix.take() {
+                Some((description, Load::Failed(_))) => {
+                    self.description = description;
+                    self.update(Message::Compose, key)
+                }
+                other => {
+                    self.mix = other;
+                    Task::none()
+                }
+            },
             Message::Save => {
                 let Some(mix) = self.ready().filter(|m| m.can_save()).cloned() else {
                     return Task::none();
@@ -118,13 +130,13 @@ impl State {
                         widgets::secondary(
                             "A language model turns your description into rules; your library \
                              and your listening history pick the songs. Add a key in Settings → \
-                             Smart Search."
+                             Smart search."
                         )
                         .size(13),
-                        button(text("Open Settings").size(13))
+                        button(text("Open settings").size(13))
                             .style(theme::tonal)
                             .padding([6, 12])
-                            .on_press(App::Section(Section::Settings)),
+                            .on_press(App::OpenSettings(super::settings::Category::SmartSearch,)),
                     ]
                     .spacing(10),
                 ),
@@ -162,7 +174,13 @@ impl State {
         match self.mix.as_ref().map(|(_, mix)| mix) {
             None => {}
             Some(Load::Loading) => body = body.push(widgets::loading()),
-            Some(Load::Failed(error)) => body = body.push(widgets::failure(error)),
+            Some(Load::Failed(error)) => {
+                body = body.push(widgets::failure(
+                    error,
+                    Some(App::Page(key, PageMsg::Mixes(Message::Retry))),
+                    view.details,
+                ));
+            }
             Some(Load::Ready(mix)) => body = body.push(self.mix_view(mix, view)),
         }
         widgets::page(body)
@@ -202,7 +220,7 @@ impl State {
                     text(if self.saving {
                         "Saving…"
                     } else {
-                        "Save as Smart Playlist"
+                        "Save as smart playlist"
                     })
                     .size(14),
                 )

@@ -18,8 +18,8 @@ use std::time::Duration;
 
 use aoide_mpris::{Bus, Pixmap, TrayCommand, TrayIcon, TrayState};
 use iced::futures::{Stream, StreamExt};
-use iced::widget::{column, toggler};
-use iced::{Element, Fill, Subscription, Task, window};
+use iced::widget::column;
+use iced::{Element, Subscription, Task, window};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -495,27 +495,23 @@ pub fn settings_section<'a>(
     status: &'a Status,
 ) -> Element<'a, AppMessage> {
     let switch = |label: &'a str, value: bool, message: fn(bool) -> Message| {
-        toggler(value)
-            .style(crate::theme::switch)
-            .label(label)
-            .width(Fill)
-            .on_toggle(move |on| AppMessage::Tray(message(on)))
+        crate::widgets::switch(label, value, move |on| AppMessage::Tray(message(on)))
     };
-    let mut rows = column![switch("Show in Tray", settings.show, Message::Show)];
+    let mut rows = column![switch("Show in tray", settings.show, Message::Show)];
     if settings.show {
         rows = rows
             .push(switch(
-                "Minimise to Tray",
+                "Minimise to tray",
                 settings.minimise_to_tray,
                 Message::MinimiseToTray,
             ))
             .push(switch(
-                "Close to Tray",
+                "Close to tray",
                 settings.close_to_tray,
                 Message::CloseToTray,
             ))
             .push(switch(
-                "Start Minimised",
+                "Start minimised",
                 settings.start_minimised,
                 Message::StartMinimised,
             ));
@@ -527,8 +523,8 @@ pub fn settings_section<'a>(
         "Tray",
         rows,
         "The tray icon plays, pauses and skips, and a click on it shows or hides the window. \
-         With Close to Tray, closing the window leaves Aoide playing; Quit in the tray's menu \
-         ends it. Minimise to Tray needs a window system that says when a window is minimised, \
+         With \u{201c}Close to tray\u{201d}, closing the window leaves Aoide playing; Quit in the \
+         tray's menu ends it. \u{201c}Minimise to tray\u{201d} needs a window system that says when a window is minimised, \
          which Wayland doesn't.",
     )
 }

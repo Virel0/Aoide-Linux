@@ -176,23 +176,15 @@ and macOS builds.
 ## Open questions
 
 Open decisions, from the 2026-10-25 security audit and design review and
-earlier. Each is his to make; nothing here is built yet.
+earlier. Each is his to make.
 
 - **The release key**: signing is built (`packaging/sign.sh`, in the
   release jobs only); it needs a key of his made and stored as the
   `AOIDE_SIGNING_KEY` secret, and its public half committed, as
   `docs/releases.md` says. Until then releases carry SHA256SUMS files and go
   out unsigned.
-- **Title Case or sentence case** for the app's wording (it is Apple-style
-  Title Case now, with a few exceptions).
-- **Settings layout**: one long page now; sections or tabs, and switches on
-  the right, as macOS has them.
-- **Error messages**: they show raw transport errors and have no Retry.
-- **Replay**: all-caps tile labels, and "0 HOURS" under an hour.
-- **Album rows** repeat the album artist; **artist tiles** are square and
-  grey; the album's "…" sits mid-row rather than last.
-- **Light theme** greys (#dedede cards) are heavy.
-- iced 0.14 limits: no keyboard focus on buttons and tiles (Ctrl+K reaches
-  everything), no ellipsis on clipped titles, no screen-reader tree.
+- iced 0.14 limits: no keyboard focus on buttons and tiles (only text
+  fields are focusable; Ctrl+K reaches everything, Settings' categories
+  included), and no screen-reader tree (no accessibility layer in 0.14).
 - **Making the repository public**, and **when this app replaces the
   Electron one**: after his testing.

@@ -553,7 +553,7 @@ impl App {
                     Err(error) => {
                         return Task::done(AppMessage::Page(
                             page,
-                            PageMsg::Mixes(M::Composed(asked, Err(error))),
+                            PageMsg::Mixes(M::Composed(asked, Err(error.into()))),
                         ));
                     }
                 };
@@ -575,10 +575,7 @@ impl App {
                             page,
                             PageMsg::Mixes(M::Composed(
                                 asked.clone(),
-                                result.map(Box::new).map_err(|failure| match failure {
-                                    Failure::Server(e) => crate::session::describe(&e),
-                                    Failure::Other(e) => e,
-                                }),
+                                result.map(Box::new).map_err(crate::failure::Failure::from),
                             )),
                         ),
                     },

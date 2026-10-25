@@ -6,6 +6,7 @@ use iced::{Element, Task};
 
 use super::{Ctx, Load, PageMsg, Route, View, fetch};
 use crate::app::Message as App;
+use crate::failure::Failure;
 use crate::theme;
 use crate::widgets;
 
@@ -16,7 +17,7 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Loaded(Result<ItemPage<Item>, String>),
+    Loaded(Result<ItemPage<Item>, Failure>),
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
@@ -52,7 +53,7 @@ impl State {
         let body = column![widgets::title_bar("Genres", view.can_go_back)].spacing(20);
         let body = body.push(match &self.genres {
             Load::Loading => widgets::loading(),
-            Load::Failed(error) => widgets::failure(error),
+            Load::Failed(error) => view.failure(error),
             Load::Ready(genres) if genres.is_empty() => {
                 widgets::empty("No genres in this library.")
             }

@@ -42,7 +42,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     };
     // Get Info over everything.
     match &signed.info {
-        Some(sheet) => stack![window, crate::info::view(sheet)].into(),
+        Some(sheet) => stack![window, crate::info::view(sheet, app.failure_details)].into(),
         None => window,
     }
 }
@@ -59,6 +59,7 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
         favourites: &signed.favourites,
         can_go_back: false,
         smart_search: false,
+        details: app.failure_details,
     };
     let card = container(widgets::menu_strip(menu, &view)).max_width(560);
     opaque(
@@ -82,7 +83,7 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
                         Tone::Secondary
                     }
                 ),
-                text(label).size(14).wrapping(text::Wrapping::None),
+                crate::ellipsis::ellipsis(label).size(14),
             ]
             .spacing(10)
             .align_y(Center),
@@ -145,28 +146,34 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             item(label, Icon::Genre, section).into()
         })
         .push(item(
-            "New Collection…".into(),
+            "New collection…".into(),
             Icon::Plus,
             Section::Collections,
         )),
     );
     if !signed.playlists.is_empty() {
-        body = body.push(heading("Aoide Playlists")).push(lists);
+        body = body.push(heading("Aoide playlists")).push(lists);
     }
     let mut footer = column![item("Settings".into(), Icon::Settings, Section::Settings)].spacing(4);
     if let Some(Err(status)) = &signed.sync_status {
         footer =
             footer.push(container(widgets::secondary(status.as_str()).size(11)).padding([0, 10]));
     }
-    container(
-        column![scrollable(body).height(Fill), footer]
-            .spacing(8)
-            .padding([16, 10]),
-    )
-    .width(Length::Fixed(SIDEBAR_WIDTH))
-    .height(Fill)
-    .style(theme::side)
-    .into()
+    // The scrollbar has its own lane beside the list, so it never covers
+    // the selected item's end.
+    let list = scrollable(body)
+        .direction(scrollable::Direction::Vertical(
+            scrollable::Scrollbar::new()
+                .width(6)
+                .scroller_width(6)
+                .spacing(4),
+        ))
+        .height(Fill);
+    container(column![list, footer].spacing(8).padding([16, 10]))
+        .width(Length::Fixed(SIDEBAR_WIDTH))
+        .height(Fill)
+        .style(theme::side)
+        .into()
 }
 
 fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
@@ -184,8 +191,8 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             "This computer has listening history and playlists from before accounts were \
              recorded. Are they yours?",
             Some((
-                ("Keep Them", Message::ResolveOwner { keep: true }),
-                ("Erase Them", Message::ConfirmErase(true)),
+                ("Keep them", Message::ResolveOwner { keep: true }),
+                ("Erase them", Message::ConfirmErase(true)),
             )),
         ));
     }
@@ -216,24 +223,24 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         favourites: &signed.favourites,
         can_go_back: nav.can_go_back(),
         smart_search: app.smart.has_key(),
+        details: app.failure_details,
     };
     let page = match &entry.page {
         Page::Settings(state) => screens::settings::view(
             state,
-            &app.config.settings,
-            app.config.account.as_ref(),
             crate::sync::Status {
                 available: signed.sync.is_some(),
                 running: signed.throttle.is_running(),
                 last: signed.sync_status.as_ref(),
             },
             &view,
-            crate::system::settings_sections(app),
+            app,
             crate::listening::SettingsExtras {
                 config: &app.config,
                 listening: &app.listening,
                 device_fell_back: app.playback.device_fell_back(),
             },
+            content_width(app, signed) >= screens::settings::WIDE_ENOUGH,
         ),
         Page::Equalizer(state) => {
             screens::equalizer::view(state, &app.config.sound, app.playback.sample_rate(), &view)
@@ -245,6 +252,16 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         .height(Fill)
         .style(theme::page)
         .into()
+}
+
+/// The width the page has: the window's, less the sidebar and the panel.
+fn content_width(app: &App, signed: &Signed) -> f32 {
+    let panel = if signed.panel.is_some() {
+        now_playing::WIDTH + 1.0
+    } else {
+        0.0
+    };
+    app.config.window.width - SIDEBAR_WIDTH - panel
 }
 
 /// A line across the top of the content: something to know, with a way to

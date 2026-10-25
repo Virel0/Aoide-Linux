@@ -87,7 +87,7 @@ pub async fn tune(
     let items = client
         .instant_mix_from(&seed, LENGTH)
         .await
-        .map_err(|e| crate::session::describe(&e))?;
+        .map_err(|e| crate::failure::describe(&e).to_string())?;
     let ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
     let hidden = store
         .call(move |w| w.store.not_interested(&ids).unwrap_or_default())
@@ -110,7 +110,7 @@ pub fn start_button<'a>(station: Station) -> Element<'a, Message> {
     button(
         row![
             icon(Icon::Radio, 14.0, Tone::Accent),
-            text("Start Radio").wrapping(text::Wrapping::None)
+            text("Start radio").wrapping(text::Wrapping::None)
         ]
         .spacing(6)
         .align_y(Center),

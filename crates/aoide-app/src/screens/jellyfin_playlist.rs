@@ -12,6 +12,7 @@ use super::{Ctx, Load, PageMsg, Section, View, fetch};
 use crate::actions::PlayRequest;
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::icons::{Icon, Tone, icon};
 use crate::playback::tracks::TrackMeta;
 use crate::{theme, widgets};
@@ -32,7 +33,7 @@ pub fn admin_error(error: &aoide_jellyfin::Error, what: &str) -> String {
             "Only an administrator of this Jellyfin server can {what}. The server refused \
              (HTTP 403 Forbidden)."
         ),
-        other => crate::session::describe(other),
+        other => crate::failure::describe(other).to_string(),
     }
 }
 
@@ -48,7 +49,7 @@ pub struct State {
     renaming: Option<String>,
     confirm_delete: bool,
     editing: bool,
-    error: Option<String>,
+    error: Option<Failure>,
     /// What the last cover change said.
     cover_note: Option<String>,
     busy: bool,
@@ -56,23 +57,23 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Item(Result<Vec<Item>, String>),
-    Entries(Result<Vec<PlaylistEntry>, String>),
+    Item(Result<Vec<Item>, Failure>),
+    Entries(Result<Vec<PlaylistEntry>, Failure>),
     Reload,
     Rename,
     RenameText(String),
     SaveName,
-    Renamed(Result<String, String>),
+    Renamed(Result<String, Failure>),
     Delete,
     ConfirmDelete(bool),
-    Deleted(Result<(), String>),
+    Deleted(Result<(), Failure>),
     Edit(bool),
     Move {
         entry: String,
         up: bool,
     },
     Remove(String),
-    Edited(Result<(), String>),
+    Edited(Result<(), Failure>),
     ChooseCover,
     /// The file picked, read: its bytes, or why not.
     CoverFile(Option<Result<Vec<u8>, String>>),
@@ -219,7 +220,7 @@ impl State {
                     Task::done(App::JellyfinPlaylistChanged(None))
                 }
                 Err(error) => {
-                    self.error = Some(format!("The playlist couldn't be renamed: {error}"));
+                    self.error = Some(error.after("The playlist couldn't be renamed."));
                     Task::none()
                 }
             },
@@ -240,7 +241,7 @@ impl State {
             Message::Deleted(Ok(())) => Task::done(App::JellyfinPlaylistChanged(None))
                 .chain(Task::done(App::Section(Section::JellyfinPlaylists))),
             Message::Deleted(Err(error)) => {
-                self.error = Some(format!("The playlist couldn't be deleted: {error}"));
+                self.error = Some(error.after("The playlist couldn't be deleted."));
                 Task::none()
             }
             Message::Edit(on) => {
@@ -413,11 +414,11 @@ impl State {
         });
         tools = tools
             .push(small(
-                "Choose Cover…",
+                "Choose cover…",
                 (!self.busy).then_some(Message::ChooseCover),
             ))
             .push(small(
-                "Remove Cover",
+                "Remove cover",
                 (!self.busy && self.art.is_some()).then_some(Message::RemoveCover),
             ));
         tools = tools.push(
@@ -444,20 +445,15 @@ impl State {
         let mut info = column![
             title,
             widgets::secondary(format!("Jellyfin playlist · {count}")).size(13),
-            row![
-                widgets::play_buttons(
-                    tracks,
-                    format!("{key}:jellyfin-playlist"),
-                    PlaySource::Playlist
-                ),
-                crate::radio::start_button(crate::radio::Station::new(
+            widgets::play_buttons_with(
+                tracks,
+                format!("{key}:jellyfin-playlist"),
+                PlaySource::Playlist,
+                vec![crate::radio::start_button(crate::radio::Station::new(
                     aoide_jellyfin::MixSeed::Playlist(self.id.clone()),
                     self.name.clone(),
-                )),
-            ]
-            .spacing(10)
-            .wrap()
-            .vertical_spacing(10),
+                ))],
+            ),
             tools.wrap().vertical_spacing(8),
         ]
         .spacing(10)
@@ -484,11 +480,11 @@ impl State {
             body = body.push(widgets::menu_strip(menu, view));
         }
         if let Some(error) = &self.error {
-            body = body.push(widgets::failure(error));
+            body = body.push(view.problem(error));
         }
         body = body.push(match &self.tracks {
             Load::Loading => widgets::loading(),
-            Load::Failed(error) => widgets::failure(error),
+            Load::Failed(error) => view.failure(error),
             Load::Ready(tracks) if tracks.is_empty() => {
                 widgets::empty("No songs yet. Add some from any song's … menu.")
             }
@@ -598,6 +594,11 @@ mod tests {
         );
         assert!(said.contains("403"));
         let other = aoide_jellyfin::Error::Transport("refused".into());
-        assert!(admin_error(&other, "x").starts_with("Couldn't reach the server"));
+        let said = admin_error(&other, "x");
+        assert!(said.starts_with("Can't reach your server"), "{said}");
+        assert!(
+            !said.contains("refused"),
+            "the transport's text is for Details: {said}"
+        );
     }
 }

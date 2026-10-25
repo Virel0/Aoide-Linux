@@ -576,7 +576,7 @@ pub fn settings_row<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> {
         .unwrap_or_default();
     let address = state.address.as_deref().unwrap_or(saved);
     let mut rows = column![
-        text("Translation Server"),
+        text("Translation server"),
         widgets::secondary(
             "Your own LibreTranslate server translates lyrics that aren't in your language. \
              The lyrics go only to it. Leave the address empty to turn translation off; a new \
@@ -614,7 +614,7 @@ pub fn settings_row<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> {
         Some(false) => "No key is set. Only needed if your server asks for one.",
     };
     let mut key_row = row![
-        column![text("API Key"), widgets::secondary(key_line).size(13)]
+        column![text("API key"), widgets::secondary(key_line).size(13)]
             .spacing(2)
             .width(Fill)
     ]

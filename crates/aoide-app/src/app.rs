@@ -56,6 +56,8 @@ pub struct App {
     pub(crate) system: crate::system::State,
     /// Smart search's key and model picker.
     pub(crate) smart: crate::smart::State,
+    /// A failure's details are shown (until another page opens).
+    pub(crate) failure_details: bool,
     /// The player bar's menus, the sleep timer, private listening, the
     /// full-screen player.
     pub(crate) listening: crate::listening::State,
@@ -66,6 +68,15 @@ pub struct App {
 pub struct Entry {
     pub key: u64,
     pub page: Page,
+    /// Where it was opened from, to open it again for Retry.
+    pub origin: Origin,
+}
+
+/// What opened a page: a sidebar section, or a route from another page.
+#[derive(Debug, Clone)]
+pub enum Origin {
+    Section(Section),
+    Route(Route),
 }
 
 /// The right-hand panel.
@@ -152,9 +163,17 @@ pub enum Message {
     Synced(Result<SyncReport, String>),
     Libraries(Result<Vec<Item>, String>),
     Section(Section),
+    /// Settings, at one category: the command palette's way in.
+    OpenSettings(screens::settings::Category),
     Open(Route),
     Back,
     Page(u64, PageMsg),
+    /// What the page with this key failed to load: open it again.
+    Retry(u64),
+    /// Show (true) or hide a failure's details.
+    FailureDetails(bool),
+    /// The lyrics failed to load: ask again.
+    RetryLyrics,
     PlaylistsChanged,
     Playlists(Vec<PlaylistSummary>),
     Row(RowAction),
@@ -167,7 +186,7 @@ pub enum Message {
     ToppedUp(Box<TopUp>),
     Player(Transport),
     Queue(QueueAction),
-    Lyrics(String, Result<Option<Lyrics>, String>),
+    Lyrics(String, Result<Option<Lyrics>, crate::failure::Failure>),
     Notice(String),
     Dismiss,
     Ignore,
@@ -287,6 +306,7 @@ impl App {
             system,
             smart: crate::smart::State::default(),
             listening: crate::listening::State::default(),
+            failure_details: false,
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
         let update = Task::done(Message::Update(crate::updates::Message::Tick));
@@ -338,6 +358,7 @@ impl App {
         // Another page opened: it starts at its top, not at the offset the
         // last one was scrolled to (iced keeps one scroll state for both).
         if self.page_key() != page {
+            self.failure_details = false;
             task = Task::batch([
                 task,
                 iced::widget::operation::snap_to(
@@ -485,6 +506,30 @@ impl App {
                 self.show_section(section)
             }
             Message::Section(section) => self.show_section(section),
+            Message::Retry(key) => self.retry(key),
+            Message::FailureDetails(open) => {
+                self.failure_details = open;
+                Task::none()
+            }
+            Message::RetryLyrics => {
+                if let Some(signed) = self.session.as_mut() {
+                    signed.lyrics = None;
+                }
+                self.track_changed()
+            }
+            Message::OpenSettings(category) => {
+                let task = self.show_section(Section::Settings);
+                if let Some(Page::Settings(state)) = self
+                    .session
+                    .as_mut()
+                    .and_then(|s| s.nav.as_mut())
+                    .and_then(|nav| nav.iter_mut().last())
+                    .map(|e| &mut e.page)
+                {
+                    state.category = category;
+                }
+                task
+            }
             Message::Open(route) => self.open(route),
             Message::Back => {
                 if let Some(nav) = self.session.as_mut().and_then(|s| s.nav.as_mut()) {
@@ -572,6 +617,7 @@ impl App {
         }
         self.config.account = Some(connection.account.clone());
         self.config.last_server = Some(connection.account.server.clone());
+        crate::failure::set_server(Some(&connection.account.server));
         self.save_config();
 
         let sidecar = SidecarClient::new(&connection.account.server, connection.token()).ok();
@@ -672,7 +718,9 @@ impl App {
             async move { client.music_libraries().await },
             |result| match result {
                 Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
-                result => Message::Libraries(result.map_err(|e| session::describe(&e))),
+                result => {
+                    Message::Libraries(result.map_err(|e| crate::failure::describe(&e).to_string()))
+                }
             },
         )
     }
@@ -718,6 +766,7 @@ impl App {
             return Task::none();
         }
         self.phase = phase;
+        crate::failure::set_server(None);
         let report = self.final_report();
         let Some(signed) = self.session.take() else {
             return Task::none();
@@ -832,7 +881,11 @@ impl App {
             key,
         };
         let (page, task) = Page::section(&section, &ctx);
-        let entry = Entry { key, page };
+        let entry = Entry {
+            key,
+            page,
+            origin: Origin::Section(section),
+        };
         match signed.nav.as_mut() {
             Some(nav) => nav.reset(entry),
             None => signed.nav = Some(BackStack::new(entry)),
@@ -856,10 +909,49 @@ impl App {
             key,
         };
         let (page, task) = Page::route(&route, &ctx);
+        let entry = Entry {
+            key,
+            page,
+            origin: Origin::Route(route),
+        };
         match signed.nav.as_mut() {
-            Some(nav) => nav.push(Entry { key, page }),
-            None => signed.nav = Some(BackStack::new(Entry { key, page })),
+            Some(nav) => nav.push(entry),
+            None => signed.nav = Some(BackStack::new(entry)),
         }
+        task
+    }
+
+    /// Retry: the page opens again where it is in the stack, under a new key
+    /// so an answer still on its way to the old one goes nowhere, and runs
+    /// its requests again.
+    fn retry(&mut self, key: u64) -> Task<Message> {
+        let store = self.store.clone();
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let new_key = signed.next_key;
+        let Some(entry) = signed
+            .nav
+            .as_mut()
+            .and_then(|nav| nav.iter_mut().find(|e| e.key == key))
+        else {
+            return Task::none();
+        };
+        signed.next_key += 1;
+        signed.menu = None;
+        let ctx = Ctx {
+            client: &signed.connection.client,
+            library: signed.library.as_deref(),
+            store: &store,
+            key: new_key,
+        };
+        let (page, task) = match &entry.origin {
+            Origin::Section(section) => Page::section(section, &ctx),
+            Origin::Route(route) => Page::route(route, &ctx),
+        };
+        entry.key = new_key;
+        entry.page = page;
+        self.failure_details = false;
         task
     }
 
@@ -927,6 +1019,11 @@ impl App {
                 )
                 .chain(reload);
             }
+            // Another pane starts at its top.
+            S::Category(_) => iced::widget::operation::snap_to(
+                crate::widgets::PAGE,
+                iced::widget::scrollable::RelativeOffset::START,
+            ),
             _ => Task::none(),
         };
         if let Some(Page::Settings(state)) = self
@@ -1024,7 +1121,9 @@ impl App {
                             result
                                 .map(|items| items.iter().map(TrackMeta::from_item).collect())
                                 .map_err(|failure| match failure {
-                                    crate::actions::Failure::Server(e) => session::describe(&e),
+                                    crate::actions::Failure::Server(e) => {
+                                        crate::failure::describe(&e).to_string()
+                                    }
                                     crate::actions::Failure::Store(e) => e,
                                 }),
                         )),
@@ -1218,7 +1317,7 @@ impl App {
                             track.id.clone(),
                             result
                                 .map(|data| data.is_favorite)
-                                .map_err(|e| session::describe(&e)),
+                                .map_err(|e| crate::failure::describe(&e).to_string()),
                         ),
                     },
                 )
@@ -1346,7 +1445,7 @@ impl App {
                 Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
                 result => Message::Listening(crate::listening::Msg::LyricsFound(
                     item,
-                    result.map_err(|e| session::describe(&e)),
+                    result.map_err(|e| crate::failure::describe(&e)),
                 )),
             },
         )

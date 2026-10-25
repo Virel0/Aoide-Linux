@@ -9,6 +9,7 @@ use iced::{Element, Task};
 use super::{Ctx, Load, PageMsg, Route, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
 use crate::{theme, widgets};
@@ -43,9 +44,9 @@ pub struct State {
 #[derive(Debug, Clone)]
 pub enum Message {
     Tab(Tab),
-    Songs(Result<Vec<Item>, String>),
-    Albums(Result<Vec<Item>, String>),
-    Artists(Result<Vec<Item>, String>),
+    Songs(Result<Vec<Item>, Failure>),
+    Albums(Result<Vec<Item>, Failure>),
+    Artists(Result<Vec<Item>, Failure>),
 }
 
 /// Only favourites, by name, everything at once: a favourites list is short.
@@ -157,7 +158,7 @@ impl State {
         let content = match self.tab {
             Tab::Songs => match &self.songs {
                 Load::Loading => widgets::loading(),
-                Load::Failed(error) => widgets::failure(error),
+                Load::Failed(error) => view.failure(error),
                 Load::Ready(songs) if songs.is_empty() => {
                     widgets::empty("No favourite songs yet. Mark one from any song's … menu.")
                 }
@@ -178,7 +179,7 @@ impl State {
             },
             Tab::Albums => match &self.albums {
                 Load::Loading => widgets::loading(),
-                Load::Failed(error) => widgets::failure(error),
+                Load::Failed(error) => view.failure(error),
                 Load::Ready(tiles) if tiles.is_empty() => {
                     widgets::empty("No favourite albums yet.")
                 }
@@ -188,7 +189,7 @@ impl State {
             },
             Tab::Artists => match &self.artists {
                 Load::Loading => widgets::loading(),
-                Load::Failed(error) => widgets::failure(error),
+                Load::Failed(error) => view.failure(error),
                 Load::Ready(tiles) if tiles.is_empty() => {
                     widgets::empty("No favourite artists yet.")
                 }

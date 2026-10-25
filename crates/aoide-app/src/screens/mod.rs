@@ -40,7 +40,7 @@ use iced::{Element, Task};
 use crate::actions::Menu;
 use crate::app::Message;
 use crate::artwork::{ArtKey, Artwork};
-use crate::session;
+use crate::failure::{self, Failure};
 use crate::store_worker::StoreHandle;
 
 /// A sidebar entry.
@@ -94,8 +94,8 @@ impl Section {
             Section::Mixes => "Mixes",
             Section::Favourites => "Favourites",
             Section::Replay => "Replay",
-            Section::JellyfinPlaylists => "Jellyfin Playlists",
-            Section::Collections => "New Collection",
+            Section::JellyfinPlaylists => "Jellyfin playlists",
+            Section::Collections => "New collection",
             Section::Collection(_) => "Collection",
         }
     }
@@ -149,6 +149,21 @@ pub struct View<'a> {
     pub can_go_back: bool,
     /// An OpenRouter key is set: Search offers search by description.
     pub smart_search: bool,
+    /// A failure's details are shown.
+    pub details: bool,
+}
+
+impl<'a> View<'a> {
+    /// What failed to load on this page, with Retry, which opens the page
+    /// again and so runs its requests again.
+    pub fn failure(&self, failure: &'a Failure) -> Element<'a, Message> {
+        crate::widgets::failure(failure, Some(Message::Retry(self.key)), self.details)
+    }
+
+    /// An action that failed: its words and details, nothing to retry.
+    pub fn problem(&self, failure: &'a Failure) -> Element<'a, Message> {
+        crate::widgets::failure(failure, None, self.details)
+    }
 }
 
 /// Something being fetched.
@@ -156,14 +171,14 @@ pub struct View<'a> {
 pub enum Load<T> {
     Loading,
     Ready(T),
-    Failed(String),
+    Failed(Failure),
 }
 
 impl<T> Load<T> {
-    pub fn from(result: Result<T, String>) -> Self {
+    pub fn from(result: Result<T, impl Into<Failure>>) -> Self {
         match result {
             Ok(value) => Load::Ready(value),
-            Err(error) => Load::Failed(error),
+            Err(error) => Load::Failed(error.into()),
         }
     }
 
@@ -180,11 +195,11 @@ impl<T> Load<T> {
 pub fn fetch<T: Send + 'static>(
     key: u64,
     request: impl Future<Output = Result<T, aoide_jellyfin::Error>> + Send + 'static,
-    wrap: impl Fn(Result<T, String>) -> PageMsg + Send + 'static,
+    wrap: impl Fn(Result<T, Failure>) -> PageMsg + Send + 'static,
 ) -> Task<Message> {
     Task::perform(request, move |result| match result {
         Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
-        result => Message::Page(key, wrap(result.map_err(|e| session::describe(&e)))),
+        result => Message::Page(key, wrap(result.map_err(|e| failure::describe(&e)))),
     })
 }
 

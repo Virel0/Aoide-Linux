@@ -11,6 +11,8 @@ pub struct Tile {
     pub title: String,
     pub subtitle: String,
     pub art: Option<ArtKey>,
+    /// Drawn round: an artist's own picture, as Apple Music shows artists.
+    pub round: bool,
 }
 
 impl Tile {
@@ -25,9 +27,12 @@ impl Tile {
             title: item.name.clone(),
             subtitle,
             art: item.artwork_source().map(|(id, tag)| ArtKey::new(id, tag)),
+            round: false,
         }
     }
 
+    /// An artist, with the artist's own picture (Jellyfin's Primary image
+    /// for the artist) when there is one.
     pub fn artist(item: &Item) -> Self {
         let subtitle = match item.child_count {
             Some(1) => "1 album".to_owned(),
@@ -38,7 +43,11 @@ impl Tile {
             id: item.id.clone(),
             title: item.name.clone(),
             subtitle,
-            art: item.artwork_source().map(|(id, tag)| ArtKey::new(id, tag)),
+            art: item
+                .image_tags
+                .get("Primary")
+                .map(|tag| ArtKey::new(&item.id, tag)),
+            round: true,
         }
     }
 
@@ -58,6 +67,7 @@ impl Tile {
                 .album_primary_image_tag
                 .clone()
                 .map(|tag| ArtKey::new(album_id, tag)),
+            round: false,
         })
     }
 }
@@ -96,5 +106,26 @@ mod tests {
         assert_eq!(ids, ["A", "B"]);
         assert_eq!(tiles[0].art, Some(ArtKey::new("A", "x")));
         assert_eq!(tiles[1].art, None);
+        assert!(!tiles[0].round);
+    }
+
+    #[test]
+    fn an_artist_tile_is_round_and_shows_the_artist_s_own_picture() {
+        let pictured = Tile::artist(&item(serde_json::json!({
+            "Id": "ar1", "Name": "Mara Vey", "Type": "MusicArtist", "ChildCount": 2,
+            "ImageTags": {"Primary": "p1"},
+        })));
+        assert!(pictured.round);
+        assert_eq!(pictured.art, Some(ArtKey::new("ar1", "p1")));
+        assert_eq!(pictured.subtitle, "2 albums");
+        let bare = Tile::artist(&item(
+            serde_json::json!({"Id": "ar2", "Name": "Odd Hours", "Type": "MusicArtist"}),
+        ));
+        assert!(bare.round);
+        assert_eq!(bare.art, None, "a round placeholder stands in");
+        let album = Tile::album(&item(serde_json::json!({
+            "Id": "al1", "Name": "Low Tide Radio", "ImageTags": {"Primary": "c1"},
+        })));
+        assert!(!album.round);
     }
 }

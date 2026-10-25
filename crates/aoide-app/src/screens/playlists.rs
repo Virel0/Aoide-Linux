@@ -339,11 +339,11 @@ impl State {
                 .style(theme::tonal)
                 .padding([8, 14])
                 .on_press(App::Open(Route::Import)),
-            button(text("New Folder…"))
+            button(text("New folder…"))
                 .style(theme::tonal)
                 .padding([8, 14])
                 .on_press(message(Message::NewFolder(Some(String::new())))),
-            button(text("New Playlist"))
+            button(text("New playlist"))
                 .style(theme::filled)
                 .padding([8, 14])
                 .on_press_maybe(
@@ -353,8 +353,7 @@ impl State {
         .spacing(10)
         .align_y(Center);
         let mut body = column![
-            widgets::title_bar("Playlists", view.can_go_back),
-            super::jellyfin_playlists::switcher(false),
+            super::jellyfin_playlists::header(false, view.can_go_back),
             create
         ]
         .spacing(20);
@@ -362,7 +361,7 @@ impl State {
         // Where we are: All Playlists › Folder › Folder, each a way back up.
         if shown.is_some() {
             let mut path = row![
-                button(text("All Playlists").size(14))
+                button(text("All playlists").size(14))
                     .style(theme::row)
                     .padding([4, 6])
                     .on_press(message(Message::Enter(None)))
@@ -388,7 +387,7 @@ impl State {
                         .on_submit(message(Message::CreateFolder))
                         .padding(8)
                         .style(theme::field),
-                    button(text("Make Folder"))
+                    button(text("Make folder"))
                         .style(theme::filled)
                         .padding([8, 14])
                         .on_press_maybe(
@@ -404,7 +403,7 @@ impl State {
             );
         }
         if let Some(error) = &self.error {
-            body = body.push(widgets::failure(error));
+            body = body.push(widgets::plain_failure(error));
         }
 
         let children = folders.children(shown);

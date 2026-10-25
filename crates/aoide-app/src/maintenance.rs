@@ -146,7 +146,7 @@ pub fn caches(paths: &crate::config::Paths) -> Vec<Cache> {
     }];
     if let Some(dir) = crate::lyrics_online::cache_dir(paths) {
         all.push(Cache {
-            name: "Internet Lyrics",
+            name: "Internet lyrics",
             dir,
             clears: "the lyrics found on LRCLIB, and the songs it had none for; they are looked up \
                      again when played",
@@ -352,7 +352,7 @@ pub fn settings_sections(app: &App) -> Element<'_, AppMessage> {
         file_rows = file_rows.push(widgets::secondary(words.as_str()).size(13));
     }
     let file = crate::screens::settings::section(
-        "Settings File",
+        "Settings file",
         file_rows,
         "Export writes these settings to a JSON file, to keep or to bring to another computer; \
          Import reads one back. The file never holds your server, account, password, token or \

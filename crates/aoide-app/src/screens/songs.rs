@@ -7,6 +7,7 @@ use iced::{Element, Task};
 
 use super::{Ctx, PageMsg, View, fetch};
 use crate::app::Message as App;
+use crate::failure::Failure;
 use crate::playback::tracks::TrackMeta;
 use crate::widgets::{self, ListStyle};
 
@@ -17,12 +18,12 @@ pub struct State {
     pub tracks: Vec<TrackMeta>,
     total: Option<u32>,
     loading: bool,
-    error: Option<String>,
+    error: Option<Failure>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Loaded(Result<ItemPage<Item>, String>),
+    Loaded(Result<ItemPage<Item>, Failure>),
     More,
 }
 
@@ -92,7 +93,7 @@ impl State {
         ]
         .spacing(16);
         if let Some(error) = &self.error {
-            body = body.push(widgets::failure(error));
+            body = body.push(view.failure(error));
         } else if self.total.is_none_or(|t| (self.tracks.len() as u32) < t) {
             body = body.push(
                 sensor(widgets::loading())

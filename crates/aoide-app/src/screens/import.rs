@@ -66,7 +66,7 @@ impl JellyfinSearch for LibrarySearch {
                 .songs(&query)
                 .await
                 .map(|page| page.items.iter().map(library_track).collect())
-                .map_err(|e| crate::session::describe(&e))
+                .map_err(|e| crate::failure::describe(&e).to_string())
         }
     }
 }
@@ -317,7 +317,7 @@ impl State {
                         let items = client
                             .items_by_ids(&ids)
                             .await
-                            .map_err(|e| crate::session::describe(&e))?;
+                            .map_err(|e| crate::failure::describe(&e).to_string())?;
                         let tracks: Vec<TrackMeta> =
                             items.iter().map(TrackMeta::from_item).collect();
                         let now = aoide_store::now_millis();
@@ -370,7 +370,7 @@ impl State {
         let key = view.key;
         let message = move |m: Message| App::Page(key, PageMsg::Import(m));
         let mut body = column![
-            widgets::title_bar("Import a Playlist", view.can_go_back),
+            widgets::title_bar("Import a playlist", view.can_go_back),
             widgets::secondary(
                 "Bring a playlist from Spotify or another service. Aoide looks for each song \
                  in your library and saves the ones it finds as an Aoide playlist."
@@ -400,7 +400,7 @@ impl State {
                     .push(
                         row![
                             widgets::secondary("Or a CSV export (Exportify and similar):").size(13),
-                            button(text("Choose a CSV File…").size(13))
+                            button(text("Choose a CSV file…").size(13))
                                 .style(theme::tonal)
                                 .padding([6, 12])
                                 .on_press(message(Message::ChooseCsv)),
@@ -426,7 +426,7 @@ impl State {
             Step::Matched(found) => body = body.push(self.matched(&found.0, &found.1, view)),
         }
         if let Some(error) = &self.error {
-            body = body.push(widgets::failure(error));
+            body = body.push(widgets::plain_failure(error));
         }
         if let Some(note) = &self.note {
             body = body.push(widgets::secondary(note.as_str()).size(13));
@@ -461,8 +461,8 @@ impl State {
                     .padding(8)
                     .style(theme::field),
                 button(text(match found {
-                    1 => "Save 1 Song".to_owned(),
-                    n => format!("Save {n} Songs"),
+                    1 => "Save 1 song".to_owned(),
+                    n => format!("Save {n} songs"),
                 }))
                 .style(theme::filled)
                 .padding([8, 14])
@@ -473,7 +473,7 @@ impl State {
         );
         let missing = result.missing();
         let mut tools = row![
-            button(text("Start Over").size(13))
+            button(text("Start over").size(13))
                 .style(theme::tonal)
                 .padding([6, 12])
                 .on_press(message(Message::StartOver)),
@@ -481,7 +481,7 @@ impl State {
         .spacing(8);
         if !missing.is_empty() {
             tools = tools.push(
-                button(text("Copy Missing Songs").size(13))
+                button(text("Copy missing songs").size(13))
                     .style(theme::tonal)
                     .padding([6, 12])
                     .on_press(message(Message::CopyMissing)),
@@ -515,7 +515,7 @@ impl State {
         if !lack.is_empty() {
             column = column
                 .push(
-                    text(format!("Not in Your Library ({})", lack.len()))
+                    text(format!("Not in your library ({})", lack.len()))
                         .size(17)
                         .font(widgets::BOLD),
                 )

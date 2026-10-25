@@ -11,7 +11,7 @@
 use std::time::{Duration, SystemTime};
 
 use aoide_integrations::update::{Release, UpdateCheck, UpdateChecker, UpdateState, tag_version};
-use iced::widget::{Column, button, column, container, row, scrollable, text, toggler};
+use iced::widget::{Column, button, column, container, row, scrollable, text};
 use iced::{Center, Element, Fill, Subscription, Task};
 use serde::{Deserialize, Serialize};
 
@@ -61,7 +61,7 @@ pub struct UpdateSettings {
     pub state: UpdateState,
     /// The newer release last found.
     pub available: Option<SavedRelease>,
-    /// A version the listener said "Not Now" to.
+    /// A version the listener said "Not now" to.
     pub dismissed: Option<String>,
 }
 
@@ -288,11 +288,11 @@ pub fn banner(app: &App) -> Option<Element<'_, AppMessage>> {
         text(format!("Aoide {} is out.", release.version))
             .size(13)
             .width(Fill),
-        button(text("What's New").size(13))
+        button(text("What's new").size(13))
             .style(theme::row)
             .padding([2, 8])
             .on_press(send(Message::ShowNotes(true))),
-        button(text("Not Now").size(13))
+        button(text("Not now").size(13))
             .style(theme::row)
             .padding([2, 8])
             .on_press(send(Message::NotNow)),
@@ -324,7 +324,7 @@ pub fn notes(app: &App) -> Option<Element<'_, AppMessage>> {
     let mut actions = row![].spacing(8);
     if release.page.is_some() {
         actions = actions.push(
-            button(text("Open Release Page").size(14))
+            button(text("Open release page").size(14))
                 .style(theme::filled)
                 .padding([6, 14])
                 .on_press(send(Message::OpenPage)),
@@ -332,7 +332,7 @@ pub fn notes(app: &App) -> Option<Element<'_, AppMessage>> {
     }
     actions = actions
         .push(
-            button(text("Not Now").size(14))
+            button(text("Not now").size(14))
                 .style(theme::tonal)
                 .padding([6, 14])
                 .on_press(send(Message::NotNow)),
@@ -367,11 +367,9 @@ pub fn settings_section<'a>(
 ) -> Element<'a, AppMessage> {
     let send = |m: Message| AppMessage::Update(m);
     let mut rows = column![
-        toggler(settings.check)
-            .style(theme::switch)
-            .label("Check for Updates")
-            .width(Fill)
-            .on_toggle(|on| AppMessage::Update(Message::Check(on))),
+        widgets::switch("Check for updates", settings.check, |on| {
+            AppMessage::Update(Message::Check(on))
+        }),
         widgets::secondary(format!("This is Aoide for Linux {CURRENT}.")).size(13),
     ];
     if settings.check {
@@ -387,7 +385,7 @@ pub fn settings_section<'a>(
         rows = rows.push(
             row![
                 widgets::secondary(words).size(13).width(Fill),
-                button(text("Check Now").size(13))
+                button(text("Check now").size(13))
                     .style(theme::tonal)
                     .padding([4, 10])
                     .on_press_maybe((!state.checking).then(|| send(Message::CheckNow))),

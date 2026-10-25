@@ -162,7 +162,7 @@ pub fn settings_row(sound: &SoundSettings) -> Element<'_, AppMsg> {
     );
     row![
         column![
-            text("Equaliser and Compressor"),
+            text("Equaliser and compressor"),
             widgets::secondary(summary).size(13)
         ]
         .spacing(2)
@@ -209,7 +209,7 @@ pub fn view<'a>(
     let message = wrap(view.key);
     widgets::page(
         column![
-            widgets::title_bar("Equaliser and Compressor", view.can_go_back),
+            widgets::title_bar("Equaliser and compressor", view.can_go_back),
             equalizer(state, &sound.equalizer, sample_rate, message),
             compressor(&sound.compressor, message),
         ]
@@ -242,7 +242,7 @@ fn equalizer<'a>(
     .align_y(Center);
     if eq.is_user_preset(&label) {
         presets = presets.push(
-            button(text("Delete Preset").size(13))
+            button(text("Delete preset").size(13))
                 .style(theme::destructive)
                 .padding([6, 12])
                 .on_press(message(Message::DeletePreset(label.clone()))),
@@ -258,7 +258,7 @@ fn equalizer<'a>(
             .style(theme::field),
     );
     presets = presets.push(
-        button(text("Save Preset").size(13))
+        button(text("Save preset").size(13))
             .style(theme::tonal)
             .padding([6, 12])
             .on_press_maybe((!state.name.trim().is_empty()).then(|| message(Message::SavePreset))),

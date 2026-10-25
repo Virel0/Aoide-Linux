@@ -29,7 +29,9 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     };
     let lyrics = match &state.lyrics {
         Load::Loading => return widgets::loading(),
-        Load::Failed(error) => return widgets::failure(error),
+        Load::Failed(error) => {
+            return widgets::failure(error, Some(Message::RetryLyrics), app.failure_details);
+        }
         Load::Ready(None) => return widgets::empty("No lyrics for this song."),
         Load::Ready(Some(lyrics)) => lyrics,
     };

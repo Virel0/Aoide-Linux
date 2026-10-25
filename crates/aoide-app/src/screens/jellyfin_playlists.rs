@@ -9,6 +9,7 @@ use iced::{Center, Element, Fill, Task};
 use super::{Ctx, Load, Page, PageMsg, Route, Section, View, fetch};
 use crate::actions::{Collection, RowAction};
 use crate::app::{App, Message as AppMessage};
+use crate::failure::Failure;
 use crate::icons::{Icon, Tone, icon};
 use crate::{theme, widgets};
 
@@ -41,7 +42,18 @@ pub fn query() -> ListQuery {
 }
 
 /// The two kinds of playlist, side by side at the top of the page.
-pub fn switcher<'a>(jellyfin: bool) -> Element<'a, AppMessage> {
+/// The title and the two tabs, laid out alike on both pages, so the tabs stay
+/// where they are when switching between them.
+pub fn header<'a>(jellyfin: bool, can_go_back: bool) -> Element<'a, AppMessage> {
+    column![
+        widgets::title_bar("Playlists", can_go_back),
+        switcher(jellyfin)
+    ]
+    .spacing(20)
+    .into()
+}
+
+fn switcher<'a>(jellyfin: bool) -> Element<'a, AppMessage> {
     let tab = |label: &'a str, selected: bool, section: Section| {
         button(text(label).size(14))
             .style(if selected {
@@ -53,8 +65,8 @@ pub fn switcher<'a>(jellyfin: bool) -> Element<'a, AppMessage> {
             .on_press(AppMessage::Section(section))
     };
     row![
-        tab("Aoide Playlists", !jellyfin, Section::Playlists),
-        tab("Jellyfin Playlists", jellyfin, Section::JellyfinPlaylists),
+        tab("Aoide playlists", !jellyfin, Section::Playlists),
+        tab("Jellyfin playlists", jellyfin, Section::JellyfinPlaylists),
     ]
     .spacing(8)
     .into()
@@ -65,16 +77,16 @@ pub struct State {
     pub playlists: Load<Vec<Summary>>,
     new_name: String,
     creating: bool,
-    error: Option<String>,
+    error: Option<Failure>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Loaded(Result<Vec<Item>, String>),
+    Loaded(Result<Vec<Item>, Failure>),
     Reload,
     NewName(String),
     Create,
-    Created(Result<String, String>),
+    Created(Result<String, Failure>),
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<AppMessage>) {
@@ -133,7 +145,7 @@ impl State {
                         load(ctx)
                     }
                     Err(error) => {
-                        self.error = Some(format!("The playlist couldn't be made: {error}"));
+                        self.error = Some(error.after("The playlist couldn't be made."));
                         Task::none()
                     }
                 }
@@ -154,7 +166,7 @@ impl State {
             button(text(if self.creating {
                 "Making…"
             } else {
-                "New Playlist"
+                "New playlist"
             }))
             .style(theme::filled)
             .padding([8, 14])
@@ -163,8 +175,7 @@ impl State {
         .spacing(10)
         .align_y(Center);
         let mut body = column![
-            widgets::title_bar("Playlists", view.can_go_back),
-            switcher(true),
+            header(true, view.can_go_back),
             widgets::secondary(
                 "Playlists kept by your Jellyfin server, which every Jellyfin app sees. \
                  Aoide playlists sync between Aoide apps and can be smart."
@@ -174,11 +185,11 @@ impl State {
         ]
         .spacing(16);
         if let Some(error) = &self.error {
-            body = body.push(widgets::failure(error));
+            body = body.push(view.problem(error));
         }
         let list: Element<'a, AppMessage> = match &self.playlists {
             Load::Loading => widgets::loading(),
-            Load::Failed(error) => widgets::failure(error),
+            Load::Failed(error) => view.failure(error),
             Load::Ready(lists) if lists.is_empty() => {
                 widgets::empty("This server has no playlists you can see yet.")
             }
@@ -275,7 +286,7 @@ impl App {
                 result => AppMessage::Row(RowAction::JellyfinPlaylists(
                     result
                         .map(|page| page.items.into_iter().map(|i| (i.id, i.name)).collect())
-                        .map_err(|e| crate::session::describe(&e)),
+                        .map_err(|e| crate::failure::describe(&e).to_string()),
                 )),
             },
         )
@@ -306,8 +317,8 @@ impl App {
                         Ok(()) => AppMessage::JellyfinPlaylistChanged(Some(changed.clone())),
                         Err(aoide_jellyfin::Error::Unauthorized) => AppMessage::TokenRejected,
                         Err(error) => AppMessage::Notice(format!(
-                            "The songs couldn't be added: {}",
-                            crate::session::describe(&error)
+                            "The songs couldn't be added. {}",
+                            crate::failure::describe(&error)
                         )),
                     },
                 )

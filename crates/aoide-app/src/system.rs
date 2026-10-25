@@ -3,7 +3,7 @@
 //! ([`State`]).
 
 use iced::Element;
-use iced::widget::{center, column, container, mouse_area, opaque, text};
+use iced::widget::{center, column, container, mouse_area, opaque};
 use serde::{Deserialize, Serialize};
 
 use crate::app::{App, Message};
@@ -62,11 +62,10 @@ impl App {
     }
 }
 
-/// Smart Search, then the System sections under their heading.
+/// Settings → System: the tray, Discord, updates, the settings file, logging
+/// and the caches.
 pub fn settings_sections(app: &App) -> Element<'_, Message> {
     column![
-        crate::smart::settings_section(&app.smart, &app.config.system.smart_search),
-        text("System").size(20).font(crate::widgets::BOLD),
         crate::tray::settings_section(&app.config.system.tray, &app.system.tray.status),
         crate::discord::settings_section(&app.config.system.discord, app.system.discord_status),
         crate::updates::settings_section(&app.config.system.updates, &app.system.updates),

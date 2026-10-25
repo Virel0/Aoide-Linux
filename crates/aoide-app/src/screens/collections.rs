@@ -6,13 +6,14 @@
 
 use aoide_jellyfin::{Item, ItemKind, ListQuery, QueryFilters, Sort, SortOrder};
 use aoide_store::PlaySource;
-use iced::widget::{Column, button, column, row, text, text_input, toggler};
+use iced::widget::{Column, button, column, row, text, text_input};
 use iced::{Center, Element, Fill, Task};
 use serde::{Deserialize, Serialize};
 
 use super::{Ctx, Load, PageMsg, Section, View, fetch};
 use crate::app::{App, Message as AppMessage};
 use crate::artwork::ArtKey;
+use crate::failure::Failure;
 use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
 use crate::{theme, widgets};
@@ -145,15 +146,15 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Filters(Result<QueryFilters, String>),
+    Filters(Result<QueryFilters, Failure>),
     Saved(Option<SavedFilter>),
     Kind(Kind),
     Genre(String, String),
     Year(i32),
     Tag(String),
     Favourites(bool),
-    Songs(Result<Vec<Item>, String>),
-    Albums(Result<Vec<Item>, String>),
+    Songs(Result<Vec<Item>, Failure>),
+    Albums(Result<Vec<Item>, Failure>),
     Name(String),
     Save,
     Delete,
@@ -312,7 +313,7 @@ impl State {
         let title = if self.saved {
             self.filter.name.as_str()
         } else {
-            "New Collection"
+            "New collection"
         };
         let chip = |label: String, on: bool, m: Message| -> Element<'a, AppMessage> {
             button(text(label).size(13))
@@ -342,7 +343,7 @@ impl State {
         .spacing(14);
         match &self.filters {
             Load::Loading => body = body.push(widgets::loading()),
-            Load::Failed(error) => body = body.push(widgets::failure(error)),
+            Load::Failed(error) => body = body.push(view.failure(error)),
             Load::Ready(filters) => {
                 let group = |label: &'a str, chips: Vec<Element<'a, AppMessage>>| {
                     column![
@@ -402,10 +403,10 @@ impl State {
             }
         }
         body = body.push(
-            toggler(self.filter.favourites_only)
-                .style(theme::switch)
-                .label("Only favourites")
-                .on_toggle(move |on| message(Message::Favourites(on))),
+            widgets::switch("Only favourites", self.filter.favourites_only, move |on| {
+                message(Message::Favourites(on))
+            })
+            .width(iced::Length::Fixed(260.0)),
         );
         let ready = !self.name.trim().is_empty();
         let mut save = row![
@@ -415,9 +416,9 @@ impl State {
                 .padding(8)
                 .style(theme::field),
             button(text(if self.saved {
-                "Save Changes"
+                "Save changes"
             } else {
-                "Save as Collection"
+                "Save as collection"
             }))
             .style(theme::filled)
             .padding([8, 14])
@@ -454,7 +455,7 @@ impl State {
         body = body.push(match self.filter.kind {
             Kind::Songs => match &self.songs {
                 Load::Loading => widgets::loading(),
-                Load::Failed(error) => widgets::failure(error),
+                Load::Failed(error) => view.failure(error),
                 Load::Ready(songs) if songs.is_empty() => {
                     widgets::empty("Nothing matches this filter.")
                 }
@@ -475,7 +476,7 @@ impl State {
             },
             Kind::Albums => match &self.albums {
                 Load::Loading => widgets::loading(),
-                Load::Failed(error) => widgets::failure(error),
+                Load::Failed(error) => view.failure(error),
                 Load::Ready(tiles) if tiles.is_empty() => {
                     widgets::empty("Nothing matches this filter.")
                 }
