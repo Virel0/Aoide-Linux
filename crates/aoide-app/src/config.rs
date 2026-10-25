@@ -272,6 +272,8 @@ mod tests {
             },
             interface: crate::appearance::InterfaceSettings {
                 track_in_title: false,
+                appearance: crate::appearance::Appearance::Dark,
+                accent: crate::appearance::Accent::Teal,
             },
         };
         config.save(&path).unwrap();

@@ -84,7 +84,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Single instance (second launch focuses the window) | 1 | 🟨 | Decided in `main.rs` before any window: a second launch calls Raise on the first (un-minimise and focus) and exits 0. Not yet run on a Linux desktop; macOS has no D-Bus, so every launch is first there |
 | Window size and position remembered | 1 | ✅ | |
 | Track info in the window title | 2 | ✅ | "Title — Artist · Aoide" while a song plays, "Aoide" when paused or stopped; Settings → General → Show the Song in the Window Title (on by default) turns it off. Seen in the macOS title bar against the stand-in server; not yet in a Linux task bar |
-| Accent colour and light/dark/system appearance | 2 | ⬜ | |
+| Accent colour and light/dark/system appearance | 2 | ✅ | Settings → General: System / Light / Dark, and six accents (Violet, Blue, Teal, Orange, Pink, Graphite), each a pair for light and dark grounds held to 4.5:1 contrast against the page (tested). Applied at once, kept in the config, there at the next launch. Seen against the stand-in server on macOS; on Linux, System relies on iced's theme detection, not yet seen. The window's title bar is the system's and doesn't follow a forced mode |
 | Custom CSS | — | — | No CSS in a native app; theming is the accent colour |
 
 ## Reporting and history

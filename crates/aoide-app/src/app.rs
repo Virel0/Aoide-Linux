@@ -256,7 +256,7 @@ impl App {
     }
 
     pub fn theme(&self) -> Theme {
-        theme::for_mode(self.mode)
+        crate::appearance::theme(self.mode, &self.config.interface)
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
