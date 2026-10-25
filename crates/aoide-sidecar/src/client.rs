@@ -331,7 +331,7 @@ impl SidecarClient {
 
     /// Compact JSON, which is load-bearing: the 256 KB payload ceiling is measured on
     /// compact text, and the store checked every op against it in that form.
-    async fn send_json<B: Serialize, T: DeserializeOwned>(
+    pub(crate) async fn send_json<B: Serialize, T: DeserializeOwned>(
         &self,
         method: Method,
         path: &str,

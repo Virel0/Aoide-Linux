@@ -10,6 +10,7 @@ mod covers;
 mod engine;
 mod error;
 mod handoff;
+mod import;
 mod types;
 
 #[cfg(test)]
@@ -23,6 +24,13 @@ pub use engine::{
 };
 pub use error::SidecarError;
 pub use handoff::{QueueSource, queues_from_server, resumable_queues};
+pub use import::{
+    ImportError, ImportMatch, ImportResult, ImportedPlaylist, ImportedTrack, JellyfinSearch,
+    LibraryTrack, MATCH_ROWS_PER_REQUEST, MatchedBy, MatchedTrack, SEARCH_LIMIT, SEARCH_TERM_CHARS,
+    SPOTIFY_EMBED_TRACK_LIMIT, SidecarMatch, TrackMatcher, Verdict, fetch_spotify_playlist,
+    fetch_spotify_playlist_from, match_playlist, parse_playlist_csv, parse_spotify_embed,
+    spotify_embed_url, spotify_playlist_id,
+};
 pub use types::{
     AnalysisCoverage, AudioAnalysis, AudioAnalysisResponse, DiscoverCandidate, DiscoverFactors,
     DiscoverResponse, Measurement, NextCandidate, NextFactors, NextMode, NextRequest, NextResponse,

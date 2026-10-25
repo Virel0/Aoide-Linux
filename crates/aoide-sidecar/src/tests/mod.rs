@@ -8,6 +8,7 @@ mod end_to_end;
 mod handoff;
 mod held_entities;
 mod http;
+mod import;
 mod next_discover;
 mod shares;
 mod sidecar_stub;
