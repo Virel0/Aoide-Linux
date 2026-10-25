@@ -63,7 +63,7 @@ pub struct ReplayGainTags {
 
 impl ReplayGainTags {
     /// Whether the file carries a gain of its own (the desktop's
-    /// `hasReplayGain`): when it does, the sidecar's measurement stands down.
+    /// `hasReplayGain`): used when the sidecar has not measured the track.
     pub fn is_present(&self) -> bool {
         self.track_gain_db.is_some_and(f64::is_finite)
             || self.album_gain_db.is_some_and(f64::is_finite)
@@ -91,17 +91,22 @@ impl ReplayGainTags {
 
 /// The factor a track plays at under Level volume.
 ///
-/// Off: one, whatever the file or the sidecar says. On: the file's own
-/// ReplayGain when it has any, else the sidecar's measured gain in dB (from
-/// [`gain_db`], only ever a cut). `tags` is `None` when the file's tags were
-/// not read.
+/// Off: one, whatever the file or the sidecar says. On: the sidecar's
+/// measured gain in dB when it has measured the track (from [`gain_db`],
+/// only ever a cut; `Some(0.0)` for a measured track it leaves alone), else
+/// the file's own ReplayGain, else one. The sidecar wins because it measured
+/// every track the same way; tags are whatever each tagger wrote. `tags` is
+/// `None` when the file's tags were not read.
 pub fn level_gain(enabled: bool, tags: Option<&ReplayGainTags>, measured_db: Option<f64>) -> f32 {
     if !enabled {
         return 1.0;
     }
-    match tags {
-        Some(tags) if tags.is_present() => tags.linear_gain().map_or(1.0, |gain| gain as f32),
-        _ => linear_gain(measured_db),
+    match measured_db.filter(|db| db.is_finite()) {
+        Some(db) => linear_gain(Some(db)),
+        None => tags
+            .filter(|tags| tags.is_present())
+            .and_then(ReplayGainTags::linear_gain)
+            .map_or(1.0, |gain| gain as f32),
     }
 }
 

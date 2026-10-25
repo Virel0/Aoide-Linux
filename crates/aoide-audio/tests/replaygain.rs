@@ -97,7 +97,7 @@ fn album_gain_first_and_the_peak_never_past_full_scale() {
 }
 
 #[test]
-fn level_volume_is_one_switch_and_a_tagged_file_needs_no_measurement() {
+fn level_volume_is_one_switch_and_the_sidecar_wins_over_tags() {
     let tagged = ReplayGainTags {
         track_gain_db: Some(-4.0),
         ..Default::default()
@@ -108,11 +108,14 @@ fn level_volume_is_one_switch_and_a_tagged_file_needs_no_measurement() {
     // Off: nothing, whatever the file or the sidecar says.
     assert_eq!(level_gain(false, Some(&tagged), measured), 1.0);
     assert_eq!(level_gain(false, Some(&untagged), measured), 1.0);
-    // On: the tags win, and the sidecar stands down for a tagged file...
-    assert!((in_db(level_gain(true, Some(&tagged), measured)) - -4.0).abs() < 1e-5);
-    // ...and levels one without.
+    // On: the sidecar's measurement wins over the file's tags...
+    assert!((in_db(level_gain(true, Some(&tagged), measured)) - -6.0).abs() < 1e-5);
     assert!((in_db(level_gain(true, Some(&untagged), measured)) - -6.0).abs() < 1e-5);
     assert!((in_db(level_gain(true, None, measured)) - -6.0).abs() < 1e-5);
+    // ...including its "leave it alone" for a track it measured as quiet.
+    assert_eq!(level_gain(true, Some(&tagged), Some(0.0)), 1.0);
+    // Unmeasured: the tags, else nothing.
+    assert!((in_db(level_gain(true, Some(&tagged), None)) - -4.0).abs() < 1e-5);
     assert_eq!(level_gain(true, Some(&untagged), None), 1.0);
 }
 
@@ -154,11 +157,12 @@ fn the_render_applies_the_tags() {
 }
 
 #[test]
-fn a_tagged_file_ignores_the_sidecar() {
-    // The album fixture with a sidecar gain too: still −7 dB, not −13.
+fn the_sidecar_wins_over_a_tagged_file() {
+    // The album fixture (tags say −7 dB) with a sidecar gain of −6 dB:
+    // −6, neither −7 nor both (−13).
     let (got, _) = rendered("rg_album.flac", Some(-6.0));
     println!("tagged, with a sidecar gain of -6 dB: {got:+.4} dB");
-    assert!((got - -7.0).abs() < 0.01);
+    assert!((got - -6.0).abs() < 0.01);
 }
 
 // Through the player
@@ -225,7 +229,8 @@ fn the_players_switch_governs_both_sources() {
     let unity_untagged = level(Some(false), &untagged, None);
 
     let cases = [
-        ("on, tagged", Some(true), &tagged, unity_tagged, -7.0),
+        // On: the sidecar wins over the file's −7 dB tags.
+        ("on, tagged", Some(true), &tagged, unity_tagged, -6.0),
         ("on, untagged", Some(true), &untagged, unity_untagged, -6.0),
         ("off, tagged", Some(false), &tagged, unity_tagged, 0.0),
         ("off, untagged", Some(false), &untagged, unity_untagged, 0.0),

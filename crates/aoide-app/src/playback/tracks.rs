@@ -202,10 +202,13 @@ pub fn applied(
     settings: &Settings,
 ) -> (Option<SoundBounds>, Option<f64>) {
     let sound = settings.skip_silence.then(|| measures.bounds(id)).flatten();
+    // A measured track the sidecar leaves alone is 0 dB, not `None`: its
+    // measurement wins over the file's tags, "leave it" included.
     let gain_db = if settings.level_volume {
         measures
             .analysis(id)
-            .and_then(|a| loudness::gain_db(a.loudness_lufs, a.true_peak_dbfs))
+            .filter(|a| a.loudness_lufs.is_some_and(f64::is_finite))
+            .map(|a| loudness::gain_db(a.loudness_lufs, a.true_peak_dbfs).unwrap_or(0.0))
     } else {
         None
     };
@@ -396,7 +399,9 @@ mod tests {
         let mut measures = Measures::default();
         measures.insert("t1", None, Some(analysis(-23.0, -6.0)));
         let built = build(&client(), &meta(), &measures, &Settings::default()).unwrap();
-        assert_eq!(built.track.gain_db, None);
+        // Measured and left alone: 0 dB, which also keeps the file's own
+        // ReplayGain from turning it up.
+        assert_eq!(built.track.gain_db, Some(0.0));
     }
 
     #[test]
