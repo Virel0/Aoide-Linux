@@ -5,7 +5,7 @@ use std::convert::Infallible;
 
 use tokio::sync::mpsc::{self, Receiver};
 
-use crate::{Bus, Command, Error, Instance, PlayerState, Result};
+use crate::{Bus, Command, Error, Instance, PlayerState, Result, TrayCommand, TrayIcon, TrayState};
 
 /// The MPRIS server. Not available on this platform: [`Mpris::start`] always
 /// returns [`Error::Unavailable`].
@@ -20,6 +20,27 @@ impl Mpris {
     }
 
     pub async fn update(&self, _state: PlayerState) -> Result<()> {
+        match self.never {}
+    }
+}
+
+/// The tray icon. Not available on this platform: [`Tray::start`] always
+/// returns [`Error::Unavailable`].
+#[derive(Debug)]
+pub struct Tray {
+    never: Infallible,
+}
+
+impl Tray {
+    pub async fn start(_bus: &Bus, _icon: TrayIcon) -> Result<(Tray, Receiver<TrayCommand>)> {
+        Err(Error::Unavailable)
+    }
+
+    pub fn is_shown(&self) -> bool {
+        match self.never {}
+    }
+
+    pub async fn update(&self, _state: TrayState) -> Result<()> {
         match self.never {}
     }
 }
@@ -64,6 +85,14 @@ mod tests {
     async fn mpris_is_unavailable() {
         assert!(matches!(
             Mpris::start(&Bus::Session).await,
+            Err(Error::Unavailable)
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_tray_is_unavailable() {
+        assert!(matches!(
+            Tray::start(&Bus::Session, TrayIcon::default()).await,
             Err(Error::Unavailable)
         ));
     }
