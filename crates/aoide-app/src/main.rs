@@ -13,6 +13,7 @@ mod lyrics_panel;
 mod mixes;
 mod nav;
 mod now_playing;
+mod palette;
 mod playback;
 mod player_bar;
 mod playing;

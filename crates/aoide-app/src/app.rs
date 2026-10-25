@@ -163,6 +163,7 @@ pub enum Message {
     Smart(crate::smart::Message),
     Mixes(crate::mixes::Request),
     Update(crate::updates::Message),
+    Palette(crate::palette::Message),
 }
 
 /// The player bar's controls.
@@ -273,6 +274,7 @@ impl App {
             crate::tray::events(&self.system.tray).map(Message::Tray),
             crate::discord::status(self.system.discord.as_ref()).map(Message::Discord),
             crate::updates::ticks(&self.config.system.updates).map(Message::Update),
+            crate::palette::keys().map(Message::Palette),
         ])
     }
 
@@ -471,6 +473,7 @@ impl App {
             Message::Smart(message) => self.smart_message(message),
             Message::Mixes(request) => self.mix_request(request),
             Message::Update(message) => self.update_message(message),
+            Message::Palette(message) => self.palette_message(message),
         }
     }
 

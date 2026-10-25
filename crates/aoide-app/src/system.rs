@@ -31,6 +31,8 @@ pub struct State {
     pub discord: Option<aoide_integrations::discord::Presence>,
     pub discord_status: aoide_integrations::discord::PresenceStatus,
     pub updates: crate::updates::State,
+    /// The command palette, while it is open.
+    pub palette: Option<crate::palette::Palette>,
 }
 
 impl State {
@@ -42,6 +44,7 @@ impl State {
             discord_status: aoide_integrations::discord::PresenceStatus::Off,
             tray: Tray::new(runtime, &config.system.tray),
             updates: crate::updates::State::default(),
+            palette: None,
         }
     }
 }
@@ -68,9 +71,10 @@ pub fn settings_sections(app: &App) -> Element<'_, Message> {
     .into()
 }
 
-/// What is open over the whole window: the release notes.
+/// What is open over the whole window: the command palette, else the
+/// release notes.
 pub fn overlay(app: &App) -> Option<Element<'_, Message>> {
-    crate::updates::notes(app)
+    crate::palette::view(app).or_else(|| crate::updates::notes(app))
 }
 
 /// A card over a dimmed window; a click outside it sends `close`.
