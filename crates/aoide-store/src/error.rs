@@ -12,6 +12,9 @@ pub enum StoreError {
     Playlist(#[from] PlaylistError),
     #[error(transparent)]
     Smart(#[from] SmartPlaylistError),
+    /// A file beside the database: a cover blob, the recent-contexts list.
+    #[error("file: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;

@@ -61,7 +61,10 @@ pub use play_definition::{PlayClassifier, PlayOutcome};
 pub use playlists::{PlaylistError, RelinkReport, TrackLink, UNRESOLVED_PREFIX};
 pub use quarantine::{QuarantinedOp, SyncDirection};
 pub use queue::QueuePolicy;
-pub use recent_contexts::{RecentContext, RecentContextKind, RecentContextList};
+pub use recent_contexts::{
+    RESUME_GRID_LIMIT, RecentContext, RecentContextKind, RecentContextList, RecentContexts,
+    ResumeTile, StationSeed, resume_tiles,
+};
 pub use record::{Record, SyncRecord};
 pub use smart::{
     Calendar, Field, Match, Operator, RelativeInterval, SmartPlaylistError, SmartRule, SmartRules,

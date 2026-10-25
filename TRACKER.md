@@ -22,7 +22,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 
 | Feature | Round | Status | Notes |
 |---|---|---|---|
-| Home: resume grid (last 6 contexts, "Pick up from {device}") | 2 | ⬜ | |
+| Home: resume grid (last 6 contexts, "Pick up from {device}") | 2 | 🟨 | Library done; UI pending. `RecentContexts` (store) keeps 24 per server — album, Jellyfin playlist, Aoide playlist, mix, station — saved as JSON; `resume_tiles` gives six, led by "Pick up from {device}" only when that device played more recently than anything here (server age against this clock; a tie goes to this device) |
 | Home: shelves (most played, recently added/played/released, random albums, genres) | 1 | ✅ | Recently added, recently played and most played (the last two as the albums of the tracks), recently released, random albums, and a random dozen genres as chips. A shelf with nothing on it is left out. Seen in the app against the stand-in server |
 | Home: Discover tile (`/aoide/discover`) | 2 | ⬜ | New: the Electron app has no Discover |
 | Albums list and album detail (with finish rate) | 1 | 🟨 | Grid loaded a page at a time, sortable (title, artist, recently added, release date); detail with cover, artist, year, Play, Shuffle, tracks in disc and track order with "Disc 1", "Disc 2" headings on a multi-disc album (seen against the stand-in server). Finish rate not yet |
