@@ -8,6 +8,13 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Furigana and dictionary-backed romaji for Japanese lyrics, through the lindera
+# analyser with the IPADIC dictionary built in. Off by default: about 48 MB more
+# binary, and the dictionary (13 MB) is downloaded from lindera.dev while
+# building. The crate docs have the numbers.
+furigana = ["dep:lindera"]
+
 [dependencies]
 # Lyrics, LyricLine and LyricWord are aoide-jellyfin's: one shape for the panel
 # whether the server or the internet supplied them.
@@ -22,6 +29,8 @@ serde_json = "1.0.154"
 thiserror = "2.0.21"
 # The per-provider deadline; the runtime is the application's.
 tokio = { version = "1.54.1", default-features = false, features = ["time"] }
+
+lindera = { version = "6.2.0", default-features = false, features = ["embed-ipadic"], optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time"] }
