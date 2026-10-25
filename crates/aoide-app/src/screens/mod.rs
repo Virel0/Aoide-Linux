@@ -11,6 +11,7 @@ pub mod albums;
 pub mod artist;
 pub mod artists;
 pub mod discover;
+pub mod favourites;
 pub mod genre;
 pub mod genres;
 pub mod home;
@@ -46,15 +47,17 @@ pub enum Section {
     Settings,
     /// One Aoide playlist, by id.
     Playlist(String),
+    Favourites,
 }
 
 impl Section {
-    pub const LIBRARY: [Section; 7] = [
+    pub const LIBRARY: [Section; 8] = [
         Section::Home,
         Section::Albums,
         Section::Artists,
         Section::Songs,
         Section::Genres,
+        Section::Favourites,
         Section::Playlists,
         Section::Search,
     ];
@@ -70,6 +73,7 @@ impl Section {
             Section::Search => "Search",
             Section::Settings => "Settings",
             Section::Playlist(_) => "Playlist",
+            Section::Favourites => "Favourites",
         }
     }
 }
@@ -166,6 +170,7 @@ pub enum Page {
     Playlist(playlist::State),
     Settings(settings::State),
     Discover(discover::State),
+    Favourites(favourites::State),
 }
 
 #[derive(Debug, Clone)]
@@ -183,6 +188,7 @@ pub enum PageMsg {
     Playlist(playlist::Message),
     Settings(settings::Message),
     Discover(discover::Message),
+    Favourites(favourites::Message),
 }
 
 impl Page {
@@ -198,6 +204,7 @@ impl Page {
             Section::Search => wrap(search::open(), Page::Search),
             Section::Settings => wrap(settings::open(ctx), Page::Settings),
             Section::Playlist(id) => wrap(playlist::open(ctx, id), Page::Playlist),
+            Section::Favourites => wrap(favourites::open(ctx), Page::Favourites),
         }
     }
 
@@ -215,9 +222,9 @@ impl Page {
         match (self, message) {
             (Page::Home(state), PageMsg::Home(m)) => state.update(m),
             (Page::Albums(state), PageMsg::Albums(m)) => state.update(m, ctx),
-            (Page::Album(state), PageMsg::Album(m)) => state.update(m),
+            (Page::Album(state), PageMsg::Album(m)) => state.update(m, ctx),
             (Page::Artists(state), PageMsg::Artists(m)) => state.update(m, ctx),
-            (Page::Artist(state), PageMsg::Artist(m)) => state.update(m),
+            (Page::Artist(state), PageMsg::Artist(m)) => state.update(m, ctx),
             (Page::Songs(state), PageMsg::Songs(m)) => state.update(m, ctx),
             (Page::Genres(state), PageMsg::Genres(m)) => state.update(m),
             (Page::Genre(state), PageMsg::Genre(m)) => state.update(m),
@@ -226,6 +233,7 @@ impl Page {
             (Page::Playlist(state), PageMsg::Playlist(m)) => state.update(m, ctx),
             (Page::Settings(state), PageMsg::Settings(m)) => state.update(m),
             (Page::Discover(state), PageMsg::Discover(m)) => state.update(m),
+            (Page::Favourites(state), PageMsg::Favourites(m)) => state.update(m),
             _ => Task::none(),
         }
     }
@@ -246,6 +254,7 @@ impl Page {
             Page::Playlist(state) => state.view(view),
             Page::Settings(_) => iced::widget::space().into(),
             Page::Discover(state) => state.view(view),
+            Page::Favourites(state) => state.view(view),
         }
     }
 
@@ -259,7 +268,7 @@ impl Page {
             Page::Albums(state) => tiles(&state.tiles),
             Page::Album(state) => state.art.clone().into_iter().collect(),
             Page::Artists(state) => tiles(&state.tiles),
-            Page::Artist(state) => state.albums.ready().map(|t| tiles(t)).unwrap_or_default(),
+            Page::Artist(state) => state.artwork(),
             Page::Songs(state) => track_art(&state.tracks),
             Page::Genre(state) => state.albums.ready().map(|t| tiles(t)).unwrap_or_default(),
             Page::Search(state) => state.artwork(),
@@ -270,6 +279,7 @@ impl Page {
                 .unwrap_or_default(),
             Page::Genres(_) | Page::Settings(_) | Page::Playlists(_) => Vec::new(),
             Page::Discover(state) => state.artwork(),
+            Page::Favourites(state) => state.artwork(),
         }
     }
 }

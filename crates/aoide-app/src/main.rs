@@ -9,6 +9,7 @@ mod handoff;
 mod icons;
 mod integration;
 mod library;
+mod listening;
 mod lyrics_panel;
 mod nav;
 mod now_playing;

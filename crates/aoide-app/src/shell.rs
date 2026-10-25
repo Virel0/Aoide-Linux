@@ -89,6 +89,7 @@ fn sidebar(signed: &Signed) -> Element<'_, Message> {
         Section::Playlists | Section::Playlist(_) => Icon::Playlist,
         Section::Search => Icon::Search,
         Section::Settings => Icon::Settings,
+        Section::Favourites => Icon::Heart,
     };
 
     let mut library = Column::new().spacing(2);
