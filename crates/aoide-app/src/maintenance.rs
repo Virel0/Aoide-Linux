@@ -38,10 +38,18 @@ pub fn export(config: &Config) -> String {
             updates.remove(key);
         }
     }
+    // The output device is this machine's, not a choice that travels.
+    let mut sound = serde_json::to_value(&config.sound).unwrap_or(Value::Null);
+    if let Some(sound) = sound.as_object_mut() {
+        sound.remove("device");
+    }
     let file = json!({
         FORMAT_KEY: FORMAT,
         "settings": config.settings,
         "system": system,
+        "sound": sound,
+        "interface": config.interface,
+        "collections": config.collections,
     });
     serde_json::to_string_pretty(&file).unwrap_or_default()
 }
@@ -65,6 +73,16 @@ pub fn import(config: &Config, contents: &str) -> Result<Config, String> {
     let mut system: SystemSettings =
         serde_json::from_value(file.get("system").cloned().unwrap_or(json!({})))
             .map_err(|e| format!("Its system settings couldn't be read: {e}."))?;
+    let mut sound: crate::sound::SoundSettings =
+        serde_json::from_value(file.get("sound").cloned().unwrap_or(json!({})))
+            .map_err(|e| format!("Its sound settings couldn't be read: {e}."))?;
+    sound.device = config.sound.device.clone();
+    let interface: crate::appearance::InterfaceSettings =
+        serde_json::from_value(file.get("interface").cloned().unwrap_or(json!({})))
+            .map_err(|e| format!("Its appearance settings couldn't be read: {e}."))?;
+    let collections: Vec<crate::screens::collections::SavedFilter> =
+        serde_json::from_value(file.get("collections").cloned().unwrap_or(json!([])))
+            .map_err(|e| format!("Its collections couldn't be read: {e}."))?;
     system.updates.state = config.system.updates.state;
     system.updates.available = config.system.updates.available.clone();
     system.updates.dismissed = config.system.updates.dismissed.clone();
@@ -72,6 +90,9 @@ pub fn import(config: &Config, contents: &str) -> Result<Config, String> {
     imported.settings = settings;
     imported.settings.lyric_offset_ms = Settings::clamped_lyric_offset(settings.lyric_offset_ms);
     imported.system = system;
+    imported.sound = sound.sanitised();
+    imported.interface = interface;
+    imported.collections = collections;
     Ok(imported)
 }
 
@@ -418,6 +439,14 @@ mod tests {
         config.system.log_level = LogLevel::Info;
         config.system.updates.state.last_checked = Some(1_700_000_000);
         config.system.updates.dismissed = Some("0.2.0".into());
+        config.sound.equalizer.enabled = true;
+        config.sound.equalizer.choose("Loudness");
+        config.sound.device = aoide_audio::DeviceChoice::Device {
+            id: "hw:7".into(),
+            name: "Desk Speakers".into(),
+        };
+        config.interface.appearance = crate::appearance::Appearance::Dark;
+        config.activity = Some("gaming".into());
         config
     }
 
@@ -431,6 +460,8 @@ mod tests {
             "u1",
             "last_checked",
             "dismissed",
+            "Desk Speakers",
+            "gaming",
         ] {
             assert!(!exported.contains(private), "{private} in {exported}");
         }
@@ -447,9 +478,13 @@ mod tests {
     #[test]
     fn an_import_round_trips_and_keeps_the_machine_s_own() {
         let source = configured();
-        let here = Config {
+        let mut here = Config {
             device_id: "device-2".into(),
             ..Config::default()
+        };
+        here.sound.device = aoide_audio::DeviceChoice::Device {
+            id: "hw:1".into(),
+            name: "Laptop".into(),
         };
         let imported = import(&here, &export(&source)).unwrap();
         assert_eq!(imported.settings, source.settings);
@@ -457,7 +492,12 @@ mod tests {
         assert_eq!(imported.system.discord, source.system.discord);
         assert_eq!(imported.system.smart_search, source.system.smart_search);
         assert_eq!(imported.system.log_level, LogLevel::Info);
+        assert_eq!(imported.sound.equalizer, source.sound.equalizer);
+        assert_eq!(imported.interface, source.interface);
+        assert_eq!(imported.collections, source.collections);
         // This machine's identity and state stay its own.
+        assert_eq!(imported.sound.device, here.sound.device);
+        assert_eq!(imported.activity, None);
         assert_eq!(imported.device_id, "device-2");
         assert!(imported.account.is_none());
         assert_eq!(imported.system.updates.state, here.system.updates.state);
