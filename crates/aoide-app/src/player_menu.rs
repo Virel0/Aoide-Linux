@@ -186,8 +186,9 @@ pub fn status_line(app: &App) -> Option<Element<'_, Message>> {
             text(label).size(11).style(|t: &iced::Theme| text::Style {
                 color: Some(theme::accent(t)),
             }),
+            // A 24-point target round a small glyph.
             button(icon(Icon::Close, 10.0, Tone::Secondary))
-                .padding(2)
+                .padding(7)
                 .style(theme::row)
                 .on_press(Message::Listening(off)),
         ]
