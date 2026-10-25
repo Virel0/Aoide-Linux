@@ -67,16 +67,30 @@ jobs:
     # runtime, pinned by digest (the freedesktop-26.08 tag when pinned).
     # bubblewrap needs --privileged inside a container; the job's token is
     # read-only, and only the release job below may write. The runner's
-    # spare disk is mounted too: the root disk ran out of space building
-    # the app (os error 28).
+    # preinstalled toolkits are mounted so the first step can delete them:
+    # with about 7 GB free the build ran out of disk (os error 28, then ld
+    # dying with SIGBUS), and a container step can't reach the host's disk
+    # otherwise.
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions@sha256:6ed6921bb5a9e1a916989971844f159b854b7b225880c381fa34f7a158863039
-      options: --privileged -v /mnt:/mnt
+      options: >-
+        --privileged
+        -v /usr/local/lib/android:/host/android
+        -v /usr/share/dotnet:/host/dotnet
+        -v /opt/hostedtoolcache:/host/toolcache
+        -v /opt/ghc:/host/ghc
+        -v /usr/share/swift:/host/swift
     defaults:
       run:
         shell: bash
 
     steps:
+      - name: Free the runner's disk
+        run: |
+          df -h /
+          find /host -mindepth 2 -maxdepth 2 -exec rm -rf {} +
+          df -h /
+
       - name: Check out
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -97,14 +111,9 @@ jobs:
       - name: Build the Flatpak
         run: |
           set -euo pipefail
-          # The build (cargo's target folder lives in the state dir) on the
-          # disk with the most room: the runner's spare disk when there is one.
+          # cargo's target folder lives in the state dir.
           work=/tmp/aoide-linux-flatpak
-          if [[ -d /mnt && -w /mnt ]] && (( $(df --output=avail -k /mnt | tail -1) > $(df --output=avail -k /tmp | tail -1) )); then
-            work=/mnt/aoide-linux-flatpak
-          fi
           mkdir -p "$work"
-          df -h /tmp "$work"
           echo "AOIDE_FLATPAK_WORK=$work" >> "$GITHUB_ENV"
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           # FUSE is not available in the container, hence no rofiles-fuse.
