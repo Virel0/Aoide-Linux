@@ -318,6 +318,9 @@ impl App {
                         Message::SignedIn,
                     )
                 }
+                login::Action::FindServers => Task::perform(crate::discover::find(), |r| {
+                    Message::Login(login::Message::Found(r))
+                }),
             },
             Message::Restored(result) => match result {
                 Ok(Some(connection)) => self.enter(Event::Restored, connection),
