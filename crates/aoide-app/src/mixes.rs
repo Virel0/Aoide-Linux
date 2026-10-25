@@ -4,14 +4,16 @@
 //!
 //! - **Names** ("Mara Vey", "Night Shift") are searched in Jellyfin: the
 //!   albums and album artists they name, and songs by that name.
-//! - **The library half of the rules** (genre, year, favourites, and the
-//!   text and length fields) is asked of Jellyfin as a pre-filter where it
-//!   can be (genres by id, years, favourites) and checked here on every
+//! - **The library half of the rules** (genre, year, and the text and
+//!   length fields) is asked of Jellyfin as a pre-filter where it can be
+//!   (genres by id, years) and checked here on every
 //!   candidate ([`library_matches`]); the model's genre words are first
 //!   resolved to the library's own genres (`match_genres`: "rock" takes Hard
 //!   Rock, not Rockabilly).
-//! - **The listening half** (play and skip counts, first and last played)
-//!   only the local history knows: the candidates go into the store's track
+//! - **The listening half** (play and skip counts, first and last played,
+//!   and liked, which is Aoide's own like, not the Jellyfin favourite, as
+//!   in a saved smart playlist) only the local store knows: the candidates
+//!   go into the store's track
 //!   cache and those rules are evaluated there. Every mix also leaves out
 //!   the songs marked Not Interested, as the store's evaluation does.
 //!
@@ -124,7 +126,7 @@ pub fn library_matches(
         _ => None,
     };
     Some(match rule.field {
-        field if field.is_history() => return None,
+        field if store_answers(field) => return None,
         RuleField::Title => text.is_some_and(|t| text_matches(rule.op, &track.title, t)),
         RuleField::Album => text.is_some_and(|t| text_matches(rule.op, &track.album, t)),
         RuleField::AlbumArtist => text
@@ -170,14 +172,6 @@ pub fn library_matches(
         RuleField::DurationMs => {
             number.is_some_and(|n| number_matches(rule.op, track.duration_ms, n))
         }
-        RuleField::Liked => match rule.value {
-            RuleValue::Flag(want) => match rule.op {
-                RuleOperator::Is => track.favourite == want,
-                RuleOperator::IsNot => track.favourite != want,
-                _ => false,
-            },
-            _ => false,
-        },
         _ => return None,
     })
 }
@@ -239,13 +233,14 @@ pub fn candidate_query(
         if has_year_rule && !years.is_empty() && years.len() < library_years.len() {
             query.years = years;
         }
-        query.favorites_only = rules.rules.iter().any(|r| {
-            r.field == RuleField::Liked
-                && r.op == RuleOperator::Is
-                && r.value == RuleValue::Flag(true)
-        });
     }
     query
+}
+
+/// The rules only the store can answer: the listening history, and liked
+/// (its own like table, so a mix and the smart playlist saved from it agree).
+fn store_answers(field: RuleField) -> bool {
+    field.is_history() || field == RuleField::Liked
 }
 
 /// The listening rules alone, as the store evaluates them (the phone's
@@ -254,7 +249,7 @@ pub fn history_rules(rules: &SmartRules) -> Option<aoide_store::SmartRules> {
     let history: Vec<SmartRule> = rules
         .rules
         .iter()
-        .filter(|r| r.field.is_history())
+        .filter(|r| store_answers(r.field))
         .cloned()
         .collect();
     if history.is_empty() {
@@ -716,13 +711,14 @@ mod tests {
             )),
             Some(true)
         );
+        // Liked is the store's (Aoide's own like), not the Jellyfin favourite.
         assert_eq!(
             check(rule(
                 RuleField::Liked,
                 RuleOperator::Is,
                 RuleValue::Flag(true)
             )),
-            Some(true)
+            None
         );
         assert_eq!(
             check(rule(
@@ -820,7 +816,8 @@ mod tests {
         let q = candidate_query(&all, &genres, &ids(), &[2023, 2019, 2015], Some("lib1"));
         assert_eq!(q.genre_ids, ["g-Hard Rock", "g-Rock"]);
         assert_eq!(q.years, [2023, 2019]);
-        assert!(q.favorites_only);
+        // Liked is Aoide's like, which Jellyfin's favourites can't narrow.
+        assert!(!q.favorites_only);
         assert_eq!(q.sort, Sort::Random);
         assert_eq!(q.parent_id.as_deref(), Some("lib1"));
         // "Any" of a genre and a year: a genre filter would drop the year's
@@ -992,6 +989,42 @@ mod tests {
             )))
             .can_save()
         );
+    }
+
+    #[tokio::test]
+    async fn liked_is_aoides_own_like_not_the_jellyfin_favourite() {
+        let liked = rules(
+            Match::All,
+            vec![rule(
+                RuleField::Liked,
+                RuleOperator::Is,
+                RuleValue::Flag(true),
+            )],
+        );
+        let candidates = [
+            track("liked", "Folk", 2019, false),
+            track("favourite", "Folk", 2019, true),
+        ];
+        let history = history_rules(&liked).expect("liked goes to the store");
+        let now = aoide_store::now_millis();
+        let rows: Vec<_> = candidates.iter().map(|t| t.track_ref(now)).collect();
+        let store = StoreHandle::in_memory("device-1").unwrap();
+        let heard: HashSet<String> = store
+            .call(move |w| {
+                w.store.cache_tracks(&rows).unwrap();
+                let like = aoide_store::Like::new("liked", "liked", true, 0, "");
+                w.store.record(like, false, now).unwrap();
+                w.store
+                    .evaluate(&history, now, aoide_store::Calendar::Local)
+                    .unwrap()
+            })
+            .await
+            .unwrap()
+            .into_iter()
+            .collect();
+        let visible: HashSet<String> = candidates.iter().map(|t| t.id.clone()).collect();
+        let kept = select(Some(&liked), &candidates, &[], Some(&heard), &visible);
+        assert_eq!(kept, ["liked"]);
     }
 
     #[tokio::test(flavor = "multi_thread")]
