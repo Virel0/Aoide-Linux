@@ -2,6 +2,7 @@
 
 mod actions;
 mod app;
+mod appearance;
 mod artwork;
 mod config;
 mod credentials;

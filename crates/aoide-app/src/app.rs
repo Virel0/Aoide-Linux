@@ -252,7 +252,7 @@ impl App {
     }
 
     pub fn title(&self) -> String {
-        "Aoide".to_owned()
+        self.window_title()
     }
 
     pub fn theme(&self) -> Theme {

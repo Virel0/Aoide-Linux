@@ -83,7 +83,7 @@ in the Rust app. Built from a read of the Electron code on 2026-10-24.
 | Discord Rich Presence (Aoide's application id, options as in Electron) | 2 | 🟨 | Library done; UI pending. `aoide_integrations::discord::Presence`: Discord's local socket (`discord-ipc-0..9` under `XDG_RUNTIME_DIR`, Flatpak and snap subpaths included), "Listening" with song, artist, album, time bar; display type (app name / artist / song), shown when paused, cover only if a public `https` URL without credentials (else Aoide's `icon` asset), playing/paused badge, links only if free of tracking parameters. Opens no socket while off, at most one update a second, finds a Discord started later. Tested against a stand-in Discord socket; not yet seen in a real Discord client |
 | Single instance (second launch focuses the window) | 1 | 🟨 | Decided in `main.rs` before any window: a second launch calls Raise on the first (un-minimise and focus) and exits 0. Not yet run on a Linux desktop; macOS has no D-Bus, so every launch is first there |
 | Window size and position remembered | 1 | ✅ | |
-| Track info in the window title | 2 | ⬜ | |
+| Track info in the window title | 2 | ✅ | "Title — Artist · Aoide" while a song plays, "Aoide" when paused or stopped; Settings → General → Show the Song in the Window Title (on by default) turns it off. Seen in the macOS title bar against the stand-in server; not yet in a Linux task bar |
 | Accent colour and light/dark/system appearance | 2 | ⬜ | |
 | Custom CSS | — | — | No CSS in a native app; theming is the accent colour |
 

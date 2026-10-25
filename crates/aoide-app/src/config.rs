@@ -166,6 +166,8 @@ pub struct Config {
     pub volume: f32,
     /// The equaliser and the compressor.
     pub sound: crate::sound::SoundSettings,
+    /// Settings → General: the window title, the look.
+    pub interface: crate::appearance::InterfaceSettings,
 }
 
 impl Default for Config {
@@ -178,6 +180,7 @@ impl Default for Config {
             settings: Settings::default(),
             volume: 1.0,
             sound: crate::sound::SoundSettings::default(),
+            interface: crate::appearance::InterfaceSettings::default(),
         }
     }
 }
@@ -266,6 +269,9 @@ mod tests {
                 sound.equalizer.choose("Loudness");
                 sound.compressor.enabled = true;
                 sound
+            },
+            interface: crate::appearance::InterfaceSettings {
+                track_in_title: false,
             },
         };
         config.save(&path).unwrap();

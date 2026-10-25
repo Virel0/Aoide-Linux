@@ -49,6 +49,7 @@ pub enum Msg {
     ChooseDevice(DeviceChoice),
     Transcode(crate::sound::Transcode),
     Private(bool),
+    Interface(crate::appearance::InterfaceSettings),
     Sleep(Choice),
     SleepMinutes(String),
     SleepCustom,
@@ -303,6 +304,10 @@ impl App {
             }
             Msg::LoadDevices => list_devices(),
             Msg::Private(on) => self.set_private(on),
+            Msg::Interface(interface) => {
+                self.interface_changed(interface);
+                Task::none()
+            }
             Msg::Transcode(transcode) => {
                 self.config.sound.transcode = transcode.sanitised();
                 self.save_config();

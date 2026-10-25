@@ -319,6 +319,7 @@ pub fn view<'a>(
     widgets::page(
         column![
             widgets::title_bar("Settings", view.can_go_back),
+            crate::appearance::general_section(&extras),
             playback,
             sound,
             lyrics,
