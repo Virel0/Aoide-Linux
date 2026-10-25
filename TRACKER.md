@@ -188,7 +188,6 @@ earlier. Each is his to make; nothing here is built yet.
   error …)"): they are worded in `session.rs`, which was being changed in
   another branch; switching its `describe` to `failure::describe` finishes
   the job. Every screen's load error is already in words with Retry.
-- **Replay**: all-caps tile labels, and "0 HOURS" under an hour.
 - **Album rows** repeat the album artist; **artist tiles** are square and
   grey; the album's "…" sits mid-row rather than last.
 - **Light theme** greys (#dedede cards) are heavy.

@@ -64,6 +64,39 @@ pub fn hours(recap: &Recap) -> String {
     }
 }
 
+/// A period's button, in sentence case (the store's own label is Title
+/// Case, as the phone shows it).
+pub fn period_title(period: ReplayPeriod) -> &'static str {
+    match period {
+        ReplayPeriod::Month => "This month",
+        ReplayPeriod::Year => "This year",
+        ReplayPeriod::AllTime => "All time",
+    }
+}
+
+/// A count's tile label: singular for one.
+fn counted(n: i64, one: &'static str, many: &'static str) -> &'static str {
+    if n == 1 { one } else { many }
+}
+
+/// How long was listened, as a tile shows it: minutes under an hour, hours
+/// from there. Anything played counts as at least a minute.
+pub fn listened(recap: &Recap) -> (String, &'static str) {
+    let minutes = (recap.total_ms_played as f64 / 60_000.0).round() as i64;
+    let minutes = if recap.total_ms_played > 0 {
+        minutes.max(1)
+    } else {
+        0
+    };
+    if minutes < 60 {
+        let label = if minutes == 1 { "Minute" } else { "Minutes" };
+        return (minutes.to_string(), label);
+    }
+    let value = hours(recap);
+    let label = if value == "1" { "Hour" } else { "Hours" };
+    (value, label)
+}
+
 pub fn plays(n: i64) -> String {
     if n == 1 {
         "1 play".to_owned()
@@ -168,7 +201,7 @@ impl State {
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
         let key = view.key;
         let periods = row(ReplayPeriod::ALL.into_iter().map(|period| {
-            button(text(period.label()).size(14))
+            button(text(period_title(period)).size(14))
                 .style(if period == self.period {
                     theme::filled
                 } else {
@@ -190,20 +223,28 @@ impl State {
                 "Nothing to Replay yet. Play some music and it'll add up here.",
             )));
         }
+        let (time, time_label) = listened(recap);
         let tiles = [
-            ("Plays", thousands(recap.total_plays)),
-            ("Hours", hours(recap)),
-            ("Songs", thousands(recap.distinct_tracks)),
-            ("Artists", thousands(recap.distinct_artists)),
+            (
+                counted(recap.total_plays, "Play", "Plays"),
+                thousands(recap.total_plays),
+            ),
+            (time_label, time),
+            (
+                counted(recap.distinct_tracks, "Song", "Songs"),
+                thousands(recap.distinct_tracks),
+            ),
+            (
+                counted(recap.distinct_artists, "Artist", "Artists"),
+                thousands(recap.distinct_artists),
+            ),
         ]
         .into_iter()
         .map(|(label, value)| {
             container(
                 column![
                     text(value).size(30).font(widgets::BOLD),
-                    widgets::secondary(label.to_uppercase())
-                        .size(11)
-                        .font(widgets::SEMIBOLD),
+                    widgets::secondary(label).size(13),
                 ]
                 .spacing(2),
             )
@@ -326,6 +367,27 @@ mod tests {
             ..recap.clone()
         };
         assert_eq!(hours(&whole), "2");
+    }
+
+    #[test]
+    fn under_an_hour_is_told_in_minutes_and_an_hour_or_more_in_hours() {
+        let at = |ms: i64| {
+            listened(&Recap {
+                total_ms_played: ms,
+                ..recap()
+            })
+        };
+        assert_eq!(at(45 * 60_000), ("45".to_owned(), "Minutes"));
+        assert_eq!(at(60_000), ("1".to_owned(), "Minute"));
+        assert_eq!(
+            at(20_000),
+            ("1".to_owned(), "Minute"),
+            "a short play still counts"
+        );
+        assert_eq!(at(0), ("0".to_owned(), "Minutes"));
+        assert_eq!(at(59 * 60_000 + 50_000), ("1".to_owned(), "Hour"));
+        assert_eq!(at(3_600_000), ("1".to_owned(), "Hour"));
+        assert_eq!(at(45_000_000), ("12.5".to_owned(), "Hours"));
     }
 
     #[test]
