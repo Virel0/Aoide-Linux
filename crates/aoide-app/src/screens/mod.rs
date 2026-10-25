@@ -118,6 +118,8 @@ pub struct PlaylistSummary {
     pub count: i64,
     /// Its songs are what its rules match.
     pub smart: bool,
+    /// The folder it is filed in; `None` is the top level.
+    pub folder_id: Option<String>,
 }
 
 /// What a screen's update and open can reach.

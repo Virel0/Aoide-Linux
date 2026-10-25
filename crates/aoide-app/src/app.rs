@@ -618,6 +618,7 @@ impl App {
                                     w.store.item_count(&p.id).unwrap_or(0)
                                 },
                                 smart: p.is_smart,
+                                folder_id: p.folder_id,
                                 id: p.id,
                                 name: p.name,
                             })

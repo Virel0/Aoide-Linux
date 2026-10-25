@@ -39,6 +39,7 @@ pub enum Icon {
     Plus,
     Sparkle,
     Radio,
+    Folder,
 }
 
 /// How an icon is tinted.
@@ -124,6 +125,9 @@ fn source(icon: Icon) -> String {
         Icon::Remove => format!(r#"<path d="M6 12h12" {STROKE}/>"#),
         Icon::Plus => format!(r#"<path d="M12 6v12M6 12h12" {STROKE}/>"#),
         Icon::Sparkle => r#"<path d="M10 3l1.9 5.6L17.5 10.5l-5.6 1.9L10 18l-1.9-5.6L2.5 10.5l5.6-1.9z" fill="black"/><path d="M18 14l.9 2.6 2.6.9-2.6.9L18 21l-.9-2.6-2.6-.9 2.6-.9z" fill="black"/>"#.to_owned(),
+        Icon::Folder => format!(
+            r#"<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" {STROKE}/>"#
+        ),
         Icon::Radio => format!(
             r#"<circle cx="12" cy="12" r="2" fill="black"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9.2 9.2 0 0 0 0 13M18.5 5.5a9.2 9.2 0 0 1 0 13" {STROKE}/>"#
         ),
@@ -131,7 +135,7 @@ fn source(icon: Icon) -> String {
     format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>"#)
 }
 
-const ALL: [Icon; 31] = [
+const ALL: [Icon; 32] = [
     Icon::Play,
     Icon::Pause,
     Icon::Next,
@@ -163,6 +167,7 @@ const ALL: [Icon; 31] = [
     Icon::Plus,
     Icon::Sparkle,
     Icon::Radio,
+    Icon::Folder,
 ];
 
 /// One handle per icon, made once: a handle's id is what the renderer caches on.
