@@ -19,6 +19,7 @@ mod queue_panel;
 mod screens;
 mod session;
 mod shell;
+mod smart;
 mod store_worker;
 mod sync;
 mod system;

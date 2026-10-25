@@ -37,7 +37,7 @@ use crate::theme;
 pub struct App {
     pub(crate) paths: Option<Paths>,
     pub(crate) config: Config,
-    keyring: Arc<dyn CredentialStore>,
+    pub(crate) keyring: Arc<dyn CredentialStore>,
     pub(crate) store: StoreHandle,
     /// Something the listener should know that is not about one screen.
     pub(crate) notice: Option<String>,
@@ -54,6 +54,8 @@ pub struct App {
     pub(crate) session: Option<Signed>,
     /// The tray and the other services of Settings → System.
     pub(crate) system: crate::system::State,
+    /// Smart search's key and model picker.
+    pub(crate) smart: crate::smart::State,
 }
 
 /// An open page and its place in the stack.
@@ -158,6 +160,7 @@ pub enum Message {
     Ignore,
     Tray(crate::tray::Message),
     Discord(crate::discord::Message),
+    Smart(crate::smart::Message),
 }
 
 /// The player bar's controls.
@@ -227,6 +230,7 @@ impl App {
             ),
         };
         let system = crate::system::State::new(&desktop, &config);
+        let key = crate::smart::load_key(Arc::clone(&keyring));
         let app = Self {
             login: login::State::new(config.last_server.clone()),
             paths,
@@ -243,9 +247,10 @@ impl App {
             phase,
             session: None,
             system,
+            smart: crate::smart::State::default(),
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
-        (app, Task::batch([theme, restore]))
+        (app, Task::batch([theme, restore, key]))
     }
 
     pub fn title(&self) -> String {
@@ -459,6 +464,7 @@ impl App {
             Message::Ignore => Task::none(),
             Message::Tray(message) => self.tray_message(message),
             Message::Discord(message) => self.discord_message(message),
+            Message::Smart(message) => self.smart_message(message),
         }
     }
 
