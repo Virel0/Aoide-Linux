@@ -8,14 +8,17 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# makepkg runs every crate's build script with a read-only token; only the
+# release job, which builds nothing, may write.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   package:
     runs-on: ubuntu-latest
     container:
-      image: archlinux:latest
+      # Pinned by digest; makepkg's -Syu still brings the packages up to date.
+      image: archlinux@sha256:52dfbd5afb23a220d5ee92dafcb4c788d96c026ed04179890c23adef4c897fa0
 
     steps:
       - name: Install build tools
@@ -26,7 +29,9 @@ jobs:
           sudo -u builder rustup default stable
 
       - name: Check out the tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Build the package
         env:
@@ -48,14 +53,34 @@ jobs:
           for link in aoide-linux.db aoide-linux.files; do
             cp --remove-destination "$(readlink -f "$link")" "$link"
           done
+          sha256sum -- *.pkg.tar.zst aoide-linux.db aoide-linux.db.tar.gz \
+              aoide-linux.files aoide-linux.files.tar.gz > SHA256SUMS-arch
           ls -la
 
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aoide-linux-arch
+          path: /tmp/out/*
+
+  release:
+    needs: package
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aoide-linux-arch
+          path: out
+
       - name: Attach to the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
-            /tmp/out/*.pkg.tar.zst
-            /tmp/out/aoide-linux.db
-            /tmp/out/aoide-linux.db.tar.gz
-            /tmp/out/aoide-linux.files
-            /tmp/out/aoide-linux.files.tar.gz
+            out/*.pkg.tar.zst
+            out/aoide-linux.db
+            out/aoide-linux.db.tar.gz
+            out/aoide-linux.files
+            out/aoide-linux.files.tar.gz
+            out/SHA256SUMS-arch

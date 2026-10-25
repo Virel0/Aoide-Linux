@@ -38,11 +38,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           ref: ${{ inputs.tag || github.ref }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: stable
 
       - name: Vendor the crates
         run: |
@@ -50,7 +53,7 @@ jobs:
           cargo vendor --locked target/flatpak-vendor > /dev/null
           tar -C target -cf flatpak-vendor.tar flatpak-vendor
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: flatpak-vendor
           path: flatpak-vendor.tar
@@ -60,12 +63,12 @@ jobs:
     needs: vendor
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    permissions:
-      contents: write
     # Flathub's own build image: Flatpak, flatpak-builder and the 26.08
-    # runtime. bubblewrap needs --privileged inside a container.
+    # runtime, pinned by digest (the freedesktop-26.08 tag when pinned).
+    # bubblewrap needs --privileged inside a container; the job's token is
+    # read-only, and only the release job below may write.
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
+      image: ghcr.io/flathub-infra/flatpak-github-actions@sha256:6ed6921bb5a9e1a916989971844f159b854b7b225880c381fa34f7a158863039
       options: --privileged
     defaults:
       run:
@@ -73,11 +76,12 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           ref: ${{ inputs.tag || github.ref }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: flatpak-vendor
 
@@ -116,16 +120,31 @@ jobs:
               io.github.Virel0.Aoide.Linux \
               --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
           ls -lh aoide-linux.flatpak
+          sha256sum aoide-linux.flatpak > SHA256SUMS-flatpak
 
       - name: Keep it for inspection
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: aoide-linux-flatpak
-          path: aoide-linux.flatpak
+          path: |
+            aoide-linux.flatpak
+            SHA256SUMS-flatpak
+
+  release:
+    needs: flatpak
+    if: inputs.tag != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: aoide-linux-flatpak
 
       - name: Attach it to the release
-        if: inputs.tag != ''
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
-          files: aoide-linux.flatpak
+          files: |
+            aoide-linux.flatpak
+            SHA256SUMS-flatpak
           tag_name: ${{ inputs.tag }}
