@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 use aoide_jellyfin::{
-    Credentials, Device, Error, ItemKind, JellyfinClient, ListQuery, PlaylistEdit, ServerAddress,
-    Sort, SortOrder,
+    Credentials, Device, Error, ItemKind, JellyfinClient, ListQuery, MixSeed, PlaylistEdit,
+    ServerAddress, Sort, SortOrder,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, header, method, path, query_param};
@@ -1065,4 +1065,97 @@ async fn playlist_edits_need_credentials_and_send_nothing_without_them() {
         Err(Error::NotSignedIn)
     );
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+// MARK: - Radio
+
+#[tokio::test]
+async fn each_mix_seed_goes_to_its_own_endpoint() {
+    let server = MockServer::start().await;
+    for route in [
+        "/Songs/t1/InstantMix",
+        "/Albums/al1/InstantMix",
+        "/Artists/ar1/InstantMix",
+        "/Playlists/pl1/InstantMix",
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .and(query_param("userId", USER))
+            .and(query_param("limit", "40"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(page(vec![item(route, "M", "Audio")])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/MusicGenres/InstantMix"))
+        .and(query_param("id", "g1"))
+        .and(query_param("userId", USER))
+        .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![item(
+            "genre-mix",
+            "M",
+            "Audio",
+        )])))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = signed_in(&server);
+    let first = |seed: MixSeed| {
+        let client = client.clone();
+        async move {
+            client.instant_mix_from(&seed, 40).await.unwrap()[0]
+                .id
+                .clone()
+        }
+    };
+    assert_eq!(
+        first(MixSeed::Track("t1".into())).await,
+        "/Songs/t1/InstantMix"
+    );
+    assert_eq!(
+        first(MixSeed::Album("al1".into())).await,
+        "/Albums/al1/InstantMix"
+    );
+    assert_eq!(
+        first(MixSeed::Artist("ar1".into())).await,
+        "/Artists/ar1/InstantMix"
+    );
+    assert_eq!(
+        first(MixSeed::Playlist("pl1".into())).await,
+        "/Playlists/pl1/InstantMix"
+    );
+    assert_eq!(first(MixSeed::Genre("g1".into())).await, "genre-mix");
+}
+
+#[tokio::test]
+async fn similar_items_albums_and_artists() {
+    let server = MockServer::start().await;
+    for (route, kind) in [
+        ("/Items/x1/Similar", "Audio"),
+        ("/Albums/al1/Similar", "MusicAlbum"),
+        ("/Artists/ar1/Similar", "MusicArtist"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .and(query_param("userId", USER))
+            .and(query_param("limit", "12"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(page(vec![item(route, "S", kind)])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let client = signed_in(&server);
+    assert_eq!(
+        client.similar_items("x1", 12).await.unwrap()[0].id,
+        "/Items/x1/Similar"
+    );
+    let albums = client.similar_albums("al1", 12).await.unwrap();
+    assert_eq!(albums[0].kind, ItemKind::MusicAlbum);
+    let artists = client.similar_artists("ar1", 12).await.unwrap();
+    assert_eq!(artists[0].kind, ItemKind::MusicArtist);
 }
