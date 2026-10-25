@@ -206,11 +206,7 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
             choices = choices.push(
                 button(text(choice.title()).size(13))
                     .padding([5, 14])
-                    .style(if on {
-                        theme::row_selected
-                    } else {
-                        theme::tonal
-                    })
+                    .style(if on { theme::filled } else { theme::tonal })
                     .on_press(set(change)),
             );
         }
