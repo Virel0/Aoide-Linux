@@ -8,6 +8,7 @@
 //!   ([`output_devices`], [`DeviceChoice`]).
 //! - [`eq`] and [`compressor`] are what the engine runs on the mix, in that
 //!   order, before the pause fade and the volume.
+//! - [`visualizer`] reads what is being heard, for a spectrum and a waveform.
 //! - [`mix`], [`loudness`] and [`queue`] are the rules shared with the iOS and
 //!   desktop apps, held to the same parity tables.
 
@@ -24,6 +25,7 @@ mod pipeline;
 pub mod player;
 pub mod queue;
 mod resample;
+pub mod visualizer;
 
 pub use compressor::{CompressorPreset, CompressorSettings};
 pub use decode::MediaSource;
@@ -38,3 +40,4 @@ pub use output::{
 pub use pipeline::TrackSpec;
 pub use player::{Player, PlayerSettings, PlayerTrack};
 pub use queue::{EntryId, PlayQueue, RepeatMode};
+pub use visualizer::{VisualFrame, Visualizer, VisualizerConfig, VisualizerTap};

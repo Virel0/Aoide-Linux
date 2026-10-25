@@ -24,6 +24,7 @@ use crate::error::{Error, Result};
 use crate::mix::{MixTransition, curve};
 use crate::pipeline::{Feed, FeedRead, InlineFeed, Marker, ThreadFeed, TrackSpec};
 use crate::queue::EntryId;
+use crate::visualizer::{TapRing, VisualizerTap};
 
 /// Frames rendered per inner step; any caller buffer is split into these.
 const BLOCK: usize = 4096;
@@ -129,6 +130,7 @@ pub struct EngineHandle {
     config: EngineConfig,
     commands: SyncSender<Command>,
     shared: Arc<Shared>,
+    tap: Arc<TapRing>,
 }
 
 impl EngineHandle {
@@ -211,6 +213,12 @@ impl EngineHandle {
     pub fn set_compressor(&self, settings: Option<&CompressorSettings>) -> Result<()> {
         let settings = settings.map(CompressorSettings::validated).transpose()?;
         self.send(Command::Compressor(settings))
+    }
+
+    /// What a [`crate::visualizer::Visualizer`] reads: every rendered frame,
+    /// mono, aligned to the heard position.
+    pub fn visualizer_tap(&self) -> VisualizerTap {
+        VisualizerTap::new(Arc::clone(&self.tap))
     }
 
     /// The heard position in the current track, in milliseconds.
@@ -375,6 +383,7 @@ pub struct Engine {
     scratch: Vec<f32>,
     eq: Equalizer,
     compressor: Compressor,
+    tap: Arc<TapRing>,
     /// The loaded track and those chained since, newest last.
     remembered: VecDeque<TrackSpec>,
     /// What follows the current track, and the overlap when it blends in.
@@ -396,6 +405,7 @@ impl Engine {
             current: AtomicU64::new(0),
             transport: AtomicU8::new(0),
         });
+        let tap = Arc::new(TapRing::new(config.sample_rate));
         let reaper = match config.decode {
             DecodeMode::Inline => None,
             DecodeMode::Threaded => {
@@ -431,6 +441,7 @@ impl Engine {
             scratch: vec![0.0; BLOCK * config.channels],
             eq: Equalizer::new(config.sample_rate, config.channels),
             compressor: Compressor::new(config.sample_rate, config.channels),
+            tap: Arc::clone(&tap),
             remembered: VecDeque::with_capacity(REMEMBERED),
             chained: None,
         };
@@ -438,6 +449,7 @@ impl Engine {
             config,
             commands: commands_tx,
             shared,
+            tap,
         };
         (engine, handle, events_rx)
     }
@@ -763,8 +775,12 @@ impl Engine {
         // Pause and resume fade, then master volume, per frame.
         let fading_in = self.transport != Transport::Paused;
         let volume_step = (self.volume_target - self.volume) / frames.max(1) as f32;
-        for frame in out.chunks_exact_mut(channels) {
+        let mono = 1.0 / channels as f32;
+        for (index, frame) in out.chunks_exact_mut(channels).enumerate() {
             let fade = self.fade.step(fading_in);
+            // The visualizer's copy: faded, before the volume.
+            let sum: f32 = frame.iter().sum();
+            self.tap.write(self.clock + index as u64, sum * mono * fade);
             self.volume += volume_step;
             let gain = fade * self.volume;
             if gain != 1.0 {
@@ -934,6 +950,7 @@ impl Engine {
     /// Sends what has become audible and updates the shared position.
     fn publish(&mut self) {
         let heard = self.clock.saturating_sub(self.latency);
+        self.tap.publish(self.clock, heard);
         let events = &mut self.timeline.events;
         let due = events
             .iter()
