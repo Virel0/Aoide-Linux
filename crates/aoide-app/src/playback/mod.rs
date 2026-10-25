@@ -11,6 +11,7 @@ pub mod lyrics;
 pub mod queue;
 pub mod recorder;
 pub mod report;
+pub mod sound;
 pub mod tracks;
 
 use std::collections::{HashMap, HashSet};

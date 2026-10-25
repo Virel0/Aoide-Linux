@@ -200,6 +200,7 @@ impl App {
         let artwork = Artwork::new(paths.as_ref().map(|p| p.artwork_dir.clone()));
         let mut playback = Playback::start(config.volume);
         let _ = playback.set_settings(config.settings.player());
+        let _ = playback.set_level_volume(config.settings.level_volume);
         // A development build can keep the token in memory instead, so a
         // rebuilt binary doesn't meet the Keychain's "allow this app" prompt.
         let keyring: Arc<dyn CredentialStore> =
@@ -793,6 +794,17 @@ impl App {
         let _ = self.playback.set_settings(self.config.settings.player());
         match which {
             screens::settings::Toggle::Infinity => self.infinity_switched(),
+            screens::settings::Toggle::LevelVolume => {
+                let switched = match self.session.as_ref() {
+                    Some(signed) => self
+                        .playback
+                        .switch_level_volume(&self.config.settings, &signed.measures),
+                    None => self
+                        .playback
+                        .set_level_volume(self.config.settings.level_volume),
+                };
+                self.result(switched)
+            }
             _ => Task::none(),
         }
     }

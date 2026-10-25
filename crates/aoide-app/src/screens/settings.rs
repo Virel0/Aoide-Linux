@@ -176,7 +176,8 @@ pub fn view<'a>(
         ],
         "Skip Silence plays only the span of each track your server measured as sound. Level \
          Volume turns loud records down to the same loudness; a quieter track is left alone, \
-         never turned up. Tracks your server hasn't measured yet play as they are.",
+         never turned up. A file with its own ReplayGain tags plays by them instead, album gain \
+         first, never louder than its peak allows. Tracks with neither play as they are.",
     );
     let offset = settings.lyric_offset_ms;
     let lyrics_rows = column![
