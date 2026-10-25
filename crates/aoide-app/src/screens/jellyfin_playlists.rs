@@ -42,7 +42,18 @@ pub fn query() -> ListQuery {
 }
 
 /// The two kinds of playlist, side by side at the top of the page.
-pub fn switcher<'a>(jellyfin: bool) -> Element<'a, AppMessage> {
+/// The title and the two tabs, laid out alike on both pages, so the tabs stay
+/// where they are when switching between them.
+pub fn header<'a>(jellyfin: bool, can_go_back: bool) -> Element<'a, AppMessage> {
+    column![
+        widgets::title_bar("Playlists", can_go_back),
+        switcher(jellyfin)
+    ]
+    .spacing(20)
+    .into()
+}
+
+fn switcher<'a>(jellyfin: bool) -> Element<'a, AppMessage> {
     let tab = |label: &'a str, selected: bool, section: Section| {
         button(text(label).size(14))
             .style(if selected {
@@ -164,8 +175,7 @@ impl State {
         .spacing(10)
         .align_y(Center);
         let mut body = column![
-            widgets::title_bar("Playlists", view.can_go_back),
-            switcher(true),
+            header(true, view.can_go_back),
             widgets::secondary(
                 "Playlists kept by your Jellyfin server, which every Jellyfin app sees. \
                  Aoide playlists sync between Aoide apps and can be smart."

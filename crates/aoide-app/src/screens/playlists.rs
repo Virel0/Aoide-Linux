@@ -353,8 +353,7 @@ impl State {
         .spacing(10)
         .align_y(Center);
         let mut body = column![
-            widgets::title_bar("Playlists", view.can_go_back),
-            super::jellyfin_playlists::switcher(false),
+            super::jellyfin_playlists::header(false, view.can_go_back),
             create
         ]
         .spacing(20);
