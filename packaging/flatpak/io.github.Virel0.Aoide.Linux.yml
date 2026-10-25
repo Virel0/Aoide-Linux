@@ -10,10 +10,9 @@
 #   - Nothing is trusted that cargo would not trust: a vendored crate is
 #     checked against the checksum Cargo.lock records for it, and --locked
 #     refuses a Cargo.lock that is out of date.
-#   - What it costs: this manifest is not one Flathub would take, since Flathub
-#     wants every source listed in the manifest. Submitting there means
-#     generating cargo-sources.json with flatpak-cargo-generator, committing it,
-#     and swapping the vendor source below for it.
+#   - Flathub would not take it (it wants every source listed here). That is
+#     fine: the app is not going to Flathub; the bundle is attached to the
+#     GitHub release.
 #
 # To build it on a Linux machine, from the repository root:
 #
@@ -29,7 +28,7 @@
 # app's Flatpak, io.github.Virel0.Aoide; they keep separate data.
 id: io.github.Virel0.Aoide.Linux
 runtime: org.freedesktop.Platform
-runtime-version: '25.08'
+runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
@@ -88,6 +87,10 @@ modules:
       env:
         CARGO_HOME: /run/build/aoide-linux/cargo
         CARGO_NET_OFFLINE: 'true'
+        # Furigana's IPADIC dictionary: lindera's build script downloads it
+        # unless it finds the archive, MD5-checked, in this folder (the source
+        # below puts it there).
+        LINDERA_BUILD_DICTIONARY_CACHE_DIR: /run/build/aoide-linux/lindera
     build-commands:
       # Point cargo at the vendored crates (the snippet `cargo vendor` prints).
       - mkdir -p .cargo
@@ -127,3 +130,10 @@ modules:
       - type: dir
         path: ../../target/flatpak-vendor
         dest: vendor
+      # The dictionary lindera-ipadic 6.2.0 builds from, at the path its build
+      # script looks in: <cache>/<crate version>-fmt<dictionary format>/. A
+      # lindera update in Cargo.lock changes both the file and the folder.
+      - type: file
+        url: https://Lindera.dev/mecab-ipadic-2.7.0-20250920.tar.gz
+        sha256: a7ba9f645ffe7094e56ae1c4a81d100df8fbb1e28bbe1792622e9728e162db3d
+        dest: lindera/6.2.0-fmt2

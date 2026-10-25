@@ -28,7 +28,8 @@ depends=('alsa-lib' 'dbus' 'gcc-libs' 'glibc'
          'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxi' 'libxrandr')
 makedepends=('cargo' 'pkgconf')
 optdepends=('org.freedesktop.secrets: keeps the sign-in between launches (GNOME Keyring or KWallet)'
-            'vulkan-driver: draws the window on the GPU; without one it is drawn in software')
+            'vulkan-driver: draws the window on the GPU; without one it is drawn in software'
+            'noto-fonts-cjk: shows Japanese, Chinese and Korean titles and lyrics (and furigana)')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')

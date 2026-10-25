@@ -6,7 +6,7 @@
   <name>Aoide for Linux</name>
   <summary>A native Jellyfin music player</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-or-later</project_license>
+  <project_license>GPL-3.0-or-later AND OFL-1.1</project_license>
 
   <developer id="io.github.virel0">
     <name>Virel0</name>
@@ -58,14 +58,15 @@
   </screenshots>
   -->
 
-  <!-- social-info "mild" is "uses an online API": besides the user's own
-       server the app asks LRCLIB for lyrics, GitHub for the latest release
-       and, once given a key, OpenRouter. Discord Rich Presence, off unless
-       turned on, shows what is playing on the user's Discord profile, which
-       arguably makes this "intense" (shares information identifying the
-       user). -->
+  <!-- social-info "intense" is "shares information identifiable to the
+       user": Discord Rich Presence, off unless turned on, shows what is
+       playing on the user's Discord profile. Without it the app would be
+       "mild" (online APIs: LRCLIB for lyrics, GitHub for the latest release
+       and, once given a key, OpenRouter). The rating says what the app can
+       do, not what it does by default. GPL-3.0 is the app's; OFL-1.1 is the
+       bundled Inter font's. -->
   <content_rating type="oars-1.1">
-    <content_attribute id="social-info">mild</content_attribute>
+    <content_attribute id="social-info">intense</content_attribute>
   </content_rating>
 
   <!-- Newest first. Add one for each tag before tagging it; the date is the
