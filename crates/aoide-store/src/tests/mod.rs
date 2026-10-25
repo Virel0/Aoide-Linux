@@ -11,6 +11,7 @@ mod play_history;
 mod playlists;
 mod queue_persistence;
 mod recent_contexts;
+mod replay;
 mod smart_playlist;
 mod sync_account;
 mod sync_entity;

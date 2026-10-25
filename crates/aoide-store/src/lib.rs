@@ -30,6 +30,7 @@ mod quarantine;
 mod queue;
 mod recent_contexts;
 mod record;
+mod replay;
 mod schema;
 mod smart;
 mod store;
@@ -71,6 +72,7 @@ pub use recent_contexts::{
     ResumeTile, StationSeed, resume_tiles,
 };
 pub use record::{Record, SyncRecord};
+pub use replay::{ReplayPeriod, hours_listened};
 pub use smart::{
     Calendar, Field, Match, Operator, RelativeInterval, SmartPlaylistError, SmartRule, SmartRules,
     Sort, SortDirection, TimeUnit, Value,
