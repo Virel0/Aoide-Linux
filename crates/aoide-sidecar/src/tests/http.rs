@@ -674,3 +674,22 @@ async fn a_body_this_client_cannot_read_is_a_decode_error_naming_the_path() {
         matches!(error, SidecarError::Decode { ref path, .. } if path == "aoide/analysis/coverage")
     );
 }
+
+#[tokio::test]
+async fn the_token_never_follows_a_redirect_to_another_origin() {
+    let elsewhere = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(0)
+        .mount(&elsewhere)
+        .await;
+    let (server, client) = mock().await;
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(307)
+                .insert_header("Location", format!("{}/aoide/sync/status", elsewhere.uri())),
+        )
+        .mount(&server)
+        .await;
+    assert!(client.status().await.is_err());
+}

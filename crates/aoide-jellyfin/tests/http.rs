@@ -136,6 +136,45 @@ async fn a_server_error_on_the_probe_is_not_mistaken_for_another_service() {
 }
 
 #[tokio::test]
+async fn the_token_never_follows_a_redirect_to_another_origin() {
+    let elsewhere = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": []})))
+        .expect(0)
+        .mount(&elsewhere)
+        .await;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("Location", format!("{}/Items", elsewhere.uri())),
+        )
+        .mount(&server)
+        .await;
+    let result = signed_in(&server).songs(&ListQuery::default()).await;
+    assert!(result.is_err(), "{result:?}");
+}
+
+#[tokio::test]
+async fn a_redirect_within_the_server_is_followed() {
+    let server = MockServer::start().await;
+    Mock::given(path("/old/System/Info/Public"))
+        .respond_with(
+            ResponseTemplate::new(301)
+                .insert_header("Location", format!("{}/System/Info/Public", server.uri())),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(path("/System/Info/Public"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture("system_info_public")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = client_at(&format!("{}/old/", server.uri()));
+    assert!(client.public_system_info().await.is_ok());
+}
+
+#[tokio::test]
 async fn requests_join_beneath_a_reverse_proxy_subpath() {
     let server = MockServer::start().await;
     Mock::given(path("/jellyfin/System/Info/Public"))

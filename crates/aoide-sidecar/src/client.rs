@@ -77,6 +77,7 @@ impl SidecarClient {
             .default_headers(headers)
             .connect_timeout(Duration::from_secs(15))
             .timeout(Duration::from_secs(60))
+            .redirect(same_origin_redirects())
             .build()
             .map_err(|error| SidecarError::Network(error.to_string()))?;
         Ok(Self { http, base })
@@ -407,4 +408,25 @@ fn decode_error(path: &str, error: &serde_json::Error) -> SidecarError {
 
 fn network(path: &str, error: &reqwest::Error) -> SidecarError {
     SidecarError::Network(format!("{path}: {error}"))
+}
+
+/// Redirects are followed only within the server's own origin (scheme, host
+/// and port), at most ten: the token rides in `X-Emby-Authorization` (a default header),
+/// which reqwest doesn't strip when a redirect leaves for another host or
+/// drops to plain HTTP, as it does `Authorization`. A redirect elsewhere is
+/// returned as the redirect response, an error to the caller.
+fn same_origin_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same = attempt
+            .previous()
+            .first()
+            .is_some_and(|first| first.origin() == attempt.url().origin());
+        if !same {
+            attempt.stop()
+        } else if attempt.previous().len() > 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
 }

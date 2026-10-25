@@ -35,6 +35,27 @@ pub(crate) enum Body<'a> {
     },
 }
 
+/// Redirects are followed only within the server's own origin (scheme, host
+/// and port), at most ten: the token rides in `X-Emby-Authorization`,
+/// which reqwest doesn't strip when a redirect leaves for another host or
+/// drops to plain HTTP, as it does `Authorization`. A redirect elsewhere is
+/// returned as the redirect response, an error to the caller.
+fn same_origin_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same = attempt
+            .previous()
+            .first()
+            .is_some_and(|first| first.origin() == attempt.url().origin());
+        if !same {
+            attempt.stop()
+        } else if attempt.previous().len() > 10 {
+            attempt.error("too many redirects")
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
 /// One Jellyfin server, optionally signed in.
 ///
 /// Cheap to clone: clones share one connection pool. Signing in makes a new value
@@ -55,6 +76,7 @@ impl JellyfinClient {
         let http = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .read_timeout(READ_TIMEOUT)
+            .redirect(same_origin_redirects())
             .build()
             .map_err(transport)?;
         Ok(Self {
