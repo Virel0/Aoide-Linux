@@ -41,6 +41,7 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
         playlists: &signed.playlists,
         favourites: &signed.favourites,
         can_go_back: false,
+        smart_search: false,
     };
     let card = container(widgets::menu_strip(menu, &view)).max_width(560);
     opaque(
@@ -173,6 +174,7 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         playlists: &signed.playlists,
         favourites: &signed.favourites,
         can_go_back: nav.can_go_back(),
+        smart_search: app.smart.has_key(),
     };
     let page = match &entry.page {
         Page::Settings(state) => screens::settings::view(

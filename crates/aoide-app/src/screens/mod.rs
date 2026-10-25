@@ -109,6 +109,8 @@ pub struct View<'a> {
     pub playlists: &'a [PlaylistSummary],
     pub favourites: &'a HashMap<String, bool>,
     pub can_go_back: bool,
+    /// An OpenRouter key is set: Search offers search by description.
+    pub smart_search: bool,
 }
 
 /// Something being fetched.

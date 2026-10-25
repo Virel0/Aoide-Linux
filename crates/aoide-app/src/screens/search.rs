@@ -1,11 +1,12 @@
 //! Search: songs, albums and artists as you type, asked for once typing
-//! pauses.
+//! pauses. A phrase of three words or more can also be searched by
+//! description (smart.rs), but only when the button is pressed.
 
 use std::time::Duration;
 
 use aoide_jellyfin::SearchResults;
 use aoide_store::PlaySource;
-use iced::widget::{column, text, text_input};
+use iced::widget::{button, column, text, text_input};
 use iced::{Element, Task};
 
 use super::{Ctx, Load, PageMsg, Route, View, fetch};
@@ -48,6 +49,8 @@ pub struct State {
     /// The term the results are for.
     searched: String,
     results: Option<Load<Results>>,
+    /// The phrase last searched by description, and what it found.
+    described: Option<(String, Load<crate::smart::Described>)>,
 }
 
 #[derive(Debug, Default)]
@@ -62,6 +65,9 @@ pub enum Message {
     Typed(String),
     Due(u64),
     Found(String, Result<SearchResults, String>),
+    /// "Search by description" was pressed.
+    Describe,
+    Described(String, Result<crate::smart::Described, String>),
 }
 
 pub fn open() -> (State, Task<App>) {
@@ -71,6 +77,7 @@ pub fn open() -> (State, Task<App>) {
             debouncer: Debouncer::default(),
             searched: String::new(),
             results: None,
+            described: None,
         },
         iced::widget::operation::focus(FIELD),
     )
@@ -123,15 +130,37 @@ impl State {
                 })));
                 Task::none()
             }
+            Message::Describe => {
+                let phrase = self.term.trim().to_owned();
+                if !aoide_integrations::openrouter::smart_search::looks_like_a_phrase(&phrase) {
+                    return Task::none();
+                }
+                self.described = Some((phrase.clone(), Load::Loading));
+                Task::done(App::Smart(crate::smart::Message::Describe {
+                    page: ctx.key,
+                    phrase,
+                }))
+            }
+            Message::Described(phrase, result) => {
+                if self.described.as_ref().is_some_and(|(p, _)| *p == phrase) {
+                    self.described = Some((phrase, Load::from(result)));
+                }
+                Task::none()
+            }
         }
     }
 
     pub fn artwork(&self) -> Vec<ArtKey> {
-        let Some(Load::Ready(results)) = &self.results else {
-            return Vec::new();
+        let described = match &self.described {
+            Some((_, Load::Ready(found))) => super::track_art(&found.songs),
+            _ => Vec::new(),
         };
-        super::track_art(&results.songs)
+        let Some(Load::Ready(results)) = &self.results else {
+            return described;
+        };
+        described
             .into_iter()
+            .chain(super::track_art(&results.songs))
             .chain(results.albums.iter().filter_map(|t| t.art.clone()))
             .chain(results.artists.iter().filter_map(|t| t.art.clone()))
             .collect()
@@ -146,14 +175,20 @@ impl State {
             .size(16)
             .style(theme::field);
         let mut body = column![widgets::title_bar("Search", view.can_go_back), field].spacing(20);
+        body = body.push(self.describe_view(view));
         match &self.results {
             None => {}
             Some(Load::Loading) => body = body.push(widgets::loading()),
             Some(Load::Failed(error)) => body = body.push(widgets::failure(error)),
             Some(Load::Ready(results)) => {
+                // Said only when a search by description found nothing either.
+                let described = self.described.as_ref().is_some_and(|(phrase, found)| {
+                    phrase == self.term.trim() && found.ready().is_some_and(|f| !f.songs.is_empty())
+                });
                 if results.songs.is_empty()
                     && results.albums.is_empty()
                     && results.artists.is_empty()
+                    && !described
                 {
                     body = body.push(widgets::empty("Nothing matches that."));
                 }
@@ -188,6 +223,57 @@ impl State {
             }
         }
         widgets::page(body)
+    }
+}
+
+impl State {
+    /// "Search by description" and what it found: offered for a phrase of
+    /// three words or more when an OpenRouter key is set. The phrase stays
+    /// on this computer until the button is pressed.
+    fn describe_view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
+        use aoide_integrations::openrouter::smart_search::looks_like_a_phrase;
+        let key = view.key;
+        let term = self.term.trim();
+        let shown = self.described.as_ref().filter(|(phrase, _)| phrase == term);
+        let mut part = column![].spacing(12);
+        if view.smart_search && looks_like_a_phrase(term) && shown.is_none() {
+            part = part.push(
+                button(text("Search by Description").size(13))
+                    .style(theme::tonal)
+                    .padding([6, 12])
+                    .on_press(App::Page(key, PageMsg::Search(Message::Describe))),
+            );
+        }
+        match shown.map(|(_, found)| found) {
+            None => {}
+            Some(Load::Loading) => part = part.push(widgets::secondary("Asking OpenRouter…")),
+            Some(Load::Failed(error)) => part = part.push(widgets::failure(error)),
+            Some(Load::Ready(found)) => {
+                if let Some(words) = &found.understood {
+                    part = part.push(widgets::secondary(format!("Understood as {words}")).size(13));
+                }
+                if let Some(note) = &found.note {
+                    part = part.push(widgets::secondary(note.as_str()).size(13));
+                }
+                if found.understood.is_some() && found.note.is_none() && found.songs.is_empty() {
+                    part = part.push(widgets::empty("No songs match that description."));
+                }
+                if !found.songs.is_empty() {
+                    part = part
+                        .push(text("Songs by Description").size(20).font(widgets::BOLD))
+                        .push(widgets::track_list(
+                            &found.songs,
+                            view,
+                            ListStyle {
+                                numbered: false,
+                                show_album: true,
+                            },
+                            PlaySource::Search,
+                        ));
+                }
+            }
+        }
+        part.into()
     }
 }
 
