@@ -854,7 +854,9 @@ impl App {
         self.save_config();
         let _ = self.playback.set_settings(self.config.settings.player());
         match which {
-            screens::settings::Toggle::Infinity => self.infinity_switched(),
+            screens::settings::Toggle::Infinity | screens::settings::Toggle::InfinityAlbums => {
+                self.infinity_switched()
+            }
             _ => Task::none(),
         }
     }

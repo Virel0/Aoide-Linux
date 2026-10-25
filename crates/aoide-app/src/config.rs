@@ -57,6 +57,8 @@ pub struct Settings {
     pub level_volume: bool,
     /// Lyrics shown this much later (positive) or earlier (negative).
     pub lyric_offset_ms: i32,
+    /// Infinity adds whole albums chosen by taste instead of single songs.
+    pub infinity_albums: bool,
 }
 
 impl Settings {
@@ -85,6 +87,7 @@ impl Default for Settings {
             skip_silence: true,
             level_volume: true,
             lyric_offset_ms: 0,
+            infinity_albums: false,
         }
     }
 }
@@ -254,6 +257,7 @@ mod tests {
                 skip_silence: false,
                 level_volume: false,
                 lyric_offset_ms: -250,
+                infinity_albums: true,
             },
             volume: 0.5,
         };

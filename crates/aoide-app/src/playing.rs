@@ -463,6 +463,9 @@ impl App {
         let Some((_, seed)) = current else {
             return Task::none();
         };
+        if self.config.settings.infinity_albums {
+            return self.top_up_with_albums();
+        }
         let ask = infinity::Ask {
             seed,
             queue,

@@ -8,6 +8,7 @@ mod covers;
 mod credentials;
 mod handoff;
 mod icons;
+mod infinity_albums;
 mod integration;
 mod library;
 mod listening;
