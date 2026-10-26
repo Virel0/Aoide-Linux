@@ -13,14 +13,22 @@ pub(super) struct Blend {
 }
 
 impl Engine {
-    /// Renders up to `frames` frames of the blend under way at `offset` into
-    /// `out`. When the overlap is done, the incoming deck becomes the primary
-    /// and the queued blend, if any, is next. Returns the frames rendered.
-    pub(super) fn render_blend(&mut self, out: &mut [f32], offset: usize, frames: usize) -> usize {
+    /// Renders up to `frames` frames of `blend`, which is under way and has
+    /// been taken out of `self.blend`, at `offset` into `out`. Puts it back
+    /// unless the overlap is done, in which case its incoming deck becomes the
+    /// primary and the queued blend, if any, is next. Returns the frames
+    /// rendered, at least one when `frames` is: the overlap is never done
+    /// while it is under way.
+    pub(super) fn render_blend(
+        &mut self,
+        mut blend: Blend,
+        out: &mut [f32],
+        offset: usize,
+        frames: usize,
+    ) -> usize {
         let channels = self.config.channels;
         let rate = self.config.sample_rate;
         let clock = self.clock + offset as u64;
-        let blend = self.blend.as_mut().expect("a blend under way");
         let progress = blend.progress.unwrap_or(0);
         let span = frames.min((blend.overlap - progress) as usize);
         let region = &mut out[offset * channels..(offset + span) * channels];
@@ -54,18 +62,19 @@ impl Engine {
 
         let progress = progress + span as u64;
         blend.progress = Some(progress);
-        if progress >= blend.overlap {
-            let blend = self.blend.take().expect("checked above");
-            self.blend = self.queued.take();
-            if let Some(old) = self.primary.replace(blend.deck) {
-                // Its end had not been reached: it ends with the overlap.
-                if let Some(track) = &old.track {
-                    let ended = EngineEvent::TrackEnded { id: track.id };
-                    self.timeline
-                        .event(clock + span as u64, ended, &self.events);
-                }
-                self.reap(old.feed);
+        if progress < blend.overlap {
+            self.blend = Some(blend);
+            return span;
+        }
+        self.blend = self.queued.take();
+        if let Some(old) = self.primary.replace(blend.deck) {
+            // Its end had not been reached: it ends with the overlap.
+            if let Some(track) = &old.track {
+                let ended = EngineEvent::TrackEnded { id: track.id };
+                self.timeline
+                    .event(clock + span as u64, ended, &self.events);
             }
+            self.reap(old.feed);
         }
         span
     }

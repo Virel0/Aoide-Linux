@@ -29,10 +29,8 @@ impl InlineFeed {
 impl Feed for InlineFeed {
     fn read(&mut self, out: &mut [f32]) -> FeedRead {
         loop {
-            if let Some(&(at, _)) = self.staging.markers.front()
-                && at <= self.read
-            {
-                let (_, marker) = self.staging.markers.pop_front().expect("checked above");
+            let read = self.read;
+            if let Some((_, marker)) = self.staging.markers.pop_front_if(|(at, _)| *at <= read) {
                 return FeedRead::Marker(marker);
             }
             let available = self.staging.frames(self.channels);

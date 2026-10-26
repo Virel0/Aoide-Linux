@@ -68,10 +68,12 @@ impl Feed for ThreadFeed {
         // Read the flag before the rings: everything pushed before it was set
         // is visible after it.
         let idle = self.idle.load(Ordering::Acquire);
-        if let Ok(&(at, _)) = self.markers.peek()
-            && at <= self.read
+        // This is the ring's only consumer, so a marker peeked here is still
+        // there to pop; if it somehow were not, the peek below finds the ring
+        // empty too and this reads audio, as for no marker at all.
+        if self.markers.peek().is_ok_and(|&(at, _)| at <= self.read)
+            && let Ok((_, marker)) = self.markers.pop()
         {
-            let (_, marker) = self.markers.pop().expect("peeked above");
             return FeedRead::Marker(marker);
         }
         let until_marker = self
@@ -187,14 +189,10 @@ fn move_markers(
     moved: u64,
     pipeline_idle: bool,
 ) {
-    while let Some(&(at, _)) = staging.markers.front() {
-        if at > moved && !(pipeline_idle && staging.samples.is_empty()) {
-            break;
-        }
-        if markers.is_full() {
-            break;
-        }
-        let entry = staging.markers.pop_front().expect("checked above");
+    let all = pipeline_idle && staging.samples.is_empty();
+    while !markers.is_full()
+        && let Some(entry) = staging.markers.pop_front_if(|(at, _)| all || *at <= moved)
+    {
         let _ = markers.push(entry);
     }
 }
@@ -229,4 +227,58 @@ fn move_audio(
         return frames as u64;
     }
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::queue::EntryId;
+
+    fn staged(markers_at: &[u64], frames: usize) -> Staging {
+        let mut staging = Staging::default();
+        staging.audio(&vec![0.0; frames * 2], 2);
+        for &at in markers_at {
+            staging.marker(at, Marker::End { id: EntryId(at) });
+        }
+        staging
+    }
+
+    fn sent(ring: &mut rtrb::Consumer<(u64, Marker)>) -> Vec<u64> {
+        std::iter::from_fn(|| ring.pop().ok().map(|(at, _)| at)).collect()
+    }
+
+    #[test]
+    fn markers_wait_for_the_audio_before_them() {
+        let mut staging = staged(&[0, 10, 20], 5);
+        let (mut tx, mut rx) = rtrb::RingBuffer::new(8);
+        move_markers(&mut staging, &mut tx, 10, false);
+        assert_eq!(sent(&mut rx), [0, 10]);
+        assert_eq!(staging.markers.len(), 1);
+    }
+
+    #[test]
+    fn markers_stop_at_a_full_ring_and_stay_staged() {
+        let mut staging = staged(&[0, 1, 2], 0);
+        let (mut tx, mut rx) = rtrb::RingBuffer::new(2);
+        move_markers(&mut staging, &mut tx, 5, false);
+        assert_eq!(sent(&mut rx), [0, 1]);
+        move_markers(&mut staging, &mut tx, 5, false);
+        assert_eq!(sent(&mut rx), [2]);
+        assert!(staging.markers.is_empty());
+    }
+
+    #[test]
+    fn an_idle_pipeline_with_no_audio_left_sends_every_marker() {
+        let mut staging = staged(&[40, 50], 0);
+        let (mut tx, mut rx) = rtrb::RingBuffer::new(8);
+        move_markers(&mut staging, &mut tx, 0, false);
+        assert!(sent(&mut rx).is_empty());
+        move_markers(&mut staging, &mut tx, 0, true);
+        assert_eq!(sent(&mut rx), [40, 50]);
+
+        // Audio still staged holds them back even when idle.
+        let mut staging = staged(&[40], 3);
+        move_markers(&mut staging, &mut tx, 0, true);
+        assert!(sent(&mut rx).is_empty());
+    }
 }

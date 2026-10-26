@@ -202,12 +202,9 @@ impl Engine {
     /// blend starts or ends so each lands on its exact frame. `None` means the
     /// rest of the block is silence.
     fn render_span(&mut self, out: &mut [f32], offset: usize, frames: usize) -> Option<usize> {
-        if self
-            .blend
-            .as_ref()
-            .is_some_and(|blend| blend.progress.is_some())
-        {
-            return Some(self.render_blend(out, offset, frames));
+        // Taken rather than borrowed, so rendering it needs no second look.
+        if let Some(blend) = self.blend.take_if(|blend| blend.progress.is_some()) {
+            return Some(self.render_blend(blend, out, offset, frames));
         }
 
         let channels = self.config.channels;
