@@ -29,6 +29,20 @@ const DETAIL_LIMIT: usize = 400;
 /// reverse-proxy subpath (`https://host/jellyfin`) keeps its prefix. Bodies are read
 /// with a plain JSON decoder: op payloads are opaque client JSON the server stores
 /// verbatim, and a key spelled `Notes` must arrive as `Notes`.
+///
+/// # Errors
+///
+/// Every call can fail the same ways; each method's own `# Errors` names what it
+/// adds to these:
+///
+/// - [`SidecarError::Network`]: no answer (DNS, a refused connection, TLS, the
+///   60-second timeout).
+/// - [`SidecarError::Unauthorized`] and [`SidecarError::Forbidden`]: HTTP 401
+///   and 403.
+/// - [`SidecarError::Absent`]: HTTP 404, 405 or 501, an older sidecar or none.
+/// - [`SidecarError::Status`]: any other non-2xx status; 503 is the sidecar's
+///   "storage unavailable".
+/// - [`SidecarError::Decode`]: a 2xx answer that isn't the JSON expected.
 #[derive(Clone)]
 pub struct SidecarClient {
     http: Client,
@@ -48,6 +62,13 @@ impl std::fmt::Debug for SidecarClient {
 impl SidecarClient {
     /// `base_url` is the Jellyfin server address the user signed in to; `token` is the
     /// Jellyfin access token. There is no separate login.
+    ///
+    /// # Errors
+    ///
+    /// [`SidecarError::InvalidUrl`] for an address that doesn't parse, isn't
+    /// http(s) or can't take a path, and for a token with characters a header can't
+    /// carry; [`SidecarError::Network`] when the HTTP client can't be built. Sends
+    /// nothing.
     pub fn new(base_url: &str, token: &str) -> Result<Self, SidecarError> {
         let base = Url::parse(base_url.trim())
             .map_err(|error| SidecarError::InvalidUrl(error.to_string()))?;
@@ -102,11 +123,22 @@ impl SidecarClient {
     // MARK: - Sync
 
     /// `GET /aoide/sync/status`.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors); [`SidecarError::Absent`] means
+    /// no sidecar.
     pub async fn status(&self) -> Result<SyncStatus, SidecarError> {
         self.get_json("aoide/sync/status", &[]).await
     }
 
     /// `POST /aoide/sync/push`. Safe to repeat: the server is idempotent on op id.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors). Ops the server refuses one by
+    /// one are in the response, not an error; a batch over the server's ceiling is
+    /// a 400 as [`SidecarError::Status`].
     pub async fn push(&self, request: &PushRequest) -> Result<PushResponse, SidecarError> {
         self.send_json(Method::POST, "aoide/sync/push", &[], request)
             .await
@@ -115,6 +147,10 @@ impl SidecarClient {
     /// `GET /aoide/sync/pull`. `since` is always sent — as 0 on a device that has never
     /// synced — because a server binding it as required would otherwise fail the very
     /// first request a new device makes.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors).
     pub async fn pull(
         &self,
         since: Option<PullCursor>,
@@ -130,6 +166,11 @@ impl SidecarClient {
     // MARK: - Covers
 
     /// `HEAD /aoide/images/{sha256}`: whether the server already holds these bytes.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors), except that a 404 is
+    /// `Ok(false)`.
     pub async fn has_image(&self, sha256: &str) -> Result<bool, SidecarError> {
         let path = image_path(sha256);
         let (status, body) = self
@@ -143,6 +184,10 @@ impl SidecarClient {
     }
 
     /// `GET /aoide/images/{sha256}`. `None` when the server does not hold them.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors), except that a 404 is `Ok(None)`.
     pub async fn get_image(&self, sha256: &str) -> Result<Option<Vec<u8>>, SidecarError> {
         let path = image_path(sha256);
         let (status, body) = self
@@ -157,6 +202,12 @@ impl SidecarClient {
 
     /// `PUT /aoide/images/{sha256}` with the raw bytes. JPEG, PNG or WebP, up to 5 MB;
     /// the server recomputes the hash and refuses a mismatch. Idempotent.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors); bytes the server refuses (a hash
+    /// mismatch, too large, another type) come back as an error status, usually
+    /// [`SidecarError::Status`].
     pub async fn put_image(
         &self,
         sha256: &str,
@@ -176,6 +227,11 @@ impl SidecarClient {
 
     /// `GET /aoide/queue`: one entry per device, most recently updated first by the
     /// server's clock. Entries this build cannot read are skipped, not fatal.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors); an entry this build can't read
+    /// is skipped, not an error.
     pub async fn queues(&self) -> Result<Vec<QueueEntry>, SidecarError> {
         let body: serde_json::Value = self.get_json("aoide/queue", &[]).await?;
         Ok(list_from(&body, &["entries", "queues"])
@@ -188,6 +244,11 @@ impl SidecarClient {
 
     /// `GET /aoide/shares`: shares owned by, and granted to, the caller. Entries this
     /// build cannot read are skipped.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors); an entry this build can't read
+    /// is skipped, not an error.
     pub async fn list_shares(&self) -> Result<Vec<PlaylistShare>, SidecarError> {
         let body: serde_json::Value = self.get_json("aoide/shares", &[]).await?;
         Ok(list_from(&body, &["shares"])
@@ -198,6 +259,11 @@ impl SidecarClient {
 
     /// `POST /aoide/shares`: invites another Jellyfin user to a playlist this user
     /// owns. Their edits and this user's then both travel through the ordinary pull.
+    ///
+    /// # Errors
+    ///
+    /// [`SidecarError::Forbidden`] when this user doesn't own the playlist;
+    /// otherwise the [request errors](SidecarClient#errors).
     pub async fn share_playlist(
         &self,
         playlist_id: &str,
@@ -222,6 +288,10 @@ impl SidecarClient {
     /// `DELETE /aoide/shares/{playlistId}/{granteeUserId}`. Either side may revoke.
     /// Revoking stops future changes reaching the collaborator; it withdraws nothing
     /// they already wrote.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors).
     pub async fn revoke_share(
         &self,
         playlist_id: &str,
@@ -243,6 +313,12 @@ impl SidecarClient {
 
     /// `POST /aoide/next`. A 404 here is an older sidecar — or a seed this user cannot
     /// see; the caller tells them apart by whether the seed is a track it just played.
+    ///
+    /// # Errors
+    ///
+    /// [`SidecarError::Absent`] for an older sidecar or a seed this user can't see;
+    /// [`SidecarError::Status`] with 503 when the server's storage is down;
+    /// otherwise the [request errors](SidecarClient#errors).
     pub async fn next(&self, request: &NextRequest) -> Result<NextResponse, SidecarError> {
         self.send_json(Method::POST, "aoide/next", &[], request)
             .await
@@ -250,6 +326,11 @@ impl SidecarClient {
 
     /// `GET /aoide/discover`. `limit` is held to 1…100. A 404 is an older sidecar: hide
     /// the tile.
+    ///
+    /// # Errors
+    ///
+    /// [`SidecarError::Absent`] for a sidecar without Discover; otherwise the
+    /// [request errors](SidecarClient#errors).
     pub async fn discover(&self, limit: u32) -> Result<DiscoverResponse, SidecarError> {
         let limit = limit.clamp(1, DiscoverResponse::MAX_LIMIT);
         self.get_json("aoide/discover", &[("limit", limit.to_string())])
@@ -260,6 +341,12 @@ impl SidecarClient {
 
     /// `GET /aoide/sound-bounds`, in calls of at most 200 ids, merged. A 404 on the
     /// endpoint is "trim nothing".
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors) from any call; the calls already
+    /// answered are dropped. The caller reads [`SidecarError::Absent`] as "trim
+    /// nothing".
     pub async fn sound_bounds(&self, ids: &[String]) -> Result<SoundBoundsResponse, SidecarError> {
         let mut merged = SoundBoundsResponse::default();
         for chunk in ids.chunks(MAX_IDS_PER_CALL) {
@@ -273,6 +360,10 @@ impl SidecarClient {
 
     /// `POST /aoide/sound-bounds`: this device's own measurements, `None` meaning
     /// measured with nothing to trim.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors).
     pub async fn post_sound_bounds(
         &self,
         bounds: &BTreeMap<String, Option<SoundBounds>>,
@@ -293,6 +384,11 @@ impl SidecarClient {
     }
 
     /// `GET /aoide/audio-analysis`, in calls of at most 200 ids, merged.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors) from any call; the calls already
+    /// answered are dropped.
     pub async fn audio_analysis(
         &self,
         ids: &[String],
@@ -308,6 +404,10 @@ impl SidecarClient {
     }
 
     /// `GET /aoide/analysis/coverage`.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors).
     pub async fn analysis_coverage(&self) -> Result<AnalysisCoverage, SidecarError> {
         self.get_json("aoide/analysis/coverage", &[]).await
     }

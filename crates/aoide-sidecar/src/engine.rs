@@ -25,6 +25,7 @@ use crate::types::PlaylistShare;
 /// [`SidecarError::is_server_fault`]) is treated as transient: retrying a healthy op
 /// costs a round trip, quarantining one because a router blinked costs the change.
 pub trait SyncTransport: Send + Sync {
+    /// Sends a batch of ops, as `POST /aoide/sync/push` does.
     fn push(
         &self,
         request: &PushRequest,
@@ -50,10 +51,14 @@ pub trait SyncTransport: Send + Sync {
         false
     }
 
+    /// Whether the server already holds the cover with this hash. Unless
+    /// overridden, [`SidecarError::Unsupported`].
     fn has_image(&self, _sha256: &str) -> impl Future<Output = Result<bool, SidecarError>> + Send {
         async { Err(SidecarError::Unsupported("images")) }
     }
 
+    /// Uploads a cover's bytes under their hash, of type `mime`. Unless
+    /// overridden, [`SidecarError::Unsupported`].
     fn upload_image(
         &self,
         _sha256: &str,
@@ -148,6 +153,7 @@ pub fn is_share_revoked(reason: &str) -> bool {
 /// playlist again. Held in memory, so a restart asks the server once more.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockedEdit {
+    /// The held op's id, as the store's log has it.
     pub op_id: String,
     /// From the op (a playlist's own id, or an entry's `playlistId`), else from the
     /// server's message. `None` when neither says.
@@ -176,6 +182,8 @@ fn playlist_of(op: &Op, reason: &str) -> Option<String> {
 /// Reads the bytes behind a cover hash from wherever this device keeps them. The store
 /// records that a blob exists and whether it was uploaded; the bytes are the app's.
 pub trait ImageByteSource: Send + Sync {
+    /// The bytes whose SHA-256 is `sha256` (lowercase hex), or `None` when this
+    /// device doesn't have them.
     fn bytes(&self, sha256: &str) -> Option<Vec<u8>>;
 }
 
@@ -194,13 +202,21 @@ pub enum SyncError {
          of which {unmatched_rejections} named no op it was sent"
     )]
     PushStalled {
+        /// Ops still waiting to be sent.
         pending: usize,
+        /// Ops the server accepted in that round trip.
         accepted: usize,
+        /// Ops the server rejected in that round trip.
         rejected: usize,
+        /// Rejections that named an op id the batch didn't hold.
         unmatched_rejections: usize,
     },
+    /// A round trip failed as a whole: the network, the server's refusal of the
+    /// token, a missing sidecar ([`is_sidecar_absent`](Self::is_sidecar_absent)),
+    /// or a server fault no single op explains.
     #[error("transport: {0}")]
     Transport(#[from] SidecarError),
+    /// The local store couldn't read or write.
     #[error("store: {0}")]
     Store(#[from] StoreError),
 }
@@ -227,7 +243,9 @@ pub struct SyncOverview {
     pub last_attempt_at: Option<Millis>,
     /// The last clean sync's counts: changes sent, received, and that changed a row.
     pub pushed: usize,
+    /// Changes the last clean sync received.
     pub pulled: usize,
+    /// Of those, how many changed a row here.
     pub applied: usize,
     /// Changes waiting to be sent, all of them ("Waiting to send").
     pub waiting: i64,
@@ -243,6 +261,7 @@ pub struct SyncOverview {
     pub held_entities: Vec<String>,
     /// Edits held because a playlist's share was revoked; see `blocked_edits`.
     pub blocked_by_share: usize,
+    /// Those edits, one by one, to list with the count.
     pub blocked_edits: Vec<BlockedEdit>,
     /// Why the last sync failed, with the server's own words when it gave any. `None`
     /// after a clean sync.
@@ -318,6 +337,8 @@ impl Drop for RunningGuard<'_> {
 }
 
 impl<T: SyncTransport> SyncEngine<T> {
+    /// An idle engine syncing `store` over `transport`, with the default
+    /// [`SyncPolicy`], the system clock, no cover uploads and no user id.
     pub fn new(store: Arc<Store>, transport: T) -> Self {
         Self {
             store,
@@ -344,6 +365,7 @@ impl<T: SyncTransport> SyncEngine<T> {
         }
     }
 
+    /// The push batch size, pull page size and clock-skew tolerance syncs run to.
     pub fn with_policy(mut self, policy: SyncPolicy) -> Self {
         self.policy = policy;
         self
@@ -385,6 +407,7 @@ impl<T: SyncTransport> SyncEngine<T> {
         self.state().blocked.values().cloned().collect()
     }
 
+    /// How many edits [`blocked_edits`](Self::blocked_edits) would list.
     pub fn blocked_edit_count(&self) -> usize {
         self.state().blocked.len()
     }
@@ -410,6 +433,14 @@ impl<T: SyncTransport> SyncEngine<T> {
     /// Reads `/aoide/shares` now and lets go of every held edit it says may go out
     /// again. Syncs do this themselves at most every [`SHARE_RECHECK_MS`]; this is
     /// for a sharing screen that wants the list.
+    ///
+    /// # Errors
+    ///
+    /// Whatever the transport's `list_shares` fails with:
+    /// [`SidecarError::Unsupported`] for a transport without sharing,
+    /// [`SidecarError::Absent`] for a server without it, else the [request
+    /// errors](SidecarClient#errors). Held edits stay held. Absent and unsupported
+    /// sharing aren't recorded in [`share_error`](Self::share_error).
     pub async fn refresh_shares(&self) -> Result<Vec<PlaylistShare>, SidecarError> {
         self.state().shares_checked_at = Some((self.clock)());
         let read = self.transport.list_shares().await;
@@ -476,14 +507,17 @@ impl<T: SyncTransport> SyncEngine<T> {
             .is_none_or(|checked| now - checked >= SHARE_RECHECK_MS)
     }
 
+    /// The transport syncs go over.
     pub fn transport(&self) -> &T {
         &self.transport
     }
 
+    /// Where the running sync has got to, or how the last one ended.
     pub fn phase(&self) -> SyncPhase {
         self.state().phase.clone()
     }
 
+    /// The last clean sync's report, in this run of the app.
     pub fn last_report(&self) -> Option<SyncReport> {
         self.state().last_report.clone()
     }
@@ -507,6 +541,15 @@ impl<T: SyncTransport> SyncEngine<T> {
     }
 
     /// Runs one full sync: covers, then push, then pull.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::AlreadyRunning`] while another sync or
+    /// [`publish_queue`](Self::publish_queue) runs; [`SyncError::Transport`] when a
+    /// cover upload, push or pull round trip fails as a whole;
+    /// [`SyncError::PushStalled`] when a push round trip changes nothing;
+    /// [`SyncError::Store`] when the store can't read or write. An op that can
+    /// never sync is quarantined, not an error.
     pub async fn sync(&self) -> Result<SyncReport, SyncError> {
         if self.running.swap(true, Ordering::AcqRel) {
             return Err(SyncError::AlreadyRunning);
@@ -542,6 +585,10 @@ impl<T: SyncTransport> SyncEngine<T> {
     }
 
     /// Everything a sync status panel shows, read now. See [`SyncOverview`].
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError`] when the store can't read its counts or its last sync time.
     pub fn overview(&self) -> Result<SyncOverview, StoreError> {
         let counts = self.store.pending_op_counts()?;
         let last_synced_at = self.store.last_synced_at()?;
@@ -581,6 +628,11 @@ impl<T: SyncTransport> SyncEngine<T> {
     /// Call it after [`aoide_store::QueueBroadcast`] writes a row. Refused with
     /// [`SyncError::AlreadyRunning`] while a sync runs — that sync pushes the row
     /// anyway. Returns how many ops the server acknowledged.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::AlreadyRunning`] while a sync runs; otherwise as for a
+    /// [`sync`](Self::sync)'s push.
     pub async fn publish_queue(&self) -> Result<usize, SyncError> {
         if self.running.swap(true, Ordering::AcqRel) {
             return Err(SyncError::AlreadyRunning);

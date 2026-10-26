@@ -4,24 +4,43 @@ pub enum SidecarError {
     /// The endpoint itself is not there: 404, or a 405/501 from a proxy answering the
     /// path. An older sidecar, or none — fall back rather than retry.
     #[error("the server has no {path}")]
-    Absent { path: String },
+    Absent {
+        /// The request path, relative to the server address: `aoide/next`.
+        path: String,
+    },
+    /// HTTP 401: the Jellyfin token was revoked or never valid. Sign in again.
     #[error("the token was not accepted")]
     Unauthorized,
+    /// HTTP 403: the token is fine but this user may not do this, such as sharing
+    /// a playlist somebody else owns.
     #[error("this account is not allowed to do that")]
     Forbidden,
     /// Any other status. `detail` is the start of the body, which for a sidecar
     /// failure is usually the whole diagnosis.
     #[error("{path} returned an error (HTTP {status}){}", detail.as_deref().map(|d| format!(": {d}")).unwrap_or_default())]
     Status {
+        /// The HTTP status: any but 2xx, 401, 403, 404, 405 and 501.
         status: u16,
+        /// The request path, relative to the server address.
         path: String,
+        /// Up to the first 400 characters of the body, trimmed; `None` for an
+        /// empty one. [`server_text`](Self::server_text) reads it for a person.
         detail: Option<String>,
     },
     /// The round trip never completed: no network, a timeout, a dropped connection.
     #[error("network: {0}")]
     Network(String),
+    /// A 2xx answer that didn't decode, or was larger than any sidecar answer
+    /// (64 MB); also a request body that wouldn't encode.
     #[error("{path} sent a response this client could not read: {detail}")]
-    Decode { path: String, detail: String },
+    Decode {
+        /// The request path, relative to the server address.
+        path: String,
+        /// serde_json's message, or what else was wrong.
+        detail: String,
+    },
+    /// [`SidecarClient::new`](crate::SidecarClient::new) was given an address that
+    /// isn't an http(s) URL, or a token a header can't carry.
     #[error("not a usable server address: {0}")]
     InvalidUrl(String),
     /// The transport does not do this at all (a test double without images, say).

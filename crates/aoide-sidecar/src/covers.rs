@@ -22,12 +22,16 @@ impl ImageByteSource for BlobDirectory {
     }
 }
 
+/// Why [`cover_bytes`] couldn't produce a cover's bytes.
 #[derive(Debug, thiserror::Error)]
 pub enum CoverFetchError {
+    /// Fetching from the sidecar failed; a 404 is not this but `Ok(None)`.
     #[error("transport: {0}")]
     Transport(#[from] SidecarError),
+    /// Recording the fetched blob in the store failed.
     #[error("store: {0}")]
     Store(#[from] StoreError),
+    /// Writing the fetched bytes to the blob directory failed.
     #[error("file: {0}")]
     Io(#[from] std::io::Error),
     /// The server answered with bytes that are not the ones named. Nothing is kept:
@@ -42,6 +46,14 @@ pub enum CoverFetchError {
 /// that chose the cover has not synced — or there is no sidecar, or `hash` is not a
 /// hash at all; draw the next source instead. `mime` is what the playlist row says
 /// the bytes are, used only when the bytes do not say for themselves.
+///
+/// # Errors
+///
+/// [`CoverFetchError::Transport`] when the sidecar fails other than with a 404;
+/// [`CoverFetchError::Mismatch`] when its bytes don't hash to `hash`;
+/// [`CoverFetchError::Io`] when the bytes can't be written to `blobs`;
+/// [`CoverFetchError::Store`] when the store can't record them. Nothing is kept
+/// after a mismatch.
 pub async fn cover_bytes(
     store: &Store,
     blobs: &BlobDirectory,

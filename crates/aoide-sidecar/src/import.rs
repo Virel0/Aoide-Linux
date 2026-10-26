@@ -37,7 +37,9 @@ use crate::error::SidecarError;
 /// A playlist as another service describes it: names and lengths, no ids we can use.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportedPlaylist {
+    /// The playlist's name at the source, or the name given for a CSV file.
     pub name: String,
+    /// The tracks in playlist order. Rows without a title are left out.
     pub tracks: Vec<ImportedTrack>,
     /// The source is known to hold more than it handed over: the Spotify embed page
     /// stops at a hundred tracks and says nothing about it.
@@ -48,11 +50,15 @@ pub struct ImportedPlaylist {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportedTrack {
+    /// The title as the source spells it, noise and all ("Song - Remastered").
     pub title: String,
     /// Every credited artist, the main one first.
     pub artists: Vec<String>,
+    /// The album, when the source names one (CSV exports do, the Spotify embed
+    /// page doesn't).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub album: Option<String>,
+    /// The track's length in milliseconds, when the source gives it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<i64>,
     /// Only CSV exports carry it. Decisive when the library has it too.
@@ -61,6 +67,8 @@ pub struct ImportedTrack {
 }
 
 impl ImportedTrack {
+    /// A track with a title, its artists (main one first) and maybe a length,
+    /// and no album or ISRC.
     pub fn new(title: impl Into<String>, artists: &[&str], duration_ms: Option<i64>) -> Self {
         Self {
             title: title.into(),
@@ -75,13 +83,18 @@ impl ImportedTrack {
 /// A library track, as Jellyfin search returned it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryTrack {
+    /// The track's Jellyfin item id.
     pub jellyfin_id: String,
+    /// The track's title, as tagged.
     pub title: String,
     /// The track's artists, with the album artist added by the caller when there is
     /// one: either may be the name the other service credits.
     pub artists: Vec<String>,
+    /// The album title, when tagged.
     pub album: Option<String>,
+    /// The track's length in milliseconds, when known.
     pub duration_ms: Option<i64>,
+    /// The track's ISRC, when the library knows one.
     pub isrc: Option<String>,
 }
 
@@ -90,9 +103,16 @@ pub struct LibraryTrack {
 /// How one library track compares with one imported track. Every score is 0…1.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Verdict {
+    /// How alike the normalised titles are.
     pub title: f64,
+    /// The best likeness over every pair of credited names; 0.5 when either
+    /// side has none.
     pub artist: f64,
+    /// 1 within 5 s, 0.8 within 15 s, 0 beyond (a reject), 0.9 when either
+    /// length is unknown.
     pub duration: f64,
+    /// Whether the candidate counts as the same recording, by the rules on
+    /// [`TrackMatcher`].
     pub is_accepted: bool,
     /// Only for ranking accepted candidates: 0.5·title + 0.35·artist + 0.15·duration,
     /// or 2 above that when the ISRCs agree, so an ISRC match outranks every fuzzy one.
@@ -117,9 +137,13 @@ pub struct Verdict {
 pub struct TrackMatcher;
 
 impl TrackMatcher {
+    /// The least title score a match needs.
     pub const TITLE_THRESHOLD: f64 = 0.75;
+    /// The least artist score a match needs, when both sides name an artist.
     pub const ARTIST_THRESHOLD: f64 = 0.7;
+    /// Lengths this close score 1 on duration.
     pub const CLOSE_DURATION_MS: i64 = 5_000;
+    /// Lengths this close score 0.8; further apart is a reject.
     pub const LOOSE_DURATION_MS: i64 = 15_000;
 
     /// One list across every codebase.
@@ -154,6 +178,8 @@ impl TrackMatcher {
         "with",
     ];
 
+    /// `text` normalised as described above: lower-case, no diacritics, no noise
+    /// groups or suffix, letters, digits and single spaces only.
     pub fn normalize(text: &str) -> String {
         let folded: String = text
             .to_lowercase()
@@ -179,6 +205,9 @@ impl TrackMatcher {
         s.split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
+    /// How alike two normalised strings are, 0…1: equal is 1 (two empty
+    /// strings are 0), one's words all in the other's 0.9, else the share of
+    /// words they have in common.
     pub fn similarity(a: &str, b: &str) -> f64 {
         if a == b {
             return if a.is_empty() { 0.0 } else { 1.0 };
@@ -196,6 +225,7 @@ impl TrackMatcher {
         shared as f64 / union as f64
     }
 
+    /// How `candidate` compares with `track`, every score worked out.
     pub fn verdict(track: &ImportedTrack, candidate: &LibraryTrack) -> Verdict {
         let title = Self::similarity(
             &Self::normalize(&track.title),
@@ -348,6 +378,8 @@ fn strip_noisy_suffix(text: &str) -> String {
 /// Jellyfin's song search, as the importer needs it. The app implements it over its
 /// Jellyfin client (songs whose name matches `term`, at most `limit`).
 pub trait JellyfinSearch: Send + Sync {
+    /// Library tracks whose names match `term`, at most `limit`. `Err` carries
+    /// a message; the importer treats it as no results for that term.
     fn search_songs(
         &self,
         term: &str,
@@ -359,20 +391,29 @@ pub trait JellyfinSearch: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SidecarMatch {
+    /// The library track chosen.
     pub jellyfin_id: String,
+    /// How sure the sidecar is of the match: its ranking score.
     pub confidence: f64,
+    /// As [`Verdict::title`].
     #[serde(default)]
     pub title_score: f64,
+    /// As [`Verdict::artist`].
     #[serde(default)]
     pub artist_score: f64,
+    /// As [`Verdict::duration`].
     #[serde(default)]
     pub duration_score: f64,
+    /// The chosen track's title, as tagged.
     #[serde(default)]
     pub title: Option<String>,
+    /// The chosen track's artists.
     #[serde(default)]
     pub artists: Option<Vec<String>>,
+    /// The chosen track's album.
     #[serde(default)]
     pub album: Option<String>,
+    /// The chosen track's length in milliseconds.
     #[serde(default)]
     pub duration_ms: Option<i64>,
 }
@@ -383,6 +424,11 @@ pub const MATCH_ROWS_PER_REQUEST: usize = 5000;
 impl SidecarClient {
     /// `POST /aoide/match`: one answer per row, in order, `None` where the library has
     /// nothing. Split into calls of [`MATCH_ROWS_PER_REQUEST`].
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](SidecarClient#errors); [`SidecarError::Decode`] when an
+    /// answer doesn't have one result per row it was sent.
     pub async fn match_tracks(
         &self,
         tracks: &[ImportedTrack],
@@ -420,11 +466,15 @@ pub enum MatchedBy {
 /// The library track chosen for an imported one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchedTrack {
+    /// The library track's Jellyfin item id: what goes in the saved playlist.
     pub jellyfin_id: String,
     /// The chosen track's own tags, so the screen can show what was picked.
     pub title: Option<String>,
+    /// The chosen track's artists.
     pub artists: Vec<String>,
+    /// The chosen track's album.
     pub album: Option<String>,
+    /// The chosen track's length in milliseconds.
     pub duration_ms: Option<i64>,
     /// The ranking score: the sidecar's confidence, or [`Verdict::overall`].
     pub score: f64,
@@ -433,14 +483,18 @@ pub struct MatchedTrack {
 /// One imported track and what, if anything, the library has for it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportMatch {
+    /// The track as imported.
     pub track: ImportedTrack,
+    /// The library's track for it, or `None` when the library has none.
     pub found: Option<MatchedTrack>,
 }
 
 /// What [`match_playlist`] decided, in the playlist's order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportResult {
+    /// One per imported track, in the playlist's order.
     pub matches: Vec<ImportMatch>,
+    /// Which path did the matching.
     pub by: MatchedBy,
 }
 
@@ -547,19 +601,28 @@ async fn look_up<S: JellyfinSearch>(library: &S, track: &ImportedTrack) -> Optio
 /// Why a playlist could not be read in.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ImportError {
+    /// No 22-character playlist id in what was pasted.
     #[error("that doesn't look like a Spotify playlist link")]
     NotASpotifyLink,
+    /// The embed page answered with a non-2xx status: a private or deleted
+    /// playlist, usually.
     #[error("Spotify didn't share that playlist (HTTP {status}); it may be private")]
-    NotShared { status: u16 },
+    NotShared {
+        /// The HTTP status Spotify answered with.
+        status: u16,
+    },
     /// The embed page changed shape. Said loudly, never read as an empty playlist.
     #[error(
         "Spotify has changed its page and the playlist couldn't be read ({0}); a CSV export still works"
     )]
     SpotifyChanged(String),
+    /// No answer from Spotify, or the page didn't finish arriving.
     #[error("couldn't reach Spotify: {0}")]
     Network(String),
+    /// The CSV has no rows with anything in them, not even a header.
     #[error("that file is empty")]
     EmptyCsv,
+    /// The CSV's header has none of the names a title column goes by.
     #[error("that file has no title column; Exportify's CSV is the expected shape")]
     NoTitleColumn,
 }
@@ -598,6 +661,12 @@ pub fn spotify_embed_url(playlist_id: &str) -> String {
 /// The track list out of Spotify's embed page, which ships its state in a
 /// `__NEXT_DATA__` script. Undocumented, so a shape change is an error naming what
 /// was missing rather than an empty playlist.
+///
+/// # Errors
+///
+/// [`ImportError::SpotifyChanged`], naming what was missing, when the page has no
+/// `__NEXT_DATA__` state, the state isn't JSON, or it has no playlist entity or
+/// track list.
 pub fn parse_spotify_embed(html: &str) -> Result<ImportedPlaylist, ImportError> {
     const OPEN: &str = r#"<script id="__NEXT_DATA__" type="application/json">"#;
     let no_state = || ImportError::SpotifyChanged("no embedded state".to_owned());
@@ -661,12 +730,23 @@ pub fn parse_spotify_embed(html: &str) -> Result<ImportedPlaylist, ImportError> 
 
 /// Reads a pasted Spotify playlist link: fetches its embed page and parses it. Sends
 /// nothing but the request for the public page — no account, no cookie, no token.
+///
+/// # Errors
+///
+/// [`ImportError::NotASpotifyLink`] before any request when `link` holds no
+/// playlist id; [`ImportError::Network`] when Spotify can't be reached;
+/// [`ImportError::NotShared`] for a non-2xx answer; then as for
+/// [`parse_spotify_embed`].
 pub async fn fetch_spotify_playlist(link: &str) -> Result<ImportedPlaylist, ImportError> {
     fetch_spotify_playlist_from("https://open.spotify.com", link).await
 }
 
 /// [`fetch_spotify_playlist`] against another origin serving the same page — a test
 /// server.
+///
+/// # Errors
+///
+/// As for [`fetch_spotify_playlist`].
 pub async fn fetch_spotify_playlist_from(
     origin: &str,
     link: &str,
@@ -719,6 +799,12 @@ const ISRC_HEADERS: [&str; 1] = ["isrc"];
 
 /// A playlist out of a CSV export: Exportify's headers first, then the other tools'
 /// names for the same columns. Durations in milliseconds, or `m:ss`.
+///
+/// # Errors
+///
+/// [`ImportError::EmptyCsv`] when there is no non-blank row at all;
+/// [`ImportError::NoTitleColumn`] when the header has none of the title column's
+/// names. Rows without a title are skipped, not errors.
 pub fn parse_playlist_csv(text: &str, name: &str) -> Result<ImportedPlaylist, ImportError> {
     // A byte-order mark would glue itself to the first header and hide it.
     let clean = text.strip_prefix('\u{FEFF}').unwrap_or(text);
