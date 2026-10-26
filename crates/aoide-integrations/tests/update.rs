@@ -9,7 +9,7 @@ use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const PATH: &str = "/repos/Virel0/aoide-linux/releases/latest";
+const PATH: &str = "/repos/Virel0/Aoide-Linux/releases/latest";
 
 async fn github(status: u16, body: serde_json::Value) -> MockServer {
     let server = MockServer::start().await;
@@ -30,7 +30,7 @@ fn latest(tag: &str) -> serde_json::Value {
         "tag_name": tag,
         "name": "Aoide 0.2.0",
         "body": "Tray icon, Discord, mixes.",
-        "html_url": format!("https://github.com/Virel0/aoide-linux/releases/tag/{tag}"),
+        "html_url": format!("https://github.com/Virel0/Aoide-Linux/releases/tag/{tag}"),
         "draft": false,
         "prerelease": false,
     })

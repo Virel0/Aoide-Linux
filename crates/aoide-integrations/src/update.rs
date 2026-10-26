@@ -2,7 +2,7 @@
 //! compared with the running version.
 //!
 //! **What is sent:** one unauthenticated `GET` of
-//! `https://api.github.com/repos/Virel0/aoide-linux/releases/latest`, with a
+//! `https://api.github.com/repos/Virel0/Aoide-Linux/releases/latest`, with a
 //! fixed `User-Agent: aoide-linux` (GitHub refuses requests without one) and
 //! GitHub's API version headers. No version, no identifier, no cookie. At
 //! most once a day: [`UpdateChecker::check`] reads and writes an
@@ -20,7 +20,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 
 /// Where the latest release is read.
-pub const RELEASES_URL: &str = "https://api.github.com/repos/Virel0/aoide-linux/releases/latest";
+pub const RELEASES_URL: &str = "https://api.github.com/repos/Virel0/Aoide-Linux/releases/latest";
 
 /// At most one check in this long.
 pub const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -215,7 +215,7 @@ mod tests {
             "tag_name": tag,
             "name": " Aoide 0.2.0 ",
             "body": "## What's new\n- Tray icon",
-            "html_url": "https://github.com/Virel0/aoide-linux/releases/tag/v0.2.0",
+            "html_url": "https://github.com/Virel0/Aoide-Linux/releases/tag/v0.2.0",
             "draft": false,
             "prerelease": false,
         })
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(r.notes, "## What's new\n- Tray icon");
         assert_eq!(
             r.page.as_deref(),
-            Some("https://github.com/Virel0/aoide-linux/releases/tag/v0.2.0")
+            Some("https://github.com/Virel0/Aoide-Linux/releases/tag/v0.2.0")
         );
     }
 

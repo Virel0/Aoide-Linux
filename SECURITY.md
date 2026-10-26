@@ -5,7 +5,7 @@
 Please report security problems privately, through GitHub's private
 vulnerability reporting: open the repository's **Security** tab and choose
 **Report a vulnerability**, or go straight to
-<https://github.com/Virel0/aoide-linux/security/advisories/new>. Don't open a
+<https://github.com/Virel0/Aoide-Linux/security/advisories/new>. Don't open a
 public issue for them.
 
 Say what you found, the release (or the commit, for a source build), how it
@@ -15,7 +15,7 @@ before the advisory is published.
 
 Problems in the Aoide sidecar plugin belong in
 [Virel0/aoide-sidecar](https://github.com/Virel0/aoide-sidecar), and problems
-in the iPhone app in [Virel0/aoide](https://github.com/Virel0/aoide).
+in the iPhone app in [Virel0/Aoide](https://github.com/Virel0/Aoide).
 
 ## Supported versions
 

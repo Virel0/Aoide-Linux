@@ -16,8 +16,8 @@ On your own computer, not a server:
 gpg --quick-gen-key "Aoide for Linux releases" ed25519 sign 3y
 gpg --list-secret-keys --keyid-format long    # note the fingerprint
 gpg --armor --export-secret-keys FINGERPRINT > aoide-release-key.asc
-gh secret set AOIDE_SIGNING_KEY --repo Virel0/aoide-linux < aoide-release-key.asc
-gh secret set AOIDE_SIGNING_PASSPHRASE --repo Virel0/aoide-linux   # if it has one
+gh secret set AOIDE_SIGNING_KEY --repo Virel0/Aoide-Linux < aoide-release-key.asc
+gh secret set AOIDE_SIGNING_PASSPHRASE --repo Virel0/Aoide-Linux   # if it has one
 shred -u aoide-release-key.asc 2>/dev/null || rm -P aoide-release-key.asc
 gpg --armor --export FINGERPRINT > packaging/signing-key.asc
 ```
@@ -41,7 +41,7 @@ and in `/etc/pacman.conf`:
 ```
 [aoide-linux]
 SigLevel = Required DatabaseRequired
-Server = https://github.com/Virel0/aoide-linux/releases/latest/download
+Server = https://github.com/Virel0/Aoide-Linux/releases/latest/download
 ```
 
 ## The other files

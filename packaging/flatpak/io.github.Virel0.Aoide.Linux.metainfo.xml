@@ -33,9 +33,9 @@
     <binary>aoide-linux</binary>
   </provides>
 
-  <url type="homepage">https://github.com/Virel0/aoide-linux</url>
-  <url type="bugtracker">https://github.com/Virel0/aoide-linux/issues</url>
-  <url type="vcs-browser">https://github.com/Virel0/aoide-linux</url>
+  <url type="homepage">https://github.com/Virel0/Aoide-Linux</url>
+  <url type="bugtracker">https://github.com/Virel0/Aoide-Linux/issues</url>
+  <url type="vcs-browser">https://github.com/Virel0/Aoide-Linux</url>
 
   <categories>
     <category>AudioVideo</category>
@@ -52,7 +52,7 @@
        committed under packaging/screenshots and linked by its raw URL at a tag:
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Virel0/aoide-linux/vX.Y.Z/packaging/screenshots/home.png</image>
+      <image>https://raw.githubusercontent.com/Virel0/Aoide-Linux/vX.Y.Z/packaging/screenshots/home.png</image>
       <caption>Home</caption>
     </screenshot>
   </screenshots>

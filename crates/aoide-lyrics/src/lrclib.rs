@@ -29,7 +29,7 @@ pub const LRCLIB_URL: &str = "https://lrclib.net";
 pub const USER_AGENT: &str = concat!(
     "Aoide for Linux/",
     env!("CARGO_PKG_VERSION"),
-    " (https://github.com/Virel0/aoide-linux)"
+    " (https://github.com/Virel0/Aoide-Linux)"
 );
 
 /// A connection that takes longer than this isn't going to make the finder's

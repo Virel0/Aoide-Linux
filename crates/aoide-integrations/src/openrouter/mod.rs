@@ -56,7 +56,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const REASON_BODY: usize = 200;
 
 /// The app's own name in OpenRouter's attribution headers.
-const REFERER: &str = "https://github.com/Virel0/aoide-linux";
+const REFERER: &str = "https://github.com/Virel0/Aoide-Linux";
 const TITLE: &str = "Aoide";
 
 /// An OpenRouter API key. Its `Debug` and `Display` never show it.

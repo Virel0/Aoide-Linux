@@ -411,7 +411,7 @@ mod tests {
             version: version.into(),
             name: None,
             notes: "## New\n- A tray icon".into(),
-            page: Some("https://github.com/Virel0/aoide-linux/releases/tag/v0.2.0".into()),
+            page: Some("https://github.com/Virel0/Aoide-Linux/releases/tag/v0.2.0".into()),
         }
     }
 

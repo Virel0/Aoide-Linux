@@ -77,7 +77,7 @@ async fn an_exact_match_is_one_request_that_names_the_app() {
     assert_eq!(found.duration_gap, Some(Duration::from_millis(400)));
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
     assert!(USER_AGENT.starts_with("Aoide for Linux/"));
-    assert!(USER_AGENT.ends_with("(https://github.com/Virel0/aoide-linux)"));
+    assert!(USER_AGENT.ends_with("(https://github.com/Virel0/Aoide-Linux)"));
 }
 
 #[tokio::test]

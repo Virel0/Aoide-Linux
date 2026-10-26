@@ -8,8 +8,8 @@
 
 **A music player for your own Jellyfin server, native on the Linux desktop, in sync with Aoide on iPhone.**
 
-[![CI](https://github.com/Virel0/aoide-linux/actions/workflows/ci.yml/badge.svg)](https://github.com/Virel0/aoide-linux/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/Virel0/aoide-linux?label=release&color=6244e5)](https://github.com/Virel0/aoide-linux/releases/latest)
+[![CI](https://github.com/Virel0/Aoide-Linux/actions/workflows/ci.yml/badge.svg)](https://github.com/Virel0/Aoide-Linux/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/Virel0/Aoide-Linux?label=release&color=6244e5)](https://github.com/Virel0/Aoide-Linux/releases/latest)
 [![Licence: GPL-3.0-or-later](https://img.shields.io/badge/licence-GPL--3.0--or--later-6244e5)](LICENSE)
 [![Made with Rust](https://img.shields.io/badge/made%20with-Rust-6244e5)](https://www.rust-lang.org)
 
@@ -113,7 +113,7 @@ lyrics.
 
 ## The Aoide family
 
-- **[Aoide for iPhone](https://github.com/Virel0/aoide)**: the iOS app, in SwiftUI, with CarPlay and Siri.
+- **[Aoide for iPhone](https://github.com/Virel0/Aoide)**: the iOS app, in SwiftUI, with CarPlay and Siri.
 - **Aoide for Linux** (this repository): the desktop app, in Rust.
 - **[Aoide sidecar](https://github.com/Virel0/aoide-sidecar)**: the Jellyfin plugin both apps sync through. Optional: without it, the apps still play music and keep playlists on the device.
 
@@ -121,7 +121,7 @@ Aoide was one of the three original Muses in Greek myth; the name means "song".
 
 ## Install
 
-Every [release](https://github.com/Virel0/aoide-linux/releases/latest) is built
+Every [release](https://github.com/Virel0/Aoide-Linux/releases/latest) is built
 by GitHub Actions for x86_64. The app installs as the command `aoide-linux`, so
 it can sit beside the Electron app.
 
@@ -132,7 +132,7 @@ Add the repository to `/etc/pacman.conf`:
 ```ini
 [aoide-linux]
 SigLevel = Optional TrustAll
-Server = https://github.com/Virel0/aoide-linux/releases/latest/download
+Server = https://github.com/Virel0/Aoide-Linux/releases/latest/download
 ```
 
 Then install it, and from then on it updates with the rest of the system:
@@ -150,7 +150,7 @@ between launches, and `noto-fonts-cjk` for Japanese, Chinese and Korean text.
 ### Flatpak
 
 ```sh
-curl -LO https://github.com/Virel0/aoide-linux/releases/latest/download/aoide-linux.flatpak
+curl -LO https://github.com/Virel0/Aoide-Linux/releases/latest/download/aoide-linux.flatpak
 flatpak install --user aoide-linux.flatpak
 flatpak run io.github.Virel0.Aoide.Linux
 ```
@@ -163,7 +163,7 @@ CI but has not yet been run on a desktop.
 
 Download `aoide-linux-<version>-x86_64.AppImage` or
 `aoide-linux_<version>_amd64.deb` from the
-[latest release](https://github.com/Virel0/aoide-linux/releases/latest). Both
+[latest release](https://github.com/Virel0/Aoide-Linux/releases/latest). Both
 need glibc 2.35 or later (Ubuntu 22.04, Debian 12 and newer). The AppImage
 bundles no libraries: it uses the system's ALSA, D-Bus, and Wayland or X11.
 

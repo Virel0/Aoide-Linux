@@ -88,5 +88,5 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/aoide-linux/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/Virel0/aoide-linux/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Virel0/Aoide-Linux/releases/tag/v0.1.0

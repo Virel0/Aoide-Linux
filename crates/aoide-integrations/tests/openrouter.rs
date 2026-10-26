@@ -66,7 +66,7 @@ async fn a_search_sends_only_the_phrase_and_the_genres() {
     assert_eq!(request.headers["x-title"], "Aoide");
     assert_eq!(
         request.headers["http-referer"],
-        "https://github.com/Virel0/aoide-linux"
+        "https://github.com/Virel0/Aoide-Linux"
     );
     let names: Vec<_> = request.headers.keys().map(|k| k.as_str()).collect();
     for name in &names {
