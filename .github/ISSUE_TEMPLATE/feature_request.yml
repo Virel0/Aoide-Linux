@@ -1,0 +1,30 @@
+name: Feature request
+description: Something Aoide for Linux could do.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        TRACKER.md lists what is still to be ported from the Electron app, and what is not being ported on purpose. Check there first.
+  - type: textarea
+    id: need
+    attributes:
+      label: What you are trying to do
+      description: The task, in your words, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you picture it working. Optional; the need above matters more.
+  - type: dropdown
+    id: iphone
+    attributes:
+      label: Does the iPhone app do this?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+    validations:
+      required: true
