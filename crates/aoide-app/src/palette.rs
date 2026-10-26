@@ -260,28 +260,7 @@ impl App {
                 iced::widget::operation::focus(FIELD)
             }
             Message::Tab(forward) => tab(forward),
-            Message::Close => {
-                if open.take().is_some() || self.listening.full.is_some() {
-                    return Task::none();
-                }
-                // Otherwise Escape closes what is on top, as a click outside
-                // it does: Get Info, the release notes, a player bar
-                // popover, then a row's or a tile's actions.
-                let close = if signed.info.is_some() {
-                    Some(AppMessage::Info(crate::info::Msg::Close))
-                } else if self.system.updates.notes_open {
-                    Some(AppMessage::Update(crate::updates::Message::ShowNotes(
-                        false,
-                    )))
-                } else if self.listening.menu.is_some() {
-                    Some(AppMessage::Listening(crate::listening::Msg::Menu(None)))
-                } else if signed.menu.is_some() {
-                    Some(AppMessage::Row(crate::actions::RowAction::Close))
-                } else {
-                    None
-                };
-                close.map_or_else(Task::none, Task::done)
-            }
+            Message::Close => self.close_on_top(),
             Message::Typed(query) => {
                 let Some(palette) = open.as_mut() else {
                     return Task::none();
@@ -293,28 +272,7 @@ impl App {
                     AppMessage::Palette(Message::Due(generation))
                 })
             }
-            Message::Due(generation) => {
-                let Some(palette) = open.as_mut() else {
-                    return Task::none();
-                };
-                let query = palette.query.trim().to_owned();
-                if !palette.debouncer.is_current(generation) || query.chars().count() < 2 {
-                    return Task::none();
-                }
-                let client = signed.connection.client.clone();
-                let library = signed.library.clone();
-                let asked = query.clone();
-                Task::perform(
-                    async move { client.search(&asked, library.as_deref(), RESULTS).await },
-                    move |result| match result {
-                        Err(aoide_jellyfin::Error::Unauthorized) => AppMessage::TokenRejected,
-                        result => AppMessage::Palette(Message::Found(
-                            query.clone(),
-                            result.map_err(|e| crate::failure::describe(&e).to_string()),
-                        )),
-                    },
-                )
-            }
+            Message::Due(generation) => self.search_due(generation),
             Message::Found(query, result) => {
                 if let Some(palette) = open.as_mut()
                     && query == palette.query.trim()
@@ -345,6 +303,59 @@ impl App {
                 self.palette_message(Message::Run(selected))
             }
         }
+    }
+
+    /// Escape: closes the palette, or else what is on top, as a click
+    /// outside it does: Get Info, the release notes, a player bar popover,
+    /// then a row's or a tile's actions.
+    fn close_on_top(&mut self) -> Task<AppMessage> {
+        let Some(signed) = &self.session else {
+            return Task::none();
+        };
+        if self.system.palette.take().is_some() || self.listening.full.is_some() {
+            return Task::none();
+        }
+        let close = if signed.info.is_some() {
+            Some(AppMessage::Info(crate::info::Msg::Close))
+        } else if self.system.updates.notes_open {
+            Some(AppMessage::Update(crate::updates::Message::ShowNotes(
+                false,
+            )))
+        } else if self.listening.menu.is_some() {
+            Some(AppMessage::Listening(crate::listening::Msg::Menu(None)))
+        } else if signed.menu.is_some() {
+            Some(AppMessage::Row(crate::actions::RowAction::Close))
+        } else {
+            None
+        };
+        close.map_or_else(Task::none, Task::done)
+    }
+
+    /// The typing settled: search the library for what is typed.
+    fn search_due(&mut self, generation: u64) -> Task<AppMessage> {
+        let Some(signed) = &self.session else {
+            return Task::none();
+        };
+        let Some(palette) = self.system.palette.as_mut() else {
+            return Task::none();
+        };
+        let query = palette.query.trim().to_owned();
+        if !palette.debouncer.is_current(generation) || query.chars().count() < 2 {
+            return Task::none();
+        }
+        let client = signed.connection.client.clone();
+        let library = signed.library.clone();
+        let asked = query.clone();
+        Task::perform(
+            async move { client.search(&asked, library.as_deref(), RESULTS).await },
+            move |result| match result {
+                Err(aoide_jellyfin::Error::Unauthorized) => AppMessage::TokenRejected,
+                result => AppMessage::Palette(Message::Found(
+                    query.clone(),
+                    result.map_err(|e| crate::failure::describe(&e).to_string()),
+                )),
+            },
+        )
     }
 }
 

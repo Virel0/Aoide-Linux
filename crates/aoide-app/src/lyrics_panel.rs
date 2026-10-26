@@ -42,55 +42,14 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     if lyrics.is_synced() {
         let lit = lyrics::current_line(lyrics, app.playback.position_ms(), offset);
         for (index, line) in lyrics.lines.iter().enumerate() {
-            let is_lit = lit == Some(index);
-            let ruby = crate::lyrics_extras::ruby_line(
+            column = column.push(synced_line(
                 app,
                 &state.item,
                 index,
-                if is_lit { 18.0 } else { 16.0 },
-                if is_lit {
-                    widgets::BOLD
-                } else {
-                    widgets::REGULAR
-                },
-                if is_lit {
-                    theme::accent
-                } else {
-                    theme::secondary
-                },
-            );
-            let label: Element<'a, Message> = match ruby {
-                Some(ruby) => ruby,
-                None => text(if line.text.trim().is_empty() {
-                    "♪"
-                } else {
-                    line.text.as_str()
-                })
-                .size(if is_lit { 18 } else { 16 })
-                .font(if is_lit {
-                    widgets::BOLD
-                } else {
-                    widgets::REGULAR
-                })
-                .style(move |t| text::Style {
-                    color: Some(if is_lit {
-                        theme::accent(t)
-                    } else {
-                        theme::secondary(t)
-                    }),
-                })
-                .into(),
-            };
-            column = column.push(
-                button(label)
-                    .padding([2, 4])
-                    .width(Fill)
-                    .style(theme::row)
-                    .on_press_maybe(
-                        lyrics::seek_target(line, offset)
-                            .map(|ms| Message::Player(Transport::Seek(ms))),
-                    ),
-            );
+                line,
+                lit == Some(index),
+                offset,
+            ));
             column = column.extend(crate::lyrics_extras::under(app, &state.item, index));
         }
     } else {
@@ -117,4 +76,62 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         Some(toolbar) => Column::new().push(toolbar).push(lines).spacing(10).into(),
         None => lines.into(),
     }
+}
+
+/// A synced line: lit while it is heard (with its readings, for Japanese),
+/// and a click seeks to it.
+fn synced_line<'a>(
+    app: &'a App,
+    item: &str,
+    index: usize,
+    line: &'a aoide_jellyfin::LyricLine,
+    is_lit: bool,
+    offset: i32,
+) -> Element<'a, Message> {
+    let ruby = crate::lyrics_extras::ruby_line(
+        app,
+        item,
+        index,
+        if is_lit { 18.0 } else { 16.0 },
+        if is_lit {
+            widgets::BOLD
+        } else {
+            widgets::REGULAR
+        },
+        if is_lit {
+            theme::accent
+        } else {
+            theme::secondary
+        },
+    );
+    let label: Element<'a, Message> = match ruby {
+        Some(ruby) => ruby,
+        None => text(if line.text.trim().is_empty() {
+            "♪"
+        } else {
+            line.text.as_str()
+        })
+        .size(if is_lit { 18 } else { 16 })
+        .font(if is_lit {
+            widgets::BOLD
+        } else {
+            widgets::REGULAR
+        })
+        .style(move |t| text::Style {
+            color: Some(if is_lit {
+                theme::accent(t)
+            } else {
+                theme::secondary(t)
+            }),
+        })
+        .into(),
+    };
+    button(label)
+        .padding([2, 4])
+        .width(Fill)
+        .style(theme::row)
+        .on_press_maybe(
+            lyrics::seek_target(line, offset).map(|ms| Message::Player(Transport::Seek(ms))),
+        )
+        .into()
 }

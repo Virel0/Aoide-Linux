@@ -188,7 +188,6 @@ impl State {
 
     fn mix_view<'a>(&'a self, mix: &'a Mix, view: &View<'a>) -> Element<'a, App> {
         let key = view.key;
-        let send = move |m: Message| App::Page(key, PageMsg::Mixes(m));
         let mut part =
             column![widgets::secondary(format!("Looked for: {}", mix.looked_for)).size(13)]
                 .spacing(12);
@@ -200,46 +199,7 @@ impl State {
                 widgets::secondary(format!("Left out: {}.", mix.rejected.join("; "))).size(13),
             );
         }
-        let mut actions = row![].spacing(8).align_y(Center);
-        if !mix.tracks.is_empty() {
-            actions = actions.push(
-                button(text("Play").size(14))
-                    .style(theme::filled)
-                    .padding([6, 16])
-                    .on_press(App::Play(PlayRequest::from(
-                        &mix.tracks,
-                        0,
-                        PlaySource::Smart,
-                    ))),
-            );
-        }
-        let save = match (&self.saved, mix.can_save()) {
-            (Some(Ok(_)), _) => None,
-            (_, true) => Some(
-                button(
-                    text(if self.saving {
-                        "Saving…"
-                    } else {
-                        "Save as smart playlist"
-                    })
-                    .size(14),
-                )
-                .style(theme::tonal)
-                .padding([6, 14])
-                .on_press_maybe((!self.saving).then(|| send(Message::Save))),
-            ),
-            (_, false) => None,
-        };
-        if let Some(save) = save {
-            actions = actions.push(save);
-        }
-        actions = actions.push(
-            button(text("Discard").size(14))
-                .style(theme::tonal)
-                .padding([6, 14])
-                .on_press(send(Message::Discard)),
-        );
-        part = part.push(actions);
+        part = part.push(self.mix_actions(mix, key));
         match &self.saved {
             Some(Ok(name)) => {
                 part = part.push(
@@ -280,6 +240,51 @@ impl State {
             ));
         }
         part.into()
+    }
+
+    /// Play, Save as Smart Playlist (when the rules can be kept and it isn't
+    /// saved yet) and Discard.
+    fn mix_actions<'a>(&self, mix: &'a Mix, key: u64) -> iced::widget::Row<'a, App> {
+        let send = move |m: Message| App::Page(key, PageMsg::Mixes(m));
+        let mut actions = row![].spacing(8).align_y(Center);
+        if !mix.tracks.is_empty() {
+            actions = actions.push(
+                button(text("Play").size(14))
+                    .style(theme::filled)
+                    .padding([6, 16])
+                    .on_press(App::Play(PlayRequest::from(
+                        &mix.tracks,
+                        0,
+                        PlaySource::Smart,
+                    ))),
+            );
+        }
+        let save = match (&self.saved, mix.can_save()) {
+            (Some(Ok(_)), _) => None,
+            (_, true) => Some(
+                button(
+                    text(if self.saving {
+                        "Saving…"
+                    } else {
+                        "Save as smart playlist"
+                    })
+                    .size(14),
+                )
+                .style(theme::tonal)
+                .padding([6, 14])
+                .on_press_maybe((!self.saving).then(|| send(Message::Save))),
+            ),
+            (_, false) => None,
+        };
+        if let Some(save) = save {
+            actions = actions.push(save);
+        }
+        actions.push(
+            button(text("Discard").size(14))
+                .style(theme::tonal)
+                .padding([6, 14])
+                .on_press(send(Message::Discard)),
+        )
     }
 }
 
