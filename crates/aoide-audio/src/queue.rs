@@ -26,7 +26,9 @@ impl EntryId {
 /// One slot in the queue.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueueEntry<T> {
+    /// The entry's own id, unique for the run of the app; the engine's events carry it.
     pub id: EntryId,
+    /// The caller's track.
     pub track: T,
     /// Put here on purpose, by Play Next or Play Last, rather than arriving as
     /// part of whatever album or playlist is running.
@@ -43,8 +45,10 @@ impl<T> QueueEntry<T> {
     }
 }
 
+/// What happens at the end of a track or of the queue.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum RepeatMode {
+    /// Play through once, then stop.
     #[default]
     Off,
     /// Loop the whole queue.
@@ -68,17 +72,23 @@ pub enum AdvanceOutcome {
 /// is non-zero only under repeat-one, where one entry is rendered twice.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RenderSlot<T> {
+    /// The entry to load.
     pub entry_id: EntryId,
+    /// Its track.
     pub track: T,
+    /// Which time round this is under repeat-one; zero otherwise.
     pub occurrence: usize,
 }
 
+/// The play queue: entries in play order, the current position, shuffle and repeat.
+/// Generic over the caller's track type.
 #[derive(Clone, Debug)]
 pub struct PlayQueue<T> {
     entries: Vec<QueueEntry<T>>,
     /// The pre-shuffle order, kept so turning shuffle off restores it.
     unshuffled: Option<Vec<QueueEntry<T>>>,
     position: Option<usize>,
+    /// What happens at the end of a track or of the queue.
     pub repeat_mode: RepeatMode,
     rng: SplitMix,
 }
@@ -96,6 +106,7 @@ impl<T> Default for PlayQueue<T> {
 }
 
 impl<T: Clone> PlayQueue<T> {
+    /// An empty queue with repeat off.
     pub fn new() -> Self {
         Self::default()
     }
@@ -107,22 +118,27 @@ impl<T: Clone> PlayQueue<T> {
         &self.entries
     }
 
+    /// The index of the current entry in [`Self::entries`]; `None` when nothing is current.
     pub fn position(&self) -> Option<usize> {
         self.position
     }
 
+    /// Whether the order is shuffled (turning shuffle off restores the original).
     pub fn is_shuffled(&self) -> bool {
         self.unshuffled.is_some()
     }
 
+    /// Whether the queue has no entries.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
+    /// The current entry.
     pub fn current(&self) -> Option<&QueueEntry<T>> {
         self.entries.get(self.position?)
     }
 
+    /// The current entry's track.
     pub fn current_track(&self) -> Option<&T> {
         self.current().map(|entry| &entry.track)
     }
@@ -226,6 +242,7 @@ impl<T: Clone> PlayQueue<T> {
         }
     }
 
+    /// Empties the queue and turns shuffle off; repeat mode stays.
     pub fn clear(&mut self) {
         self.entries.clear();
         self.unshuffled = None;

@@ -27,6 +27,7 @@ pub struct TasteProfile {
 }
 
 impl TasteProfile {
+    /// Whether there is no genre or artist history to rank by.
     pub fn is_empty(&self) -> bool {
         self.genres.is_empty() && self.artists.is_empty()
     }
@@ -35,12 +36,16 @@ impl TasteProfile {
 /// One song being considered, described by the little that matters here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TasteCandidate {
+    /// The track's Jellyfin id.
     pub id: String,
+    /// The track's artist.
     pub artist: String,
+    /// The track's genres, as tagged.
     pub genres: Vec<String>,
 }
 
 impl TasteCandidate {
+    /// A candidate from its id, artist and genres.
     pub fn new<S: AsRef<str>>(
         id: impl Into<String>,
         artist: impl Into<String>,
@@ -63,17 +68,23 @@ impl TasteCandidate {
 pub struct TasteRanking;
 
 impl TasteRanking {
+    /// What the best-matching genre's weight (0 to 1) is worth.
     pub const GENRE_WEIGHT: f64 = 0.45;
     /// Less than genre, on purpose: a queue should widen out from what is playing.
     pub const ARTIST_WEIGHT: f64 = 0.3;
+    /// What a finish rate away from one half is worth, either way.
     pub const FINISH_WEIGHT: f64 = 0.3;
     /// Wider than the rest of the scale, so everything heard lately sits below
     /// everything that has not been.
     pub const RECENT_PENALTY: f64 = 1.4;
+    /// Taken off a track whose artist was heard recently.
     pub const SAME_ARTIST_PENALTY: f64 = 0.4;
     /// How much mixability with what is playing is worth when a set is programmed.
     pub const COMPATIBILITY_WEIGHT: f64 = 0.6;
 
+    /// How much this listener is likely to want `candidate` now: higher is better, with no
+    /// fixed range. `finish` is the track's finish counts and `compatibility` (0 to 1) how
+    /// well it mixes with what is playing, when known.
     pub fn score(
         candidate: &TasteCandidate,
         profile: &TasteProfile,
@@ -151,6 +162,10 @@ impl TasteRanking {
 impl Store {
     /// Reads a profile out of the history: the latest `depth` finished listens since
     /// `since`, and the `recent_depth` most recent tracks of any outcome as "just heard".
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn taste_profile(
         &self,
         since: Millis,

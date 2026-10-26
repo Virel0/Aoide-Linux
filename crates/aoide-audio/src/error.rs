@@ -1,3 +1,5 @@
+//! The one error type every fallible call here returns.
+
 use std::fmt;
 
 /// What can go wrong between a source and the speaker. Messages never carry a
@@ -8,8 +10,11 @@ pub enum Error {
     Open(String),
     /// Not a format or codec this build decodes.
     Unsupported(String),
+    /// A packet that would not decode, or a stream that failed part way.
     Decode(String),
+    /// The decoder could not move to the asked-for position.
     Seek(String),
+    /// The sample-rate converter could not be made or refused its input.
     Resample(String),
     /// No output device, or it refused the stream.
     Output(String),
@@ -34,4 +39,5 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// A result whose error is this crate's [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;

@@ -26,6 +26,7 @@ pub struct PlayerTrack {
     /// the caller finds what it knows about an entry from `entry.track.key`
     /// rather than by working out which entries an edit created.
     pub key: String,
+    /// Where its bytes come from.
     pub source: MediaSource,
     /// Album, track number, length, sound bounds and tempo, for the planner;
     /// its `sound` is also what the engine plays.
@@ -36,6 +37,7 @@ pub struct PlayerTrack {
     pub gain_db: Option<f64>,
 }
 
+/// The player's own settings, apart from the queue and the engine's sound.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PlayerSettings {
     /// The Crossfade toggle, off by default.
@@ -53,6 +55,8 @@ impl Default for PlayerSettings {
     }
 }
 
+/// The queue, the crossfade planner and the transport rules over an [`EngineHandle`].
+/// Feed it every [`EngineEvent`] with [`Self::handle`].
 pub struct Player {
     engine: EngineHandle,
     queue: PlayQueue<PlayerTrack>,
@@ -67,6 +71,7 @@ pub struct Player {
 }
 
 impl Player {
+    /// A player with an empty queue, driving `engine`.
     pub fn new(engine: EngineHandle) -> Self {
         Self {
             engine,
@@ -78,16 +83,22 @@ impl Player {
         }
     }
 
+    /// The engine it drives.
     pub fn engine(&self) -> &EngineHandle {
         &self.engine
     }
 
+    /// The queue as it stands.
     pub fn queue(&self) -> &PlayQueue<PlayerTrack> {
         &self.queue
     }
 
     /// Edits the queue (play next, play last, shuffle, remove, reorder...),
     /// then re-plans what follows the current track.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn edit_queue(&mut self, edit: impl FnOnce(&mut PlayQueue<PlayerTrack>)) -> Result<()> {
         let before = self.queue.current().map(|entry| entry.id);
         edit(&mut self.queue);
@@ -97,10 +108,16 @@ impl Player {
         self.replan()
     }
 
+    /// The settings as they stand.
     pub fn settings(&self) -> PlayerSettings {
         self.settings
     }
 
+    /// Changes the settings and plans what follows the current track again.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn set_settings(&mut self, settings: PlayerSettings) -> Result<()> {
         self.settings = settings;
         self.replan()
@@ -113,6 +130,10 @@ impl Player {
     /// measurement. Off, neither applies. Like [`Player::set_measurements`],
     /// the current track keeps what it was loaded with until it is loaded
     /// again; what follows it is planned again at once.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn set_level_volume(&mut self, on: bool) -> Result<()> {
         if self.level_volume == Some(on) {
             return Ok(());
@@ -123,6 +144,10 @@ impl Player {
     }
 
     /// Replaces the queue with `tracks` and plays from `index`.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn play_tracks(
         &mut self,
         tracks: Vec<PlayerTrack>,
@@ -137,6 +162,10 @@ impl Player {
     /// Replaces the queue with `tracks` and holds at `index`, `start_ms` into
     /// it, paused: nothing sounds until [`Player::play`]. What follows is
     /// planned as usual. For putting back a queue saved at the last quit.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn load_tracks(
         &mut self,
         tracks: Vec<PlayerTrack>,
@@ -149,6 +178,12 @@ impl Player {
         self.load_current(start_ms, false)
     }
 
+    /// Plays: resumes a paused track, or starts the current entry again after the queue
+    /// ended or was stopped.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn play(&mut self) -> Result<()> {
         match self.engine.transport() {
             Transport::Stopped if self.queue.current().is_some() => self.start_current(true),
@@ -156,15 +191,30 @@ impl Player {
         }
     }
 
+    /// Pauses the engine.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`](crate::Error::Output) when the engine has been dropped.
     pub fn pause(&mut self) -> Result<()> {
         self.engine.pause()
     }
 
+    /// Stops the engine and forgets what was planned next; the queue stays.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`](crate::Error::Output) when the engine has been dropped.
     pub fn stop(&mut self) -> Result<()> {
         self.planned = None;
         self.engine.stop()
     }
 
+    /// Master volume, 0 to 1.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`](crate::Error::Output) when the engine has been dropped.
     pub fn set_volume(&mut self, volume: f32) -> Result<()> {
         self.engine.set_volume(volume)
     }
@@ -174,6 +224,12 @@ impl Player {
         self.engine.position_ms()
     }
 
+    /// Seeks the current track to `ms` milliseconds into the file, playing on if it was
+    /// playing. Nothing queued, nothing happens.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn seek(&mut self, ms: u64) -> Result<()> {
         let Some(entry) = self.queue.current().cloned() else {
             return Ok(());
@@ -184,6 +240,11 @@ impl Player {
         self.replan()
     }
 
+    /// Moves to the next entry and plays it; at the end of the queue, nothing happens.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn next_track(&mut self) -> Result<()> {
         match self.queue.skip_to_next() {
             AdvanceOutcome::Ended => Ok(()),
@@ -194,6 +255,10 @@ impl Player {
     /// Restarts the current track when more than a few seconds in, and goes
     /// back one otherwise (restarting the first track, which has nothing
     /// before it).
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn previous_track(&mut self) -> Result<()> {
         if self.position_ms() > RESTART_THRESHOLD_MS {
             return self.seek(0);
@@ -210,6 +275,10 @@ impl Player {
     /// what follows is planned again. The current track itself keeps what it
     /// was loaded with until it is loaded again, by a seek or a repeat, so
     /// nothing audible jumps. Returns whether the entry is queued.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn set_measurements(
         &mut self,
         entry: EntryId,
@@ -240,6 +309,11 @@ impl Player {
             .find(|entry| entry.track.key == key)
     }
 
+    /// Plays `entry`, if it is in the queue.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn jump(&mut self, entry: EntryId) -> Result<()> {
         if self.queue.jump(entry) {
             self.start_current(true)
@@ -249,6 +323,10 @@ impl Player {
     }
 
     /// Feeds an engine event to the queue. Call it for every event.
+    ///
+    /// # Errors
+    ///
+    /// As [`EngineHandle::load`]: the engine has gone, or no decode thread could be started.
     pub fn handle(&mut self, event: &EngineEvent) -> Result<()> {
         match event {
             EngineEvent::TrackStarted { id } => {

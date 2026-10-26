@@ -39,6 +39,7 @@ pub enum QueueFreshness {
 /// Another device's queue, as something to offer on Home or in a "Pick up" menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResumableQueue {
+    /// The device the queue belongs to.
     pub device_id: String,
     /// What to call it: "Pick up from {device_name}".
     pub device_name: String,
@@ -53,6 +54,7 @@ pub struct ResumableQueue {
     /// This device's clock when `age_ms` was measured. Ages are only meaningful
     /// relative to it, so anything comparing them to local timestamps starts here.
     pub observed_at: Millis,
+    /// Which clock `age_ms` was read on.
     pub freshness: QueueFreshness,
 }
 
@@ -135,8 +137,11 @@ impl ResumableQueue {
 /// `start_index`, seeked to `elapsed_ms`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PickUp {
+    /// The queue to play.
     pub track_ids: Vec<String>,
+    /// Index into `track_ids` of the track to start with.
     pub start_index: usize,
+    /// Where in that track to start, in milliseconds.
     pub elapsed_ms: i64,
 }
 
@@ -150,6 +155,10 @@ impl Store {
     /// Other devices' queues from the rows sync already brought, newest first by the
     /// writers' clocks, within [`QueuePolicy::RESUME_WINDOW`], empty ones left out.
     /// The fallback for when `GET /aoide/queue` cannot be reached.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn local_resumable_queues(&self, now: Millis) -> Result<Vec<ResumableQueue>> {
         Ok(self
             .resumable_queues(now, QueuePolicy::RESUME_WINDOW)?
@@ -171,6 +180,7 @@ pub struct QueueSnapshot {
     pub track_ids: Vec<String>,
     /// Index of the current track in `track_ids`.
     pub position: i64,
+    /// How far into the current track, in milliseconds.
     pub elapsed_ms: i64,
 }
 
@@ -207,9 +217,12 @@ pub struct QueueBroadcast {
 }
 
 impl QueueBroadcast {
+    /// How long a queue change waits for more changes before it is written.
     pub const DEBOUNCE_MS: Millis = 1_500;
+    /// The longest a change waits after the first one noted, however busy the queue.
     pub const MAX_WAIT_MS: Millis = 10_000;
 
+    /// A broadcast with nothing waiting.
     pub fn new() -> Self {
         Self::default()
     }
@@ -234,6 +247,10 @@ impl QueueBroadcast {
 
     /// Writes the waiting snapshot if its time has come. Reports whether a row was
     /// written (an unchanged queue writes nothing).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::flush_now`].
     pub fn flush_due(&mut self, store: &Store, now: Millis) -> Result<bool> {
         match self.due_at {
             Some(due) if due <= now => self.flush_now(store, now),
@@ -242,6 +259,11 @@ impl QueueBroadcast {
     }
 
     /// Writes the waiting snapshot now, whatever the debounce says.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does. The snapshot is kept then, and comes due again
+    /// [`Self::DEBOUNCE_MS`] later.
     pub fn flush_now(&mut self, store: &Store, now: Millis) -> Result<bool> {
         let Some(snapshot) = self.pending.take() else {
             return Ok(false);

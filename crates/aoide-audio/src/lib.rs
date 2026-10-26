@@ -12,6 +12,9 @@
 //! - [`mix`], [`loudness`] and [`queue`] are the rules shared with the iOS and
 //!   desktop apps, held to the same parity tables.
 
+#![warn(missing_docs)]
+#![warn(clippy::missing_errors_doc)]
+
 pub mod compressor;
 pub mod decode;
 pub mod engine;

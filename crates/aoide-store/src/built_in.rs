@@ -8,13 +8,17 @@ use crate::store::Store;
 /// row, not three.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BuiltInPlaylist {
+    /// Tracks played more than twice but not in the last six months; up to 40.
     Rediscover,
+    /// Tracks played more than once and within the last month; up to 25.
     HeavyRotation,
 }
 
 impl BuiltInPlaylist {
+    /// Both, in the order they are created.
     pub const ALL: [BuiltInPlaylist; 2] = [Self::Rediscover, Self::HeavyRotation];
 
+    /// The fixed id every device creates it under.
     pub fn id(self) -> &'static str {
         match self {
             Self::Rediscover => "builtin:rediscover",
@@ -22,6 +26,7 @@ impl BuiltInPlaylist {
         }
     }
 
+    /// The name shown.
     pub fn name(self) -> &'static str {
         match self {
             Self::Rediscover => "Rediscover Mix",
@@ -29,6 +34,7 @@ impl BuiltInPlaylist {
         }
     }
 
+    /// The notes it is created with.
     pub fn notes(self) -> &'static str {
         match self {
             Self::Rediscover => {
@@ -73,6 +79,10 @@ impl Store {
     /// one row each; and only where **no row has ever existed** — deleted included —
     /// so a built-in removed on any device stays removed on all of them. Each is two
     /// ops, the create and the rules, as on the other clients.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; built-ins created before the failure stay.
     pub fn ensure_built_in_playlists(&self, now: Millis) -> Result<Vec<BuiltInPlaylist>> {
         let mut created = Vec::new();
         for built in BuiltInPlaylist::ALL {

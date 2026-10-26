@@ -11,6 +11,7 @@ use crate::history::MAX_PARAMETERS;
 use crate::record::placeholders;
 use crate::store::Store;
 
+/// How many of a set of listens reached a verdict, and how many of those finished.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FinishCounts {
     /// Listens that reached a verdict — played through, or skipped.
@@ -20,6 +21,7 @@ pub struct FinishCounts {
 }
 
 impl FinishCounts {
+    /// Counts from their two parts.
     pub fn new(starts: i64, completed: i64) -> Self {
         Self { starts, completed }
     }
@@ -33,12 +35,14 @@ impl Add for FinishCounts {
     }
 }
 
+/// The finish rate: of the listens that reached a verdict, the share that reached the end.
 pub struct FinishRate;
 
 impl FinishRate {
     /// Below this many decided listens the figure is noise.
     pub const MINIMUM_SAMPLE: i64 = 3;
 
+    /// `completed / starts`, from 0 to 1, or `None` below [`Self::MINIMUM_SAMPLE`].
     pub fn rate(counts: FinishCounts) -> Option<f64> {
         (counts.starts >= Self::MINIMUM_SAMPLE)
             .then(|| counts.completed as f64 / counts.starts as f64)
@@ -59,6 +63,10 @@ impl FinishRate {
 impl Store {
     /// Finish counts per track. Every requested id comes back, at zero if it has no
     /// history, so a caller can sum without checking for gaps.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn finish_counts(&self, jellyfin_ids: &[String]) -> Result<HashMap<String, FinishCounts>> {
         let mut found: HashMap<String, FinishCounts> = jellyfin_ids
             .iter()
@@ -96,6 +104,10 @@ impl Store {
     }
 
     /// The finish rate over a set of tracks, in one pass.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn finish_rate(&self, jellyfin_ids: &[String]) -> Result<Option<f64>> {
         Ok(FinishRate::rate_over(
             self.finish_counts(jellyfin_ids)?.into_values(),

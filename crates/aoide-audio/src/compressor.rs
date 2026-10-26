@@ -18,11 +18,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
+/// The threshold's range, in dBFS.
 pub const THRESHOLD_RANGE_DB: (f32, f32) = (-60.0, 0.0);
+/// The ratio's range.
 pub const RATIO_RANGE: (f32, f32) = (1.0, 20.0);
+/// The attack time constant's range, in milliseconds.
 pub const ATTACK_RANGE_MS: (f32, f32) = (0.1, 200.0);
+/// The release time constant's range, in milliseconds.
 pub const RELEASE_RANGE_MS: (f32, f32) = (10.0, 3_000.0);
+/// The makeup gain's range, in dB.
 pub const MAKEUP_RANGE_DB: (f32, f32) = (0.0, 24.0);
+/// The knee width's range, in dB.
 pub const KNEE_RANGE_DB: (f32, f32) = (0.0, 24.0);
 
 /// Time constant of the makeup gain's glide when it changes.
@@ -33,6 +39,7 @@ const NO_REDUCTION_DB: f64 = 1e-3;
 /// The level of digital silence, so the logarithm has something to take.
 const FLOOR_DB: f64 = -200.0;
 
+/// The compressor's settings. Ranges are what [`Self::validated`] holds each value to.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompressorSettings {
@@ -67,6 +74,10 @@ impl Default for CompressorSettings {
 impl CompressorSettings {
     /// Checks the settings at the boundary: every number finite. Values out of
     /// range are held to it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Settings`] when any value is NaN or infinite.
     pub fn validated(&self) -> Result<Self> {
         let values = [
             self.threshold_db,
@@ -119,7 +130,9 @@ impl CompressorSettings {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompressorPreset {
+    /// What the picker shows.
     pub name: String,
+    /// The settings it applies.
     pub settings: CompressorSettings,
 }
 

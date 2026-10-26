@@ -25,8 +25,11 @@ pub const GAIN_LIMIT_DB: f32 = 12.0;
 /// The lowest band frequency; the highest is 20 kHz or 45 % of the rate,
 /// whichever is lower.
 pub const MIN_FREQ_HZ: f32 = 20.0;
+/// The highest band frequency, before the 45 %-of-the-rate limit.
 pub const MAX_FREQ_HZ: f32 = 20_000.0;
+/// The narrowest a band's `q` is held to (widest bell).
 pub const MIN_Q: f32 = 0.1;
+/// The widest a band's `q` is held to (narrowest bell).
 pub const MAX_Q: f32 = 10.0;
 
 /// Frames between coefficient updates while a change is under way.
@@ -53,14 +56,19 @@ pub enum BandKind {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EqBand {
+    /// What the band does.
     pub kind: BandKind,
+    /// Its centre or corner frequency, in hertz, held to [`MIN_FREQ_HZ`] …
+    /// [`MAX_FREQ_HZ`] and below 45 % of the sample rate.
     pub freq_hz: f32,
     /// −12 … +12 dB.
     pub gain_db: f32,
+    /// Its width or slope, held to [`MIN_Q`] … [`MAX_Q`].
     pub q: f32,
 }
 
 impl EqBand {
+    /// A bell at `freq_hz` of `gain_db`, `q` wide.
     pub fn peaking(freq_hz: f32, gain_db: f32, q: f32) -> Self {
         Self {
             kind: BandKind::Peaking,
@@ -70,6 +78,7 @@ impl EqBand {
         }
     }
 
+    /// A low shelf with its corner at `freq_hz`.
     pub fn low_shelf(freq_hz: f32, gain_db: f32, q: f32) -> Self {
         Self {
             kind: BandKind::LowShelf,
@@ -79,6 +88,7 @@ impl EqBand {
         }
     }
 
+    /// A high shelf with its corner at `freq_hz`.
     pub fn high_shelf(freq_hz: f32, gain_db: f32, q: f32) -> Self {
         Self {
             kind: BandKind::HighShelf,
@@ -107,6 +117,7 @@ impl EqBand {
 pub struct EqCurve {
     /// −12 … +12 dB, applied before the bands.
     pub preamp_db: f32,
+    /// The bands; at most [`MAX_BANDS`] are used.
     pub bands: Vec<EqBand>,
 }
 
@@ -156,7 +167,9 @@ impl EqCurve {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EqPreset {
+    /// What the picker shows.
     pub name: String,
+    /// The curve it applies.
     pub curve: EqCurve,
 }
 

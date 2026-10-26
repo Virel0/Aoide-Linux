@@ -20,6 +20,10 @@ const INDEX_KEY: &str = "trackIndexCompletedAt";
 impl Store {
     /// Writes library rows into the cache in one transaction — one fsync for a pass,
     /// not thousands.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; none of the rows are written then.
     pub fn cache_tracks(&self, tracks: &[TrackRef]) -> Result<()> {
         if tracks.is_empty() {
             return Ok(());
@@ -33,6 +37,10 @@ impl Store {
     }
 
     /// Cached rows for these ids. Ids with nothing cached are simply absent.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn cached_tracks(&self, jellyfin_ids: &[String]) -> Result<HashMap<String, TrackRef>> {
         if jellyfin_ids.is_empty() {
             return Ok(HashMap::new());
@@ -55,12 +63,20 @@ impl Store {
 
     /// The size of every smart playlist's universe. Not the way to ask whether the
     /// index has run — playback writes rows here too; see `library_indexed_at`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn cached_track_count(&self) -> Result<i64> {
         self.read(TrackRef::count)
     }
 
     /// Drops cached rows a completed index pass did not see. A hard delete, correct only
     /// because this table is local; the cutoff must come from before the pass began.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; nothing is removed then.
     pub fn prune_tracks(&self, not_seen_since: Millis) -> Result<usize> {
         self.write_local(|tx| {
             tx.execute("DELETE FROM track WHERE lastSeenAt < ?", [not_seen_since])
@@ -68,6 +84,10 @@ impl Store {
     }
 
     /// When a full library index last finished here, if one ever has.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn library_indexed_at(&self) -> Result<Option<Millis>> {
         Ok(self
             .state(INDEX_KEY)?
@@ -75,6 +95,10 @@ impl Store {
     }
 
     /// Records that a full pass completed.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn record_library_index(&self, now: Millis) -> Result<()> {
         self.write_local(|tx| set_state(tx, INDEX_KEY, &now.to_string()))
     }

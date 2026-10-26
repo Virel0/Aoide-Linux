@@ -443,6 +443,12 @@ impl Store {
     /// interrupted sync replays rather than skips; doing both in one transaction closes
     /// the window between the two writes. A replayed page is harmless because every
     /// merge here is idempotent.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; the whole page is rolled back then, cursor included,
+    /// and replays on the next sync. An op this build cannot apply is quarantined rather
+    /// than failing the page.
     pub fn apply(
         &self,
         ops: &[PulledOp],

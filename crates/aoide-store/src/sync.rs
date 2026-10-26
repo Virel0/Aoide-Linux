@@ -20,16 +20,24 @@ use crate::models::{Op, OpKind};
 /// cannot be turned into a wire op at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SyncEntity {
+    /// `playlist` locally, `playlists` on the wire.
     Playlist,
+    /// `playlistItem` locally, `playlist_items` on the wire.
     PlaylistItem,
+    /// `folder` locally, `folders` on the wire.
     Folder,
+    /// `like` locally, `likes` on the wire.
     Like,
+    /// `playEvent` locally, `play_events` on the wire. Append-only.
     PlayEvent,
+    /// `queueState` locally, `queue_state` on the wire. Keyed by device.
     QueueState,
+    /// `trackFlags` locally, `track_flags` on the wire. Held until the server accepts it.
     TrackFlags,
 }
 
 impl SyncEntity {
+    /// Every entity, in declaration order.
     pub const ALL: [SyncEntity; 7] = [
         Self::Playlist,
         Self::PlaylistItem,
@@ -73,6 +81,7 @@ impl SyncEntity {
         self == Self::TrackFlags
     }
 
+    /// `None` for a table that does not sync, such as `track`.
     pub fn from_local_table(name: &str) -> Option<Self> {
         Self::ALL
             .into_iter()
@@ -108,36 +117,58 @@ impl SyncEntity {
 /// on the next attempt belongs here.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SyncFault {
+    /// The op has no id.
     #[error("op id is empty")]
     EmptyOpId,
+    /// The op id is longer than [`SyncPolicy::MAX_OP_ID_LENGTH`] characters.
     #[error("op id is {0} characters; the server accepts {max}", max = SyncPolicy::MAX_OP_ID_LENGTH)]
     OpIdTooLong(usize),
+    /// The op names no row.
     #[error("entity id is empty")]
     EmptyEntityId,
+    /// The row id is longer than [`SyncPolicy::MAX_ENTITY_ID_LENGTH`] characters.
     #[error("entity id is {0} characters; the server accepts {max}", max = SyncPolicy::MAX_ENTITY_ID_LENGTH)]
     EntityIdTooLong(usize),
+    /// The op's `createdAt` is zero or negative.
     #[error("createdAt is {0}; the server requires a positive millisecond timestamp")]
     NonPositiveTimestamp(Millis),
     /// Includes `track`, which has no wire name because it is never synced.
     #[error("'{0}' is not an entity this build can sync")]
     UnknownEntity(String),
+    /// An operation other than lowercase `upsert` or `delete`.
     #[error("'{0}' is not an operation; the server accepts lowercase upsert or delete")]
     UnknownOperation(String),
+    /// The payload is over [`SyncPolicy::MAX_PAYLOAD_BYTES`].
     #[error("payload is {bytes} bytes; the server accepts {max}", max = SyncPolicy::MAX_PAYLOAD_BYTES)]
-    PayloadTooLarge { bytes: usize },
+    PayloadTooLarge {
+        /// The payload's size in bytes.
+        bytes: usize,
+    },
+    /// The payload nests deeper than [`MAX_PAYLOAD_DEPTH`].
     #[error("payload nests {depth} levels deep; the server accepts {max}", max = MAX_PAYLOAD_DEPTH)]
-    PayloadTooDeep { depth: usize },
+    PayloadTooDeep {
+        /// How deep it nests.
+        depth: usize,
+    },
+    /// The payload is not JSON, or is JSON but not an object.
     #[error("payload is not a JSON object")]
     PayloadNotAnObject,
+    /// The payload's identity field (`id`, or `deviceId` for queue state) is missing or
+    /// names another row than the op does.
     #[error("entity id '{entity_id}' does not match the payload's '{}'", payload_id.as_deref().unwrap_or("<missing>"))]
     IdentityMismatch {
+        /// The row the op names.
         entity_id: String,
+        /// The row the payload names; `None` when it names none.
         payload_id: Option<String>,
     },
+    /// A delete whose payload does not have `deleted` set.
     #[error("a delete op must carry a payload with deleted set")]
     DeleteWithoutFlag,
+    /// An inbound payload that does not decode as the local row.
     #[error("payload does not decode into the local row: {0}")]
     UndecodablePayload(String),
+    /// An inbound delete of a play event.
     #[error("play events are append-only and cannot be deleted")]
     AppendOnlyDelete,
     /// The server said no. It will say no again, forever.
@@ -146,7 +177,10 @@ pub enum SyncFault {
     /// The server *threw* on this op. The one fault in the server rather than in the
     /// op, so the one worth offering to try again.
     #[error("the server failed while storing this change (HTTP {status})")]
-    ServerFaulted { status: u16 },
+    ServerFaulted {
+        /// The HTTP status the server answered with.
+        status: u16,
+    },
 }
 
 impl SyncFault {
@@ -178,10 +212,15 @@ pub struct SyncPolicy {
 }
 
 impl SyncPolicy {
+    /// The most ops the server takes in one push.
     pub const MAX_BATCH: usize = 1000;
+    /// The most ops the server returns in one pull.
     pub const MAX_PULL_LIMIT: usize = 1000;
+    /// The largest payload the server accepts, in bytes of compact JSON.
     pub const MAX_PAYLOAD_BYTES: usize = 256 * 1024;
+    /// The longest op id the server accepts, in characters.
     pub const MAX_OP_ID_LENGTH: usize = 128;
+    /// The longest row id the server accepts, in characters.
     pub const MAX_ENTITY_ID_LENGTH: usize = 256;
 
     /// Clamped rather than trusted: a batch of 2000 would turn every push into a 400.
@@ -193,10 +232,12 @@ impl SyncPolicy {
         }
     }
 
+    /// The same policy with another push batch size, clamped to 1 through [`Self::MAX_BATCH`].
     pub fn with_push_batch_size(self, size: usize) -> Self {
         Self::new(size, self.pull_limit, self.clock_skew_tolerance_ms)
     }
 
+    /// The same policy with another pull limit, clamped to 1 through [`Self::MAX_PULL_LIMIT`].
     pub fn with_pull_limit(self, limit: usize) -> Self {
         Self::new(self.push_batch_size, limit, self.clock_skew_tolerance_ms)
     }
@@ -247,6 +288,7 @@ pub struct SyncReport {
 }
 
 impl SyncReport {
+    /// Ops refused in either direction.
     pub fn quarantined(&self) -> usize {
         self.quarantined_outbound + self.quarantined_inbound
     }
@@ -256,6 +298,7 @@ impl SyncReport {
         self.pushed == 0 && self.pulled == 0 && self.quarantined() == 0
     }
 
+    /// Adds another pass's numbers to these, and takes its cursor if it has one.
     pub fn absorb(&mut self, other: &SyncReport) {
         self.images_uploaded += other.images_uploaded;
         self.pushed += other.pushed;
@@ -280,10 +323,23 @@ impl SyncReport {
 /// Where a sync has got to, reported as it happens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncPhase {
+    /// No sync under way.
     Idle,
-    Pushing { pushed: usize },
-    Pulling { applied: usize },
-    Failed { reason: String },
+    /// Pushing ops.
+    Pushing {
+        /// Ops acknowledged so far.
+        pushed: usize,
+    },
+    /// Pulling ops.
+    Pulling {
+        /// Ops applied so far.
+        applied: usize,
+    },
+    /// The sync stopped, for a reason the listener can read.
+    Failed {
+        /// What went wrong.
+        reason: String,
+    },
 }
 
 // MARK: - Cursors
@@ -316,11 +372,17 @@ impl std::fmt::Display for PullCursor {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WireOp {
+    /// The op's id, unique across devices.
     pub op_id: String,
+    /// The wire entity name, from [`SyncEntity::wire_name`].
     pub entity: String,
+    /// The id of the row it describes.
     pub entity_id: String,
+    /// `upsert` or `delete`.
     pub operation: String,
+    /// The row as a JSON object.
     pub payload: Value,
+    /// When the op was written, in milliseconds since the epoch on the writing device.
     pub created_at: Millis,
 }
 
@@ -331,6 +393,10 @@ impl WireOp {
     /// is quarantined with a reason instead of sitting at the head of the queue. The
     /// two rules the server *cannot* check — `entityId` agreeing with the payload, and
     /// a delete carrying its flag — are the ones worth having here at all.
+    ///
+    /// # Errors
+    ///
+    /// The first rule the op breaks, as a [`SyncFault`]; every one of them is permanent.
     pub fn make(op: &Op) -> Result<WireOp, SyncFault> {
         if op.op_id.is_empty() {
             return Err(SyncFault::EmptyOpId);
@@ -400,10 +466,13 @@ impl WireOp {
     }
 }
 
+/// One push: this device's ops, in the order they were written.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PushRequest {
+    /// The pushing device.
     pub device_id: String,
+    /// The ops, at most [`SyncPolicy::MAX_BATCH`].
     pub ops: Vec<WireOp>,
 }
 
@@ -411,7 +480,9 @@ pub struct PushRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RejectedOp {
+    /// The refused op's id.
     pub op_id: String,
+    /// The server's reason, or "no reason given".
     pub reason: String,
 }
 
@@ -453,6 +524,7 @@ pub struct PushResponse {
     /// timed-out push safe.
     #[serde(default)]
     pub accepted: Vec<String>,
+    /// Ops the server refused, with its reasons.
     #[serde(default)]
     pub rejected: Vec<RejectedOp>,
     /// The server's head sequence. Not a pull cursor.
@@ -466,10 +538,15 @@ pub struct PushResponse {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PulledOp {
+    /// The op's id.
     pub op_id: String,
+    /// The wire entity name, which may be one this build does not know.
     pub entity: String,
+    /// The id of the row it describes.
     pub entity_id: String,
+    /// The operation as sent; checked when applied.
     pub operation: String,
+    /// The row as a JSON object.
     pub payload: Value,
     /// The writing device's clock; sanity-checked against `received_at`.
     pub created_at: Millis,
@@ -489,6 +566,7 @@ pub struct PulledOp {
 pub struct PullResponse {
     /// Ascending by `seq`.
     pub ops: Vec<PulledOp>,
+    /// Where the next page starts.
     pub cursor: PullCursor,
     /// Exact: the server reads one row past the limit to answer it.
     pub has_more: bool,

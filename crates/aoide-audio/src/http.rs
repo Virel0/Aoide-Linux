@@ -156,6 +156,12 @@ impl HttpSource {
 
     /// A reader positioned at the start. Starts a download unless one is
     /// running for another open reader, and waits for the response headers.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the temporary file or the download thread cannot be made, when the
+    /// server answers with an error or the connection fails, or when no response arrives
+    /// within the read timeout.
     pub fn open(&self) -> io::Result<HttpReader> {
         let lease = {
             let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());

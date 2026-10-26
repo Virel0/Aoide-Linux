@@ -15,6 +15,7 @@ pub struct PlayOutcome {
     pub completed: bool,
     /// Qualifies as a play for counting purposes. Not a stored column.
     pub counts_as_play: bool,
+    /// Qualifies as a skip: abandoned inside the first fifth.
     pub skipped: bool,
 }
 
@@ -25,6 +26,7 @@ pub struct PlayClassifier;
 impl PlayClassifier {
     /// Four minutes of listening is a play however long the track is.
     pub const SCROBBLE_CEILING_MS: i64 = 4 * 60 * 1_000;
+    /// A listen of at least the track's length divided by this is a play: half of it.
     pub const PLAY_DIVISOR: i64 = 2;
     /// Below a fifth of a track, the listener rejected it.
     pub const SKIP_DIVISOR: i64 = 5;

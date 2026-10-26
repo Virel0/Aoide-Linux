@@ -58,12 +58,20 @@ impl QueuePolicy {
 impl Store {
     /// This device's saved queue. A signed-out device keeps a row with an empty list,
     /// so check the list, not just for `None`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn local_queue(&self) -> Result<Option<QueueState>> {
         self.read(|conn| QueueState::fetch(conn, self.device_id()))
     }
 
     /// Other devices' queues, most recently updated first, younger than `window` and
     /// not empty. Pass `Millis::MAX` to ignore age.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn resumable_queues(&self, now: Millis, window: Millis) -> Result<Vec<QueueState>> {
         let cutoff = if window < now {
             now - window
@@ -85,6 +93,10 @@ impl Store {
 
     /// Upserts this device's queue unconditionally, and returns what was stored — the
     /// window may have dropped played history and rebased `position`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the row does not encode or the database fails; nothing is written then.
     pub fn save_queue(
         &self,
         device_name: &str,
@@ -100,6 +112,10 @@ impl Store {
 
     /// Upserts only if the list, the index or the name changed, or elapsed moved by more
     /// than the threshold either way. Reports whether it wrote.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::save_queue`].
     pub fn save_queue_if_changed(
         &self,
         device_name: &str,
@@ -133,6 +149,10 @@ impl Store {
     /// Empties this device's queue on sign-out, as an empty upsert that travels rather
     /// than a delete that cannot. Reports whether there was one. Local: it waits on no
     /// network, and the op goes out with the next sync.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::save_queue`].
     pub fn clear_queue(&self, now: Millis) -> Result<bool> {
         let Some(existing) = self.local_queue()? else {
             return Ok(false);

@@ -14,14 +14,19 @@ use crate::store::Store;
 /// The three periods, in the order the segmented control shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReplayPeriod {
+    /// Since midnight on the 1st of this month.
     Month,
+    /// Since midnight on 1 January.
     Year,
+    /// Since the epoch: everything.
     AllTime,
 }
 
 impl ReplayPeriod {
+    /// All three, in display order.
     pub const ALL: [ReplayPeriod; 3] = [Self::Month, Self::Year, Self::AllTime];
 
+    /// What the segmented control says.
     pub fn label(self) -> &'static str {
         match self {
             Self::Month => "This Month",
@@ -84,6 +89,10 @@ impl Store {
     /// The recap for `period` as of `now`: from the period's start, with no end — a
     /// play another device stamped a little ahead of this clock still counts. The
     /// busiest day is bucketed in the same `calendar` the period is measured in.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn replay(&self, period: ReplayPeriod, now: Millis, calendar: Calendar) -> Result<Recap> {
         self.recap_in(period.start(now, calendar), Millis::MAX, calendar)
     }

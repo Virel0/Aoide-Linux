@@ -5,15 +5,21 @@
 /// unanswerable within a week. Written when the listen *begins*.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Activity {
+    /// Playing a game.
     Gaming,
+    /// Working or studying.
     Focus,
+    /// Housework.
     Chores,
+    /// Travelling to or from somewhere.
     Commute,
 }
 
 impl Activity {
+    /// Every activity.
     pub const ALL: [Activity; 4] = [Self::Gaming, Self::Focus, Self::Chores, Self::Commute];
 
+    /// The lower-case word stored in `PlayEvent::activity`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Gaming => "gaming",
@@ -23,6 +29,7 @@ impl Activity {
         }
     }
 
+    /// The word to show, capitalised.
     pub fn display_name(self) -> &'static str {
         match self {
             Self::Gaming => "Gaming",

@@ -14,12 +14,18 @@ use crate::store::Store;
 /// Which of the two flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Flag {
+    /// "Not interested": kept out of mixes, stations, smart playlists and shuffle.
     NotInterested,
+    /// "Don't count": new plays are not recorded.
     DontCount,
 }
 
 impl Store {
     /// The flags on a track, or `None` when nothing has been said about it.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn flags(&self, jellyfin_id: &str) -> Result<Option<TrackFlags>> {
         Ok(self
             .read(|conn| {
@@ -30,6 +36,10 @@ impl Store {
     }
 
     /// Which of these tracks are marked not interested.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn not_interested(&self, jellyfin_ids: &[String]) -> Result<BTreeSet<String>> {
         if jellyfin_ids.is_empty() {
             return Ok(BTreeSet::new());
@@ -51,6 +61,10 @@ impl Store {
     }
 
     /// Every flagged track, newest first, with what the cache knows of it.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn flagged_tracks(&self) -> Result<Vec<(TrackFlags, Option<TrackRef>)>> {
         self.read(|conn| {
             let rows = TrackFlags::fetch_where(
@@ -70,6 +84,10 @@ impl Store {
     /// Sets one flag, minting the row if needed and deleting it when both end up off —
     /// a row that says nothing is not worth syncing. A deleted row coming back keeps
     /// its id, so other devices see one row change rather than a delete and a stranger.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; nothing is written then.
     pub fn set_flag(
         &self,
         flag: Flag,
@@ -93,6 +111,11 @@ impl Store {
         self.record(row, empty, now)
     }
 
+    /// Sets or clears "not interested"; see [`Self::set_flag`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::set_flag`].
     pub fn set_not_interested(
         &self,
         value: bool,
@@ -103,6 +126,11 @@ impl Store {
         self.set_flag(Flag::NotInterested, value, jellyfin_id, content_key, now)
     }
 
+    /// Sets or clears "don't count"; see [`Self::set_flag`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::set_flag`].
     pub fn set_dont_count(
         &self,
         value: bool,
