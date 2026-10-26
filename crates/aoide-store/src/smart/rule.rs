@@ -10,17 +10,29 @@ use super::interval::RelativeInterval;
 /// snake_case; camelCase is accepted on the way in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Field {
+    /// The track's title. Text.
     Title,
+    /// The track's artist. Text.
     Artist,
+    /// The album's title. Text.
     Album,
+    /// The album's artist; a track with none compares as empty text.
     AlbumArtist,
+    /// Any one of the track's genres. Text; not sortable.
     Genre,
+    /// The release year. A number; unknown years match only `isNot`.
     Year,
+    /// The track's length in milliseconds. A number.
     DurationMs,
+    /// Plays that count as plays (see `PlayDefinition`). A number; zero when never played.
     PlayCount,
+    /// Plays that count as skips. A number; zero when never played.
     SkipCount,
+    /// When the track was last played, in milliseconds since the epoch. A date; never played has none.
     LastPlayed,
+    /// When the track was first played. A date; never played has none.
     FirstPlayed,
+    /// Whether the track is liked. A flag.
     Liked,
 }
 
@@ -33,6 +45,7 @@ pub(super) enum Kind {
 }
 
 impl Field {
+    /// Every field, in declaration order.
     pub const ALL: [Field; 12] = [
         Self::Title,
         Self::Artist,
@@ -48,6 +61,7 @@ impl Field {
         Self::Liked,
     ];
 
+    /// The design document's snake_case spelling, which is what is written.
     pub fn wire_name(self) -> &'static str {
         match self {
             Self::Title => "title",
@@ -65,6 +79,11 @@ impl Field {
         }
     }
 
+    /// Reads a wire name, or one of the camelCase aliases (`albumArtist`, `playCount`…).
+    ///
+    /// # Errors
+    ///
+    /// [`SmartPlaylistError::UnknownField`] for any other name.
     pub fn parse(wire: &str) -> std::result::Result<Self, SmartPlaylistError> {
         let alias = match wire {
             "albumArtist" => Some(Self::AlbumArtist),
@@ -97,20 +116,32 @@ impl Field {
 /// The closed set of comparisons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operator {
+    /// Equal to. Text compares case-insensitively (ASCII only, as SQLite does).
     Is,
+    /// Not equal to; a missing value counts as not equal.
     IsNot,
+    /// Text containing the value.
     Contains,
+    /// Text not containing the value.
     DoesNotContain,
+    /// Text starting with the value.
     BeginsWith,
+    /// A number greater than the value.
     GreaterThan,
+    /// A number less than the value.
     LessThan,
+    /// A date before an instant (relative or epoch milliseconds); never played fails it.
     Before,
+    /// A date after an instant; never played fails it.
     After,
+    /// A date within a relative span of now.
     InTheLast,
+    /// A date outside a relative span of now, or none at all.
     NotInTheLast,
 }
 
 impl Operator {
+    /// Every operator, in declaration order.
     pub const ALL: [Operator; 11] = [
         Self::Is,
         Self::IsNot,
@@ -125,6 +156,7 @@ impl Operator {
         Self::NotInTheLast,
     ];
 
+    /// The camelCase spelling that is written.
     pub fn wire_name(self) -> &'static str {
         match self {
             Self::Is => "is",
@@ -163,8 +195,11 @@ impl Operator {
 /// counts something or is a millisecond.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Value {
+    /// For text fields, and relative spans (`-30d`) for dates.
     Text(String),
+    /// For number fields, and epoch milliseconds for `before` and `after`.
     Number(i64),
+    /// For the liked flag.
     Flag(bool),
 }
 
@@ -223,12 +258,22 @@ impl From<bool> for Value {
 /// One clause: a field, an operator, and a value to compare against.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SmartRule {
+    /// What the rule compares.
     pub field: Field,
+    /// How it compares.
     pub op: Operator,
+    /// What it compares against; its type suits the field and operator.
     pub value: Value,
 }
 
 impl SmartRule {
+    /// A rule, if the operator applies to the field and the value suits both.
+    ///
+    /// # Errors
+    ///
+    /// [`SmartPlaylistError::OperatorNotApplicable`] or
+    /// [`SmartPlaylistError::ValueTypeMismatch`]; for a date, also
+    /// [`SmartPlaylistError::MalformedInterval`] when the text is not a span.
     pub fn new(
         field: Field,
         op: Operator,

@@ -20,6 +20,7 @@ pub enum SyncDirection {
 }
 
 impl SyncDirection {
+    /// The spelling stored in [`QuarantinedOp::direction`].
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Outbound => "outbound",
@@ -27,6 +28,7 @@ impl SyncDirection {
         }
     }
 
+    /// Reads a stored spelling; `None` for anything else.
     pub fn parse(raw: &str) -> Option<Self> {
         match raw {
             "outbound" => Some(Self::Outbound),
@@ -39,16 +41,21 @@ impl SyncDirection {
 /// An op that can never succeed, kept out of the way but not thrown away.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuarantinedOp {
+    /// The op's id.
     pub op_id: String,
     /// Spelled as it arrived — the local table name outbound, the wire name inbound.
     /// For the case this table exists to explain, the unrecognised spelling is the
     /// finding.
     pub entity: String,
+    /// The id of the row it describes.
     pub entity_id: String,
+    /// `outbound` or `inbound`; see [`Self::sync_direction`].
     pub direction: String,
+    /// Why it can never succeed: a [`SyncFault`]'s message.
     pub reason: String,
     /// Kept whole: for an inbound op it is the only copy once the cursor has moved on.
     pub payload: String,
+    /// When it was quarantined here, in milliseconds since the epoch.
     pub quarantined_at: Millis,
     /// Absent on rows quarantined before v5, which therefore cannot be re-queued.
     pub operation: Option<String>,
@@ -57,6 +64,7 @@ pub struct QuarantinedOp {
 }
 
 impl QuarantinedOp {
+    /// The direction, or `None` for a spelling this build does not know.
     pub fn sync_direction(&self) -> Option<SyncDirection> {
         SyncDirection::parse(&self.direction)
     }
@@ -121,6 +129,10 @@ impl Record for QuarantinedOp {
 
 impl Store {
     /// Everything quarantined, newest first.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn quarantined_ops(&self, limit: usize) -> Result<Vec<QuarantinedOp>> {
         self.read(|conn| {
             QuarantinedOp::fetch_where(
@@ -131,11 +143,20 @@ impl Store {
         })
     }
 
+    /// How many ops are quarantined.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn quarantine_count(&self) -> Result<i64> {
         self.read(QuarantinedOp::count)
     }
 
     /// Forgets quarantined ops. Nothing re-queues them.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; none are forgotten then.
     pub fn discard_quarantined(&self, op_ids: &[String]) -> Result<()> {
         self.write_local(|tx| {
             for op_id in op_ids {
@@ -145,12 +166,21 @@ impl Store {
         })
     }
 
+    /// Forgets every quarantined op.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn discard_all_quarantined(&self) -> Result<()> {
         self.write_local(|tx| tx.execute("DELETE FROM \"quarantinedOp\"", []).map(|_| ()))
     }
 
     /// The pull cursor, typed — the only thing between this row and a push cursor
     /// being written into it.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn pull_cursor(&self) -> Result<Option<PullCursor>> {
         Ok(self
             .sync_cursor()?
@@ -163,6 +193,10 @@ impl Store {
     /// Moved, not flagged: a dead op that stays pending is retried forever and blocks
     /// everything queued behind it. Marking it synced would be a lie about what the
     /// server holds.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; the op stays queued then.
     pub fn quarantine(&self, op: &Op, fault: &SyncFault, now: Millis) -> Result<()> {
         self.write_local(|tx| {
             QuarantinedOp {
@@ -184,6 +218,10 @@ impl Store {
 
     /// Puts server-faulted ops back in the outbound queue, all of them or the ones
     /// named. Returns how many went back: rows from before v5 cannot be rebuilt.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; none go back then.
     pub fn requeue_quarantined(&self, op_ids: Option<&[String]>) -> Result<usize> {
         self.write_local(|tx| {
             let mut candidates = QuarantinedOp::fetch_all(tx)?;
@@ -215,6 +253,10 @@ impl Store {
     }
 
     /// How many are worth offering a retry for.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn retryable_quarantine_count(&self) -> Result<usize> {
         Ok(self
             .read(QuarantinedOp::fetch_all)?

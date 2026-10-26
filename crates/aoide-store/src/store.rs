@@ -24,6 +24,10 @@ pub struct Store {
 
 impl Store {
     /// Opens the store at `path`, creating and migrating it as needed.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the file cannot be opened as a database, or a migration fails.
     pub fn open(path: impl AsRef<Path>, device_id: impl Into<String>) -> Result<Self> {
         let conn = Connection::open(path)?;
         // Better concurrency and crash-durability than the rollback journal, and the
@@ -33,6 +37,10 @@ impl Store {
     }
 
     /// A store that lives in memory, for tests and previews.
+    ///
+    /// # Errors
+    ///
+    /// Fails when a migration fails.
     pub fn in_memory(device_id: impl Into<String>) -> Result<Self> {
         Self::prepare(Connection::open_in_memory()?, device_id.into())
     }
@@ -63,6 +71,10 @@ impl Store {
     }
 
     /// Reads, with nothing written.
+    ///
+    /// # Errors
+    ///
+    /// Whatever `body` returns as an error, as [`StoreError::Sqlite`](crate::StoreError::Sqlite).
     pub fn read<T>(&self, body: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> Result<T> {
         let conn = self.lock();
         Ok(body(&conn)?)
@@ -71,6 +83,11 @@ impl Store {
     /// A write that does **not** record an op, in one transaction. Only correct for the
     /// track cache and other purely local state; anything syncable goes through
     /// [`Store::record`].
+    ///
+    /// # Errors
+    ///
+    /// Whatever `body` returns as an error, or a failure to begin or commit; nothing is
+    /// written then.
     pub fn write_local<T>(
         &self,
         body: impl FnOnce(&Transaction<'_>) -> rusqlite::Result<T>,
@@ -104,6 +121,11 @@ impl Store {
     /// row are stamped with `now` — which can only be known here, against what is on
     /// disk. A delete touches no content field, so it stamps none: a playlist deleted
     /// on one device and renamed on another keeps the rename.
+    ///
+    /// # Errors
+    ///
+    /// A JSON error when the row does not encode, or a database error, including a
+    /// unique-column clash with another row; neither the row nor the op is written then.
     pub fn record<R: SyncRecord>(&self, row: R, deleted: bool, now: Millis) -> Result<R> {
         self.transaction(|tx| self.record_in(tx, row, deleted, now))
     }
@@ -151,6 +173,10 @@ impl Store {
     /// Separate from `record` because history is append-only: events carry no
     /// `updatedAt`, `deleted` or conflict resolution, which also makes them the one
     /// thing here that cannot conflict during sync.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the event does not encode or the database fails; nothing is written then.
     pub fn append(&self, event: PlayEvent) -> Result<PlayEvent> {
         let op = Op::new(
             PlayEvent::TABLE,
@@ -173,6 +199,10 @@ impl Store {
     ///
     /// `held` names local tables whose ops stay in the queue untouched — neither
     /// pushed nor quarantined — and never block what is behind them.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn pending_ops(&self, limit: usize, held: &BTreeSet<String>) -> Result<Vec<Op>> {
         self.read(|conn| {
             let mut condition = "\"synced\" = 0".to_owned();
@@ -200,6 +230,10 @@ impl Store {
     }
 
     /// Which of `op_ids` are still waiting to be pushed.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn unsynced_op_ids(&self, op_ids: &[String]) -> Result<BTreeSet<String>> {
         self.read(|conn| {
             let mut present = BTreeSet::new();
@@ -218,6 +252,10 @@ impl Store {
     }
 
     /// Ops waiting to be pushed, counted per local table.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn pending_op_counts(&self) -> Result<std::collections::BTreeMap<String, i64>> {
         self.read(|conn| {
             let mut statement = conn.prepare(
@@ -230,17 +268,30 @@ impl Store {
 
     /// When a sync last finished cleanly on this device; kept beside the cursor, and
     /// erased with it when the account changes.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn last_synced_at(&self) -> Result<Option<Millis>> {
         Ok(self
             .state("lastSyncedAt")?
             .and_then(|value| value.parse().ok()))
     }
 
+    /// Stores when a sync last finished cleanly, in milliseconds since the epoch.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn set_last_synced_at(&self, at: Millis) -> Result<()> {
         self.write_local(|tx| set_state(tx, "lastSyncedAt", &at.to_string()))
     }
 
     /// How many ops are waiting to be pushed.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn pending_op_count(&self) -> Result<i64> {
         self.read(|conn| {
             conn.query_row(
@@ -253,6 +304,10 @@ impl Store {
 
     /// Marks ops the server acknowledged. By the id this device minted, so
     /// acknowledging an op twice, or one that is no longer here, is harmless.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; none are marked then.
     pub fn mark_synced(&self, op_ids: &[String]) -> Result<()> {
         if op_ids.is_empty() {
             return Ok(());
@@ -272,6 +327,10 @@ impl Store {
     }
 
     /// The pull cursor as stored, untyped. See [`Store::pull_cursor`].
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn sync_cursor(&self) -> Result<Option<String>> {
         self.state("cursor")
     }
@@ -279,6 +338,10 @@ impl Store {
     /// Overwrites the pull cursor. The engine never calls this — it advances the cursor
     /// inside the transaction that applies a batch — but a person repairing a store
     /// may.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn set_sync_cursor(&self, cursor: &str) -> Result<()> {
         self.write_local(|tx| set_state(tx, "cursor", cursor))
     }

@@ -40,13 +40,18 @@ fn qualifies_as_skip() -> String {
 /// What is known about one track's listening.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrackStats {
+    /// The track.
     pub jellyfin_id: String,
+    /// Events that qualified as plays.
     pub play_count: i64,
+    /// Events that qualified as skips.
     pub skip_count: i64,
+    /// Every millisecond heard, skipped fragments included.
     pub total_ms_played: i64,
     /// The first and last events that *qualified as plays* — the figures the smart
     /// fields `first_played` and `last_played` read.
     pub first_played_at: Option<Millis>,
+    /// The last of those, in milliseconds since the epoch.
     pub last_played_at: Option<Millis>,
     /// The last event of any kind: when this track was last *on*.
     pub last_started_at: Option<Millis>,
@@ -73,29 +78,41 @@ impl TrackStats {
     }
 }
 
+/// One track's plays in a window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrackPlays {
+    /// The track.
     pub jellyfin_id: String,
+    /// Events that qualified as plays.
     pub play_count: i64,
 }
 
+/// One artist's plays in a window, as the track cache names them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtistPlays {
+    /// The artist.
     pub artist: String,
+    /// Events that qualified as plays.
     pub play_count: i64,
 }
 
 /// Carries the artist because an album title is not a key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlbumPlays {
+    /// The album's title.
     pub album: String,
+    /// The album's artist (the track's when it has none).
     pub artist: String,
+    /// Events that qualified as plays.
     pub play_count: i64,
 }
 
+/// One calendar day's plays.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DayPlays {
+    /// The day, `YYYY-MM-DD`.
     pub day: String,
+    /// Events that qualified as plays.
     pub play_count: i64,
 }
 
@@ -104,15 +121,23 @@ pub struct DayPlays {
 pub struct Recap {
     /// Half-open: `from` included, `to` excluded.
     pub from: Millis,
+    /// The window's end, excluded.
     pub to: Millis,
+    /// Events that qualified as plays.
     pub total_plays: i64,
     /// Every millisecond listened to, skipped fragments included.
     pub total_ms_played: i64,
+    /// Distinct tracks among those plays.
     pub distinct_tracks: i64,
+    /// Distinct artists among those plays whose track is in the cache.
     pub distinct_artists: i64,
+    /// Distinct albums among those plays whose track is in the cache.
     pub distinct_albums: i64,
+    /// The most-played tracks, most first.
     pub top_tracks: Vec<TrackPlays>,
+    /// The most-played artists, most first.
     pub top_artists: Vec<ArtistPlays>,
+    /// The most-played albums, most first.
     pub top_albums: Vec<AlbumPlays>,
     /// Bucketed in the device's local time zone: the day you listened most is a human
     /// day.
@@ -127,6 +152,10 @@ impl Store {
     /// Opens a play. The event lands immediately with `ms_played` 0; `finish_play`
     /// fills in how it went. Written at the start because an app killed mid-track is
     /// normal, and the long listens are the ones that would otherwise be lost.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; nothing is written then.
     pub fn begin_play(
         &self,
         jellyfin_id: &str,
@@ -148,6 +177,10 @@ impl Store {
     /// **new** op id: an op the server accepted while its acknowledgement was lost is
     /// ignored on re-push, so an amended payload under the old id would vanish. If the
     /// begin op had already synced, this lands after it in sequence order.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the event does not encode or the database fails; nothing is written then.
     pub fn finish_play(
         &self,
         event: &PlayEvent,
@@ -184,6 +217,10 @@ impl Store {
     }
 
     /// Records a play that is already over — an import, or a player that reports once.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::append`].
     pub fn record_play(
         &self,
         track: &TrackLink,
@@ -214,6 +251,10 @@ impl Store {
 
     /// Finish counts split by what the listener was doing, ignoring untagged listens
     /// and words this build does not know.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn finish_counts_by_activity(
         &self,
         jellyfin_ids: &[String],
@@ -261,12 +302,20 @@ impl Store {
 
 impl Store {
     /// Counts only events that qualify as plays — unlike Jellyfin's PlayCount.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn play_count(&self, jellyfin_id: &str) -> Result<i64> {
         Ok(self.stats(jellyfin_id)?.play_count)
     }
 
     /// The batched query with one id, so a count on a row and the sheet behind it
     /// cannot disagree.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn stats(&self, jellyfin_id: &str) -> Result<TrackStats> {
         let ids = [jellyfin_id.to_owned()];
         Ok(self
@@ -277,6 +326,10 @@ impl Store {
 
     /// Stats for many tracks in one query. Every requested id comes back, zeroed if it
     /// has no history, so a list view has no misses to fall back on.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn stats_for(&self, jellyfin_ids: &[String]) -> Result<HashMap<String, TrackStats>> {
         if jellyfin_ids.is_empty() {
             return Ok(HashMap::new());
@@ -333,6 +386,10 @@ impl Store {
 
     /// The share of decided outcomes that were skips, or `None` below the sample
     /// floor. The neither band is in neither the numerator nor the denominator.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn skip_rate(&self, jellyfin_id: &str) -> Result<Option<f64>> {
         let stats = self.stats(jellyfin_id)?;
         let decided = stats.play_count + stats.skip_count;
@@ -342,25 +399,49 @@ impl Store {
         Ok(Some(stats.skip_count as f64 / decided as f64))
     }
 
+    /// The `limit` most-played tracks since `since` (epoch milliseconds), most first,
+    /// ties by id.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn top_tracks(&self, since: Millis, limit: usize) -> Result<Vec<TrackPlays>> {
         self.read(|conn| top_tracks(conn, since, Millis::MAX, limit))
     }
 
+    /// The `limit` most-played artists since `since`, most first, ties by name.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn top_artists(&self, since: Millis, limit: usize) -> Result<Vec<ArtistPlays>> {
         self.read(|conn| top_artists(conn, since, Millis::MAX, limit))
     }
 
+    /// The `limit` most-played albums since `since`, most first, ties by title.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn top_albums(&self, since: Millis, limit: usize) -> Result<Vec<AlbumPlays>> {
         self.read(|conn| top_albums(conn, since, Millis::MAX, limit))
     }
 
     /// Plays in the window whose track is not in the local cache.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn unattributed_plays(&self, since: Millis, to: Millis) -> Result<i64> {
         self.read(|conn| unattributed_plays(conn, since, to))
     }
 
     /// Distinct tracks, most recently started first — skipped and abandoned included:
     /// "recently played" is a history of what was on, not a leaderboard.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn recently_played(&self, limit: usize) -> Result<Vec<String>> {
         self.read(|conn| {
             let mut statement = conn.prepare(
@@ -374,11 +455,19 @@ impl Store {
 
     /// A wrapped-style summary of `[from, to)`, read in one consistent snapshot, with
     /// the busiest day bucketed in this device's time zone.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn recap(&self, from: Millis, to: Millis) -> Result<Recap> {
         self.recap_in(from, to, Calendar::Local)
     }
 
     /// [`recap`](Self::recap), with the busiest day bucketed in `calendar`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn recap_in(&self, from: Millis, to: Millis, calendar: Calendar) -> Result<Recap> {
         let zone = match calendar {
             Calendar::Local => ", 'localtime'",
@@ -526,12 +615,17 @@ pub(crate) fn sql_limit(limit: usize) -> i64 {
 pub struct PlayWeighting;
 
 impl PlayWeighting {
+    /// The least weight a track can have.
     pub const FLOOR: f64 = 0.05;
+    /// What a liked track's weight is multiplied by.
     pub const LIKED_FACTOR: f64 = 1.75;
+    /// What a disliked track's weight is multiplied by.
     pub const UNLIKED_FACTOR: f64 = 0.35;
     /// Pseudo-counts: one imagined play and one imagined skip.
     pub const SKIP_PRIOR: f64 = 2.0;
 
+    /// The weight for a track with `plays` plays, `skips` skips and a like (`Some(true)`),
+    /// dislike (`Some(false)`) or neither.
     pub fn weight(plays: i64, skips: i64, liked: Option<bool>) -> f64 {
         let (plays, skips) = (plays.max(0) as f64, skips.max(0) as f64);
         let familiarity = 1.0 + 0.5 * (1.0 + plays).log2();
@@ -549,6 +643,10 @@ impl PlayWeighting {
 
 impl Store {
     /// A selection weight per track, for weighted shuffle. Every requested id gets one.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn play_weights(&self, jellyfin_ids: &[String]) -> Result<HashMap<String, f64>> {
         if jellyfin_ids.is_empty() {
             return Ok(HashMap::new());

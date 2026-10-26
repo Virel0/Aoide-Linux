@@ -13,9 +13,13 @@ use crate::store::Store;
 /// addressing makes the same picture chosen twice one blob, and re-uploading a no-op.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImageBlob {
+    /// The bytes' SHA-256, lower-case hex; the key and the file name.
     pub hash: String,
+    /// The media type sniffed from the bytes.
     pub mime: String,
+    /// The size in bytes.
     pub bytes: i64,
+    /// When this device first registered it, in milliseconds since the epoch.
     pub created_at: Millis,
     /// `None` until the server has these bytes. An op naming this hash must not be
     /// pushed before then.
@@ -70,6 +74,10 @@ impl Store {
     /// Records that this device holds these bytes. Local only — the blob is not synced
     /// state, the playlist row naming it is. Never overwrites, so re-registering does
     /// not un-mark an upload.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn register_image(
         &self,
         hash: &str,
@@ -93,10 +101,20 @@ impl Store {
         Ok(self.image(hash)?.unwrap_or(blob))
     }
 
+    /// The bookkeeping for `hash`, if this device has registered it.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn image(&self, hash: &str) -> Result<Option<ImageBlob>> {
         self.read(|conn| ImageBlob::fetch(conn, hash))
     }
 
+    /// Records that the server now has the bytes behind `hash`, as of `now`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn mark_image_uploaded(&self, hash: &str, now: Millis) -> Result<()> {
         self.write_local(|tx| {
             tx.execute(
@@ -109,6 +127,10 @@ impl Store {
 
     /// Hashes named by ops still waiting to be pushed whose bytes the server has not
     /// been given. Read out of the payloads, so an op and its blob cannot drift apart.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn images_needed_before_push(&self) -> Result<Vec<ImageBlob>> {
         self.read(|conn| {
             ImageBlob::fetch_where(
@@ -122,6 +144,10 @@ impl Store {
 
     /// Blobs no live playlist names, older than the grace period, oldest first.
     /// Reports rather than reclaims; a shorter grace is raised, never honoured.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn orphaned_images(&self, older_than_days: i64, now: Millis) -> Result<Vec<ImageBlob>> {
         let grace = older_than_days.max(IMAGE_GRACE_DAYS);
         let cutoff = now - grace * 24 * 60 * 60 * 1000;
@@ -137,6 +163,10 @@ impl Store {
     }
 
     /// Removes blobs this device is done with; a separate, explicit step.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; none are removed then.
     pub fn forget_images(&self, hashes: &[String]) -> Result<usize> {
         self.write_local(|tx| {
             let mut removed = 0;

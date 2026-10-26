@@ -12,11 +12,19 @@ use crate::store::Store;
 impl Store {
     /// Live playlists in display order, across every folder. Sort keys are generated
     /// against all playlists, so a folder's contents are a subsequence of this.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn playlists(&self) -> Result<Vec<Playlist>> {
         self.read(|conn| Playlist::fetch_where(conn, "deleted = 0 ORDER BY sortIndex, rowid", []))
     }
 
     /// Live playlists filed directly under `folder_id`; `None` is the root.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn playlists_in_folder(&self, folder_id: Option<&str>) -> Result<Vec<Playlist>> {
         self.read(|conn| {
             Playlist::fetch_where(
@@ -28,6 +36,10 @@ impl Store {
     }
 
     /// A live playlist; a deleted one is `None`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn playlist(&self, id: &str) -> Result<Option<Playlist>> {
         Ok(self
             .read(|conn| Playlist::fetch(conn, id))?
@@ -36,10 +48,19 @@ impl Store {
 
     /// Whether a row with this id has ever existed here, deleted or not — so a deleted
     /// built-in is not created again under the same id and undeleted everywhere.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn playlist_row_exists(&self, id: &str) -> Result<bool> {
         Ok(self.read(|conn| Playlist::fetch(conn, id))?.is_some())
     }
 
+    /// Creates a hand-made playlist at the end of the list, with a fresh id.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::create_playlist_with_id`].
     pub fn create_playlist(
         &self,
         name: &str,
@@ -52,6 +73,11 @@ impl Store {
 
     /// A caller-chosen id is for the built-ins, which every device creates under the
     /// same id so they merge rather than duplicate.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchFolder`] when `folder_id` names no live folder, or a
+    /// database error.
     pub fn create_playlist_with_id(
         &self,
         id: &str,
@@ -77,12 +103,23 @@ impl Store {
 
     /// Renames in place. The whole row goes into the op, and the receiving side merges
     /// per field, so a concurrent reorder elsewhere survives.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchPlaylist`] when there is no live playlist `id`, or a
+    /// database error.
     pub fn rename_playlist(&self, id: &str, name: &str, now: Millis) -> Result<Playlist> {
         let mut list = self.require_playlist(id)?;
         list.name = name.to_owned();
         self.record(list, false, now)
     }
 
+    /// Sets or clears a playlist's notes.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchPlaylist`] when there is no live playlist, or a database
+    /// error.
     pub fn set_notes(
         &self,
         notes: Option<&str>,
@@ -95,6 +132,11 @@ impl Store {
     }
 
     /// Files a playlist under a folder, or at the root, landing at the end of it.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchPlaylist`] or [`PlaylistError::NoSuchFolder`] when either
+    /// is missing, or a database error.
     pub fn move_playlist(
         &self,
         id: &str,
@@ -113,6 +155,11 @@ impl Store {
     /// Soft-deletes a playlist **and its items**, one op each, items first — so a crash
     /// half way leaves a shortened playlist rather than orphans. Deleting twice mints
     /// nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchPlaylist`] when no row has the id, deleted or not, or a
+    /// database error.
     pub fn delete_playlist(&self, id: &str, now: Millis) -> Result<()> {
         let list = self
             .read(|conn| Playlist::fetch(conn, id))?
@@ -133,6 +180,10 @@ impl Store {
     /// it locally, and a delete op would only be refused. Reports whether there was a
     /// row. Never for a playlist this user owns: every other device keeps it, and
     /// this one would not hear of it again.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; nothing is removed then.
     pub fn drop_playlist_locally(&self, id: &str) -> Result<bool> {
         self.write_local(|tx| {
             tx.execute(
@@ -148,6 +199,12 @@ impl Store {
 
     /// Repositions a playlist between two siblings; `None` on either side is the end.
     /// Passing neither leaves it where it is.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchPlaylist`] when it or a neighbour is missing,
+    /// [`PlaylistError::BadNeighbours`] when the neighbours leave no gap (or one of them
+    /// is the playlist itself), or a database error.
     pub fn reorder_playlist(
         &self,
         id: &str,

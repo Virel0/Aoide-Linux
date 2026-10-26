@@ -15,6 +15,10 @@ impl Store {
     /// playlist is gone. A chosen picture is cleared with it, as on the phone: left
     /// behind, its hash would keep winning and choosing an album would look like it
     /// did nothing.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn set_artwork(
         &self,
         item_id: Option<&str>,
@@ -32,6 +36,10 @@ impl Store {
 
     /// Up to `limit` distinct albums per playlist, in playing order, for drawing a cover
     /// from what it holds — for every playlist in one query.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn cover_albums(
         &self,
         playlist_ids: &[String],

@@ -25,10 +25,12 @@ use crate::record::SyncRecord;
 pub struct FieldStamps(pub BTreeMap<String, Millis>);
 
 impl FieldStamps {
+    /// No stamps: every field falls back to the row's `updatedAt`.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Stamps from `(field, time)` pairs, for tests and fixtures.
     pub fn from_pairs<'a>(pairs: impl IntoIterator<Item = (&'a str, Millis)>) -> Self {
         Self(
             pairs
@@ -43,16 +45,19 @@ impl FieldStamps {
         self.0.get(field).copied().unwrap_or(fallback)
     }
 
+    /// When `field` last changed, if it has been stamped.
     pub fn get(&self, field: &str) -> Option<Millis> {
         self.0.get(field).copied()
     }
 
+    /// Stamps each of `fields` with `now`.
     pub fn stamp<'a>(&mut self, fields: impl IntoIterator<Item = &'a String>, now: Millis) {
         for field in fields {
             self.0.insert(field.clone(), now);
         }
     }
 
+    /// Whether no field has been stamped.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }

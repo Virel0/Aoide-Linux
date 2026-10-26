@@ -7,13 +7,17 @@ use crate::Millis;
 use crate::new_id;
 use crate::record::{Record, flag, int, text};
 
+/// What an [`Op`] does to its row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OpKind {
+    /// Writes the row whole, creating it or replacing it.
     Upsert,
+    /// Marks the row deleted. The payload still carries it, as a tombstone.
     Delete,
 }
 
 impl OpKind {
+    /// The lower-case spelling stored and sent.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Upsert => "upsert",
@@ -34,19 +38,24 @@ impl OpKind {
 /// One outbound change, written in the same transaction as the row it describes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Op {
+    /// The op's own id, unique across devices; what the server deduplicates on.
     pub op_id: String,
     /// The local table name; translated to the server's spelling at the wire.
     pub entity: String,
+    /// The id of the row it describes.
     pub entity_id: String,
     /// Stored as text, so a row written by anything else can hold anything.
     pub operation: String,
     /// The row as canonical JSON.
     pub payload: String,
+    /// When it was written locally, in milliseconds since the epoch.
     pub created_at: Millis,
+    /// Whether the server has acknowledged it.
     pub synced: bool,
 }
 
 impl Op {
+    /// An unsynced op with a fresh id.
     pub fn new(
         entity: impl Into<String>,
         entity_id: impl Into<String>,
@@ -65,6 +74,7 @@ impl Op {
         }
     }
 
+    /// The same op under `op_id`.
     pub fn with_id(mut self, op_id: impl Into<String>) -> Self {
         self.op_id = op_id.into();
         self

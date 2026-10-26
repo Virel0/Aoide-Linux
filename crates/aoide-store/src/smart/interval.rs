@@ -5,12 +5,18 @@ use chrono::{DateTime, Days, Local, Months, NaiveDateTime, TimeZone, Utc};
 use super::error::SmartPlaylistError;
 use crate::Millis;
 
+/// The unit of a [`RelativeInterval`]: its suffix letter is the first letter of the name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TimeUnit {
+    /// `h`: exact hours.
     Hours,
+    /// `d`: calendar days, keeping the wall-clock time.
     Days,
+    /// `w`: seven calendar days.
     Weeks,
+    /// `m`: calendar months; a month before 31 March is the end of February.
     Months,
+    /// `y`: twelve calendar months.
     Years,
 }
 
@@ -18,7 +24,9 @@ pub enum TimeUnit {
 /// evaluation, so "not played in a month" keeps moving.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RelativeInterval {
+    /// How many units; zero is now.
     pub amount: u32,
+    /// Which unit.
     pub unit: TimeUnit,
 }
 
@@ -27,13 +35,20 @@ pub struct RelativeInterval {
 /// in another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Calendar {
+    /// Coordinated universal time: the same answer on every machine, as tests need.
     Utc,
+    /// The machine's own time zone, which is what a listener means by "a month ago".
     Local,
 }
 
 impl RelativeInterval {
     /// Parses `-30d` or `30d`: the leading minus is decoration, since every operator
     /// already looks backwards.
+    ///
+    /// # Errors
+    ///
+    /// [`SmartPlaylistError::MalformedInterval`] when the text is not digits followed by
+    /// one of `h`, `d`, `w`, `m` or `y`, or the number does not fit.
     pub fn parse(written: &str) -> std::result::Result<Self, SmartPlaylistError> {
         let refuse = || SmartPlaylistError::MalformedInterval(written.to_owned());
         let lowered = written.trim_matches([' ', '\t']).to_lowercase();

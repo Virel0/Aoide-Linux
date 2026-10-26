@@ -10,21 +10,30 @@ use crate::json::flag as lenient;
 use crate::new_id;
 use crate::record::{Record, SyncRecord, flag, int, opt_text, text};
 
+/// A listener's verdict on a track: a like or a dislike. Merged whole-row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Like {
+    /// The row id.
     pub id: String,
+    /// The track's Jellyfin id.
     pub jellyfin_id: String,
+    /// The track's [`ContentKey`](crate::ContentKey).
     pub content_key: String,
+    /// True for a like, false for a dislike.
     #[serde(deserialize_with = "lenient::deserialize")]
     pub liked: bool,
+    /// When the row last changed, in milliseconds since the epoch.
     pub updated_at: Millis,
+    /// Whether the verdict has been withdrawn (a tombstone).
     #[serde(deserialize_with = "lenient::deserialize")]
     pub deleted: bool,
+    /// The device that made the last change.
     pub origin_device: String,
 }
 
 impl Like {
+    /// A verdict with a fresh id.
     pub fn new(
         jellyfin_id: impl Into<String>,
         content_key: impl Into<String>,
@@ -100,8 +109,11 @@ impl SyncRecord for Like {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackFlags {
+    /// The row id.
     pub id: String,
+    /// The track's Jellyfin id; unique among the rows.
     pub jellyfin_id: String,
+    /// The track's [`ContentKey`](crate::ContentKey).
     pub content_key: String,
     /// Excluded from mixes, stations, smart-playlist results and shuffle.
     #[serde(deserialize_with = "lenient::deserialize")]
@@ -109,15 +121,20 @@ pub struct TrackFlags {
     /// New plays are not recorded; existing history is untouched.
     #[serde(deserialize_with = "lenient::deserialize")]
     pub dont_count: bool,
+    /// When the row last changed, in milliseconds since the epoch.
     pub updated_at: Millis,
+    /// Whether the row has been deleted (a tombstone).
     #[serde(deserialize_with = "lenient::deserialize")]
     pub deleted: bool,
+    /// The device that made the last change.
     pub origin_device: String,
+    /// When each flag last changed. Absent on rows written before per-field merging.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field_updated_at: Option<FieldStamps>,
 }
 
 impl TrackFlags {
+    /// A row for a track with neither flag set, and a fresh id.
     pub fn new(
         jellyfin_id: impl Into<String>,
         content_key: impl Into<String>,

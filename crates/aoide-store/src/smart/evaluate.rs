@@ -13,6 +13,11 @@ use crate::store::Store;
 
 impl Store {
     /// The Jellyfin ids matching `rules`, in the rule set's own order, as of `now`.
+    ///
+    /// # Errors
+    ///
+    /// A [`SmartPlaylistError`] when the rule set cannot be compiled (a sort on genre), or
+    /// a database error.
     pub fn evaluate(
         &self,
         rules: &SmartRules,
@@ -30,6 +35,10 @@ impl Store {
 
     /// How many tracks `rules` match, from the same compiled statement — `LIMIT`
     /// included — so the count cannot drift from `evaluate`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::evaluate`].
     pub fn match_count(&self, rules: &SmartRules, now: Millis, calendar: Calendar) -> Result<i64> {
         let query = SmartQuery::new(rules, now, calendar)?;
         self.read(|conn| {
@@ -43,6 +52,11 @@ impl Store {
 
     /// Evaluates a playlist's stored rules; a playlist with none is an error, not an
     /// empty list.
+    ///
+    /// # Errors
+    ///
+    /// [`SmartPlaylistError::NotSmart`] when the playlist has no rules, any error reading
+    /// them gives, and then as [`Self::evaluate`].
     pub fn resolve_smart(
         &self,
         playlist: &Playlist,
@@ -52,6 +66,11 @@ impl Store {
         self.evaluate(&rules_of(playlist)?, now, calendar)
     }
 
+    /// How many tracks a playlist's stored rules match; see [`Self::match_count`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::resolve_smart`].
     pub fn match_count_of(
         &self,
         playlist: &Playlist,
@@ -82,6 +101,11 @@ impl Playlist {
         copy
     }
 
+    /// The playlist's rule set, or `None` when it is not smart or its rules are empty.
+    ///
+    /// # Errors
+    ///
+    /// Any error [`SmartRules::from_json`] gives for the stored JSON.
     pub fn smart_rule_set(&self) -> std::result::Result<Option<SmartRules>, SmartPlaylistError> {
         match self.smart_rules.as_deref() {
             Some(json) if self.is_smart && !json.is_empty() => {

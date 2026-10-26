@@ -13,17 +13,26 @@ use crate::record::{Record, flag, int, opt_int, opt_text, text};
 /// Where a play was started from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlaySource {
+    /// An album, played through.
     Album,
+    /// A playlist.
     Playlist,
+    /// Shuffle across the library.
     Shuffle,
+    /// A search result.
     Search,
+    /// A voice request on the phone.
     Siri,
+    /// The phone's car interface.
     Carplay,
+    /// A smart playlist or generated mix.
     Smart,
+    /// Not recorded, or a spelling this build does not know.
     Unknown,
 }
 
 impl PlaySource {
+    /// The spelling stored in `PlayEvent::source`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Album => "album",
@@ -42,27 +51,37 @@ impl PlaySource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayEvent {
+    /// The row id.
     pub id: String,
+    /// The track's Jellyfin id when it was played.
     pub jellyfin_id: String,
+    /// The track's [`ContentKey`](crate::ContentKey), which still finds it after a rescan.
     pub content_key: String,
+    /// When the listen began, in milliseconds since the epoch.
     pub started_at: Millis,
+    /// When it ended; `None` while it is under way, or if the app stopped first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<Millis>,
+    /// How long the track was heard, in milliseconds.
     pub ms_played: i64,
     /// The track reached its end rather than being skipped away from.
     #[serde(deserialize_with = "lenient::deserialize")]
     pub completed: bool,
+    /// The listener skipped away before the end.
     #[serde(deserialize_with = "lenient::deserialize")]
     pub skipped: bool,
+    /// A [`PlaySource`] spelling; kept as text so an unknown one survives a round trip.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     /// What the listener was doing when this began. See [`Activity`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activity: Option<String>,
+    /// The device it was heard on.
     pub origin_device: String,
 }
 
 impl PlayEvent {
+    /// A listen that has just begun, from an unknown source, with a fresh id.
     pub fn new(
         jellyfin_id: impl Into<String>,
         content_key: impl Into<String>,
@@ -84,16 +103,19 @@ impl PlayEvent {
         }
     }
 
+    /// The same listen under `id`.
     pub fn with_id(mut self, id: impl Into<String>) -> Self {
         self.id = id.into();
         self
     }
 
+    /// The same listen, started from `source`.
     pub fn with_source(mut self, source: PlaySource) -> Self {
         self.source = Some(source.as_str().to_owned());
         self
     }
 
+    /// The same listen, during `activity` (or none).
     pub fn with_activity(mut self, activity: Option<Activity>) -> Self {
         self.activity = activity.map(|a| a.as_str().to_owned());
         self

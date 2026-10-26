@@ -12,11 +12,14 @@ use crate::store::Store;
 /// the fingerprint that outlives it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TrackLink {
+    /// The id Jellyfin answers to today.
     pub jellyfin_id: String,
+    /// The track's [`ContentKey`](crate::ContentKey).
     pub content_key: String,
 }
 
 impl TrackLink {
+    /// A link from its two parts.
     pub fn new(jellyfin_id: impl Into<String>, content_key: impl Into<String>) -> Self {
         Self {
             jellyfin_id: jellyfin_id.into(),
@@ -46,6 +49,7 @@ pub struct RelinkReport {
 }
 
 impl RelinkReport {
+    /// How many entries the pass wrote: everything but those it left alone.
     pub fn changed(&self) -> usize {
         self.relinked + self.recovered + self.unresolved
     }
@@ -59,6 +63,7 @@ impl RelinkReport {
 pub const UNRESOLVED_PREFIX: &str = "unresolved:";
 
 impl PlaylistItem {
+    /// Whether a relink pass marked this entry as matching no track.
     pub fn is_unresolved(&self) -> bool {
         self.jellyfin_id.starts_with(UNRESOLVED_PREFIX)
     }
@@ -78,6 +83,10 @@ impl Store {
     /// `live` answers "does this id still exist", `resolve` "what id does this
     /// fingerprint have now". An entry that matches nothing is *marked*, never deleted —
     /// the file may be on an unmounted drive.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; entries written before the failure stay written.
     pub fn relink_items(
         &self,
         live: impl Fn(&str) -> bool,
@@ -125,6 +134,10 @@ impl Store {
 
     /// Relinks against the local track cache — the pass to run after a library scan.
     /// An empty cache means the scan has not run yet, not that the library vanished.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::relink_items`].
     pub fn relink_items_against_track_cache(&self, now: Millis) -> Result<RelinkReport> {
         let cache = self.read(TrackRef::fetch_all)?;
         if cache.is_empty() {

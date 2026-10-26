@@ -10,6 +10,9 @@
 //! sorted, an empty optional left out rather than `null`), so a row written here reads
 //! the same on the phone and back.
 
+#![warn(missing_docs)]
+#![warn(clippy::missing_errors_doc)]
+
 mod account;
 mod activity;
 mod built_in;

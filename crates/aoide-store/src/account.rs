@@ -21,6 +21,10 @@ const ACCOUNT_KEY: &str = "account";
 
 impl Store {
     /// The Jellyfin user whose library this store holds, if claimed.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn account_id(&self) -> Result<Option<String>> {
         self.state(ACCOUNT_KEY)
     }
@@ -35,6 +39,10 @@ impl Store {
     ///
     /// Signing out and back in as the same person is the ordinary case, and the local
     /// store is the only copy of anything not yet pushed, so sign-out erases nothing.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; nothing is erased or claimed then.
     pub fn adopt_account(&self, account_id: &str) -> Result<AccountClaim> {
         // The common path opens no write transaction; the decision is made again
         // inside the transaction, where it cannot race.
@@ -67,6 +75,10 @@ impl Store {
 
     /// Erases everything and claims the store: the answer to `UnknownOwner` when the
     /// person says the data is not theirs.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; nothing is erased or claimed then.
     pub fn erase_and_claim(&self, account_id: &str) -> Result<()> {
         self.write_local(|tx| {
             erase_everything(tx)?;
@@ -75,6 +87,10 @@ impl Store {
     }
 
     /// Claims the store without erasing: the answer when the person says it is theirs.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn keep_and_claim(&self, account_id: &str) -> Result<()> {
         self.write_local(|tx| set_state(tx, ACCOUNT_KEY, account_id))
     }

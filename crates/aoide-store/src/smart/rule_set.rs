@@ -6,25 +6,37 @@ use super::error::SmartPlaylistError;
 use super::rule::{Field, SmartRule, malformed, required_str};
 use crate::json::canonical_json;
 
+/// How a rule set's rules combine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Match {
+    /// A track matches every rule; `all` of no rules is every track.
     All,
+    /// A track matches at least one rule.
     Any,
 }
 
+/// Which way a sort runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SortDirection {
+    /// Smallest, earliest or A first.
     Asc,
+    /// Largest, latest or Z first.
     Desc,
 }
 
+/// What a rule set is ordered by. Ties are broken by Jellyfin id, so a limit always
+/// takes the same tracks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Sort {
+    /// The field sorted on; any but genre.
     pub field: Field,
+    /// Which way.
     pub dir: SortDirection,
 }
 
 impl Sort {
+    /// A sort on `field`, `dir` first. Whether the field can be sorted on is checked when
+    /// the rule set is evaluated.
     pub fn new(field: Field, dir: SortDirection) -> Self {
         Self { field, dir }
     }
@@ -33,15 +45,24 @@ impl Sort {
 /// The rule set stored as JSON in `playlist.smartRules`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SmartRules {
+    /// How the rules combine.
     pub match_mode: Match,
+    /// The rules, in the order they were written.
     pub rules: Vec<SmartRule>,
+    /// The order; by title when `None`.
     pub sort: Option<Sort>,
+    /// At most this many tracks; always positive.
     pub limit: Option<i64>,
 }
 
 impl SmartRules {
     /// `all` of nothing is every track, a real playlist; `any` of nothing can only be
     /// empty, and an always-empty playlist looks broken, so it is refused.
+    ///
+    /// # Errors
+    ///
+    /// [`SmartPlaylistError::NoRules`] for `any` of no rules, and
+    /// [`SmartPlaylistError::NonPositiveLimit`] for a limit below one.
     pub fn new(
         match_mode: Match,
         rules: Vec<SmartRule>,
@@ -74,6 +95,14 @@ impl SmartRules {
         }
     }
 
+    /// Reads the stored JSON form (see [`Self::to_json`]). Operators may also be written
+    /// as `=`, `!=`, `>`, `<`, `>=` and `<=`; the last two become `greaterThan` and
+    /// `lessThan` with the bound moved by one.
+    ///
+    /// # Errors
+    ///
+    /// [`SmartPlaylistError::MalformedJson`] when the document is not a rule set, and any
+    /// error [`SmartRule::new`] or [`Self::new`] gives for what it holds.
     pub fn from_json(json: &str) -> std::result::Result<Self, SmartPlaylistError> {
         let parsed: Json =
             serde_json::from_str(json).map_err(|error| malformed(&error.to_string()))?;

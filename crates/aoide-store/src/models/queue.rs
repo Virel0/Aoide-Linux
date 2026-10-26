@@ -11,17 +11,24 @@ use crate::record::{Record, int, text};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueueState {
+    /// The device whose queue this is; the key.
     pub device_id: String,
+    /// That device's name, for "continue from …".
     pub device_name: String,
     /// A JSON array of Jellyfin ids, as text inside the payload.
     pub track_ids: String,
+    /// The index into `track_ids` of the track playing.
     pub position: i64,
+    /// How far into that track, in milliseconds.
     pub elapsed_ms: i64,
+    /// When the queue last changed, in milliseconds since the epoch.
     pub updated_at: Millis,
+    /// The device that wrote it, which is always `device_id`.
     pub origin_device: String,
 }
 
 impl QueueState {
+    /// A queue for `device_id`, written by that device.
     pub fn new<S: AsRef<str>>(
         device_id: impl Into<String>,
         device_name: impl Into<String>,
@@ -43,6 +50,7 @@ impl QueueState {
         }
     }
 
+    /// The Jellyfin ids, read back from `track_ids`; empty if it does not parse.
     pub fn track_id_list(&self) -> Vec<String> {
         serde_json::from_str(&self.track_ids).unwrap_or_default()
     }

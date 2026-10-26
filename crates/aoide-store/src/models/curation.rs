@@ -10,17 +10,25 @@ use crate::json::flag as lenient;
 use crate::new_id;
 use crate::record::{Record, SyncRecord, flag, int, opt_text, text};
 
+/// A folder in the playlist tree. Merged field by field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Folder {
+    /// The row id.
     pub id: String,
+    /// The name shown.
     pub name: String,
+    /// The folder it sits in; `None` at the top level.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
+    /// A `FractionalIndex` key ordering it among all folders.
     pub sort_index: String,
+    /// When the row last changed, in milliseconds since the epoch.
     pub updated_at: Millis,
+    /// Whether the folder has been deleted (a tombstone).
     #[serde(deserialize_with = "lenient::deserialize")]
     pub deleted: bool,
+    /// The device that made the last change.
     pub origin_device: String,
     /// When each field last changed. Absent on rows written before per-field merging.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -28,6 +36,7 @@ pub struct Folder {
 }
 
 impl Folder {
+    /// A new top-level folder with a fresh id.
     pub fn new(
         name: impl Into<String>,
         sort_index: impl Into<String>,
@@ -105,25 +114,36 @@ impl SyncRecord for Folder {
     }
 }
 
+/// A playlist: hand-made, smart, or imported from Jellyfin. Merged field by field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Playlist {
+    /// The row id.
     pub id: String,
+    /// The name shown.
     pub name: String,
+    /// Free text the listener wrote about it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+    /// The folder it is filed in; `None` at the top level.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder_id: Option<String>,
+    /// Whether its contents come from `smart_rules` rather than its items.
     #[serde(deserialize_with = "lenient::deserialize")]
     pub is_smart: bool,
     /// The JSON rule set; absent unless `is_smart`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub smart_rules: Option<String>,
+    /// A `FractionalIndex` key ordering it among all playlists.
     pub sort_index: String,
+    /// When the row last changed, in milliseconds since the epoch.
     pub updated_at: Millis,
+    /// Whether the playlist has been deleted (a tombstone).
     #[serde(deserialize_with = "lenient::deserialize")]
     pub deleted: bool,
+    /// The device that made the last change.
     pub origin_device: String,
+    /// When each field last changed. Absent on rows written before per-field merging.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field_updated_at: Option<FieldStamps>,
     /// The Jellyfin playlist this was imported from, if it was.
@@ -135,11 +155,13 @@ pub struct Playlist {
     /// SHA-256 of a cover uploaded for this playlist; beats `artwork_item_id`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_hash: Option<String>,
+    /// The uploaded cover's media type (`image/jpeg`, say); set with `image_hash`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_mime: Option<String>,
 }
 
 impl Playlist {
+    /// A new, empty, hand-made playlist at the top level, with a fresh id.
     pub fn new(
         name: impl Into<String>,
         sort_index: impl Into<String>,
@@ -245,24 +267,33 @@ impl SyncRecord for Playlist {
     }
 }
 
+/// One entry in a playlist. Merged whole-row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistItem {
+    /// The row id.
     pub id: String,
+    /// The playlist it belongs to.
     pub playlist_id: String,
+    /// The track's Jellyfin id, or the last one that resolved with
+    /// [`crate::UNRESOLVED_PREFIX`] before it when the track has gone missing.
     pub jellyfin_id: String,
     /// Stored beside the id because Jellyfin ids are derived per file: a rescan after
     /// files move mints new ones, and without this every entry would dangle.
     pub content_key: String,
     /// A `FractionalIndex` key, not an integer.
     pub position: String,
+    /// When the row last changed, in milliseconds since the epoch.
     pub updated_at: Millis,
+    /// Whether the entry has been removed (a tombstone).
     #[serde(deserialize_with = "lenient::deserialize")]
     pub deleted: bool,
+    /// The device that made the last change.
     pub origin_device: String,
 }
 
 impl PlaylistItem {
+    /// A new entry with a fresh id.
     pub fn new(
         playlist_id: impl Into<String>,
         jellyfin_id: impl Into<String>,

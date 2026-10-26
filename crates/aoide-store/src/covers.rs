@@ -40,7 +40,12 @@ pub const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 pub enum PlaylistCover {
     /// Bytes named by their SHA-256: from the [`BlobDirectory`] if held, otherwise
     /// from the sidecar when about to be drawn.
-    Image { hash: String, mime: Option<String> },
+    Image {
+        /// The bytes' SHA-256, lower-case hex.
+        hash: String,
+        /// Their media type, when the row records it.
+        mime: Option<String>,
+    },
     /// A Jellyfin item's primary image: a chosen item, or the playlist it came from.
     JellyfinItem(String),
     /// The first track's album (or the track itself when its album is unknown) — a
@@ -53,10 +58,15 @@ pub enum PlaylistCover {
 /// Why a picture cannot be a cover.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CoverError {
+    /// Not JPEG, PNG or WebP, judged from the bytes.
     #[error("that file is not a JPEG, PNG or WebP picture")]
     NotAnImage,
+    /// Larger than [`MAX_IMAGE_BYTES`].
     #[error("that picture is {bytes} bytes; covers can be at most {max}", max = MAX_IMAGE_BYTES)]
-    TooLarge { bytes: u64 },
+    TooLarge {
+        /// The picture's size in bytes.
+        bytes: u64,
+    },
     /// A hash that is not 64 lower-case hex digits. Hashes arrive in synced payloads,
     /// so one is never used as a file name before this check.
     #[error("'{0}' is not a picture's SHA-256")]
@@ -100,12 +110,17 @@ pub struct BlobDirectory {
 
 impl BlobDirectory {
     /// Opens (creating if needed) the directory at `root`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the directory cannot be created.
     pub fn open(root: impl Into<PathBuf>) -> std::io::Result<Self> {
         let root = root.into();
         std::fs::create_dir_all(&root)?;
         Ok(Self { root })
     }
 
+    /// Where the files live.
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -114,6 +129,7 @@ impl BlobDirectory {
         is_image_hash(hash).then(|| self.root.join(hash))
     }
 
+    /// Whether a file for `hash` is here; false for anything that is not a hash.
     pub fn contains(&self, hash: &str) -> bool {
         self.path(hash).is_some_and(|path| path.is_file())
     }
@@ -124,6 +140,11 @@ impl BlobDirectory {
     }
 
     /// Keeps `bytes` under their own hash, atomically, and returns the hash.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the file cannot be written or renamed into place; no partial file is
+    /// left under the hash then.
     pub fn write(&self, bytes: &[u8]) -> std::io::Result<String> {
         let hash = Store::image_hash(bytes);
         let path = self.root.join(&hash);
@@ -136,6 +157,10 @@ impl BlobDirectory {
     }
 
     /// Removes the file for `hash`; reports whether there was one.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the file exists but cannot be removed.
     pub fn remove(&self, hash: &str) -> std::io::Result<bool> {
         let Some(path) = self.path(hash) else {
             return Ok(false);
@@ -156,6 +181,12 @@ impl Store {
     /// named on the playlist row — whose op the sync engine pushes only after the
     /// bytes are on the server. A chosen picture outranks a chosen item, so
     /// `artworkItemId` is cleared rather than left to shadow it.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchPlaylist`] when there is no live playlist,
+    /// [`CoverError::TooLarge`] or [`CoverError::NotAnImage`] for the bytes, a file error
+    /// writing them, or a database error.
     pub fn set_cover_image(
         &self,
         playlist_id: &str,
@@ -183,6 +214,11 @@ impl Store {
 
     /// [`set_cover_image`](Self::set_cover_image) from a file the listener picked. A
     /// file over the limit is refused before it is read.
+    ///
+    /// # Errors
+    ///
+    /// A file error opening or reading `file`, [`CoverError::TooLarge`] for a file over the
+    /// limit, and then as [`Self::set_cover_image`].
     pub fn set_cover_from_file(
         &self,
         playlist_id: &str,
@@ -205,6 +241,10 @@ impl Store {
     /// Takes the chosen picture off a playlist; it falls back to the next source.
     /// The blob stays on disk: another playlist may share it, and the grace period
     /// decides when it can go ([`Store::orphaned_images`]).
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn clear_cover_image(&self, playlist_id: &str, now: Millis) -> Result<Option<Playlist>> {
         let Some(mut list) = self.playlist(playlist_id)? else {
             return Ok(None);
@@ -218,6 +258,10 @@ impl Store {
     }
 
     /// What each playlist's cover is drawn from, for a whole list screen in one query.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn playlist_covers(
         &self,
         playlists: &[Playlist],
@@ -242,6 +286,10 @@ impl Store {
     }
 
     /// One playlist's cover; see [`playlist_covers`](Self::playlist_covers).
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn playlist_cover(&self, playlist: &Playlist) -> Result<PlaylistCover> {
         Ok(self
             .playlist_covers(std::slice::from_ref(playlist))?
@@ -313,14 +361,18 @@ fn chosen_cover(list: &Playlist) -> Option<PlaylistCover> {
 /// A Jellyfin playlist, as the repair needs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NamedJellyfinPlaylist {
+    /// Its Jellyfin id.
     pub id: String,
+    /// Its name.
     pub name: String,
 }
 
 /// One write the repair makes. `artwork_item_id` is the only field, by design.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoverRepair {
+    /// The playlist written to.
     pub playlist_id: String,
+    /// The Jellyfin item whose cover it now uses.
     pub artwork_item_id: String,
 }
 
@@ -365,6 +417,10 @@ pub fn plan_cover_repairs(
 impl Store {
     /// "Repair covers": plans against every live playlist and writes each repair as an
     /// ordinary synced change of `artworkItemId`. Returns what it wrote.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; repairs written before the failure stay.
     pub fn repair_covers(
         &self,
         jellyfin: &[NamedJellyfinPlaylist],

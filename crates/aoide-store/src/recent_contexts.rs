@@ -21,10 +21,13 @@ use crate::Millis;
 use crate::error::Result;
 use crate::handoff::ResumableQueue;
 
+/// What kind of thing a recent context is, which says where its id is looked up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RecentContextKind {
+    /// A Jellyfin album.
     Album,
+    /// A Jellyfin playlist.
     JellyfinPlaylist,
     /// An Aoide playlist. Spelled as the phone spells it; the desktop's
     /// `aoidePlaylist` is read as the same thing.
@@ -37,6 +40,7 @@ pub enum RecentContextKind {
 }
 
 impl RecentContextKind {
+    /// The camelCase spelling written to disk.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Album => "album",
@@ -62,18 +66,24 @@ impl RecentContextKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum StationSeed {
+    /// Seeded from an album.
     Album,
+    /// Seeded from an artist.
     Artist,
 }
 
+/// Something played from recently: an album, a playlist, a mix or a station.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentContext {
+    /// What kind of thing it is.
     pub kind: RecentContextKind,
     /// The album, playlist or seed item id, in whichever store the kind names; for a
     /// mix, its description.
     pub id: String,
+    /// The name shown, as it was when last opened.
     pub name: String,
+    /// A second line to show instead of the kind's label, such as an album's artist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
     /// A Jellyfin item whose primary image stands for this context. Leave unset for
@@ -92,6 +102,7 @@ pub struct RecentContext {
 }
 
 impl RecentContext {
+    /// A context with no subtitle, artwork, seed or smart flag.
     pub fn new(
         kind: RecentContextKind,
         id: impl Into<String>,
@@ -122,6 +133,7 @@ impl RecentContext {
         )
     }
 
+    /// A station seeded from `item_id`, an album or an artist as `seed` says.
     pub fn station(
         seed: StationSeed,
         item_id: impl Into<String>,
@@ -155,6 +167,7 @@ impl RecentContextList {
     /// and that the sixth tile has something to be replaced by.
     pub const CAPACITY: usize = 24;
 
+    /// Every context, newest first.
     pub fn contexts(&self) -> &[RecentContext] {
         &self.contexts
     }
@@ -167,6 +180,7 @@ impl RecentContextList {
         self.contexts.truncate(Self::CAPACITY);
     }
 
+    /// Removes the context with this [`RecentContext::key`], if any.
     pub fn forget(&mut self, key: &str) {
         self.contexts.retain(|existing| existing.key() != key);
     }
@@ -234,6 +248,11 @@ impl RecentContexts {
 
     /// Writes atomically: to a sibling file, then renamed over the old one, so a crash
     /// mid-write leaves the previous list rather than half of one.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the list does not encode or the file cannot be written or renamed; the
+    /// previous file is left as it was then.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
         let bytes = serde_json::to_vec(self)?;
@@ -256,10 +275,12 @@ pub enum ResumeTile {
     /// Another device's queue — "Pick up from {device}". Resume it with
     /// [`ResumableQueue::pick_up`].
     Handoff(ResumableQueue),
+    /// Something opened recently on this device.
     Context(RecentContext),
 }
 
 impl ResumeTile {
+    /// The tile's name: "Pick up from {device}" for a handoff, the context's name otherwise.
     pub fn title(&self) -> String {
         match self {
             Self::Handoff(queue) => queue.title(),

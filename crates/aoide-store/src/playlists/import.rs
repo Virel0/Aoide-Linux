@@ -11,6 +11,10 @@ use crate::store::Store;
 
 impl Store {
     /// The local copy of a Jellyfin playlist, if one has been imported.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn imported_playlist(&self, source_jellyfin_id: &str) -> Result<Option<Playlist>> {
         Ok(self
             .read(|conn| {
@@ -25,6 +29,10 @@ impl Store {
     }
 
     /// Which Jellyfin playlists already have a live local copy.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn imported_source_ids(&self) -> Result<BTreeSet<String>> {
         self.read(|conn| {
             let mut statement =
@@ -38,6 +46,10 @@ impl Store {
     /// a snapshot, replaced outright on refresh, with every removal an op so the other
     /// devices drop the old contents too. Never automatic: an automatic read-back of
     /// an exported playlist would loop.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does; what was written before the failure stays.
     pub fn import_playlist(
         &self,
         name: &str,

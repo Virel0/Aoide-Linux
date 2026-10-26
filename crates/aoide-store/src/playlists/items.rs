@@ -10,6 +10,10 @@ use crate::store::Store;
 
 impl Store {
     /// Live entries of a playlist, in order.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn items(&self, playlist_id: &str) -> Result<Vec<PlaylistItem>> {
         self.read(|conn| {
             PlaylistItem::fetch_where(
@@ -21,6 +25,10 @@ impl Store {
     }
 
     /// Counted in SQLite: a library view shows a count beside every playlist.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn item_count(&self, playlist_id: &str) -> Result<i64> {
         self.read(|conn| {
             conn.query_row(
@@ -33,6 +41,11 @@ impl Store {
 
     /// Appends tracks in the order given. A track already present is added again: a
     /// set list may play the same song twice.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchPlaylist`] when there is no live playlist, or a database
+    /// error.
     pub fn add_tracks(
         &self,
         links: &[TrackLink],
@@ -45,6 +58,11 @@ impl Store {
     }
 
     /// Inserts tracks so the first of them ends up at `index`.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchPlaylist`] when there is no live playlist, or a database
+    /// error.
     pub fn insert_tracks(
         &self,
         links: &[TrackLink],
@@ -62,6 +80,12 @@ impl Store {
 
     /// Drag-to-reorder. Writes exactly one row. `index` is where the entry ends up,
     /// measured in the list with it already taken out.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchItem`] when there is no live entry,
+    /// [`PlaylistError::ItemNotInPlaylist`] when it is in another playlist, or a database
+    /// error.
     pub fn move_item(
         &self,
         item_id: &str,
@@ -97,6 +121,11 @@ impl Store {
     }
 
     /// Soft-deletes an entry; removing it twice mints nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchItem`] when no row has the id, deleted or not, or a database
+    /// error.
     pub fn remove_item(&self, item_id: &str, now: Millis) -> Result<()> {
         let item = self
             .read(|conn| PlaylistItem::fetch(conn, item_id))?

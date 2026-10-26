@@ -15,19 +15,34 @@ use crate::error::Result;
 use crate::models::{Folder, Playlist};
 use crate::store::Store;
 
+/// Why a playlist, folder or entry operation did not apply.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PlaylistError {
+    /// No live playlist has this id.
     #[error("no playlist {0}")]
     NoSuchPlaylist(String),
+    /// No live folder has this id.
     #[error("no folder {0}")]
     NoSuchFolder(String),
+    /// No live entry has this id.
     #[error("no playlist entry {0}")]
     NoSuchItem(String),
+    /// An entry was named alongside a playlist it does not belong to.
     #[error("entry {item} is not in playlist {playlist}")]
-    ItemNotInPlaylist { item: String, playlist: String },
+    ItemNotInPlaylist {
+        /// The entry's id.
+        item: String,
+        /// The playlist it was looked for in.
+        playlist: String,
+    },
     /// A folder was asked to become its own ancestor.
     #[error("folder {folder} cannot move under {under}, which is inside it")]
-    FolderCycle { folder: String, under: String },
+    FolderCycle {
+        /// The folder being moved.
+        folder: String,
+        /// The folder it was to move under.
+        under: String,
+    },
     /// The neighbours bracket no gap: the wrong way round, or one is the row moving.
     #[error("those neighbours leave no gap to move into")]
     BadNeighbours,

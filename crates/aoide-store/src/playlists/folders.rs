@@ -11,10 +11,20 @@ use crate::record::Record;
 use crate::store::Store;
 
 impl Store {
+    /// Live folders in display order, across every level.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn folders(&self) -> Result<Vec<Folder>> {
         self.read(|conn| Folder::fetch_where(conn, "deleted = 0 ORDER BY sortIndex, rowid", []))
     }
 
+    /// Live folders directly under `parent_id`; `None` is the top level.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn folders_in_parent(&self, parent_id: Option<&str>) -> Result<Vec<Folder>> {
         self.read(|conn| {
             Folder::fetch_where(
@@ -25,12 +35,22 @@ impl Store {
         })
     }
 
+    /// A live folder; a deleted one is `None`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
     pub fn folder(&self, id: &str) -> Result<Option<Folder>> {
         Ok(self
             .read(|conn| Folder::fetch(conn, id))?
             .filter(|folder| !folder.deleted))
     }
 
+    /// Creates a folder under `parent_id` (or at the top level), at the end of the list.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchFolder`] when the parent is missing, or a database error.
     pub fn create_folder(
         &self,
         name: &str,
@@ -45,6 +65,12 @@ impl Store {
         self.record(folder, false, now)
     }
 
+    /// Renames a folder in place.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchFolder`] when there is no live folder `id`, or a database
+    /// error.
     pub fn rename_folder(&self, id: &str, name: &str, now: Millis) -> Result<Folder> {
         let mut folder = self.require_folder(id)?;
         folder.name = name.to_owned();
@@ -52,6 +78,12 @@ impl Store {
     }
 
     /// Re-parents a folder, refusing any move that would make it its own ancestor.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchFolder`] when either folder is missing,
+    /// [`PlaylistError::FolderCycle`] when `parent_id` is inside `id`, or a database
+    /// error.
     pub fn move_folder(&self, id: &str, parent_id: Option<&str>, now: Millis) -> Result<Folder> {
         let mut folder = self.require_folder(id)?;
         if let Some(parent_id) = parent_id {
@@ -71,6 +103,11 @@ impl Store {
 
     /// Soft-deletes a folder and promotes everything inside it one level up — a folder
     /// is filing, not content, and removing one must not destroy playlists.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchFolder`] when no row has the id, deleted or not, or a
+    /// database error.
     pub fn delete_folder(&self, id: &str, now: Millis) -> Result<()> {
         let folder = self
             .read(|conn| Folder::fetch(conn, id))?
@@ -90,6 +127,14 @@ impl Store {
         Ok(())
     }
 
+    /// Repositions a folder between two siblings; `None` on either side is the end.
+    /// Passing neither leaves it where it is.
+    ///
+    /// # Errors
+    ///
+    /// [`PlaylistError::NoSuchFolder`] when it or a neighbour is missing,
+    /// [`PlaylistError::BadNeighbours`] when the neighbours leave no gap, or a database
+    /// error.
     pub fn reorder_folder(
         &self,
         id: &str,

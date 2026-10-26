@@ -12,6 +12,8 @@ pub struct FractionalIndex;
 const ALPHABET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 impl FractionalIndex {
+    /// The digits keys are written in, in sort order: ASCII order, so a plain string
+    /// comparison orders keys.
     pub const ALPHABET: &'static str =
         "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
