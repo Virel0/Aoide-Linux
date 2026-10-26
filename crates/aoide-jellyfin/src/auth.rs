@@ -17,11 +17,15 @@ pub(crate) const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// same across launches.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Device {
+    /// A name a person recognises the machine by, such as its hostname.
     pub name: String,
+    /// An id made once per install and kept: a new one shows up on the server as
+    /// a new device.
     pub id: String,
 }
 
 impl Device {
+    /// A device called `name`, with the install's `id`.
     pub fn new(name: impl Into<String>, id: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -67,8 +71,14 @@ fn escape(value: &str) -> String {
 /// never in a plain settings file. `Debug` leaves it out.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Credentials {
+    /// The user's id on the server, from the sign-in answer. Every per-user
+    /// request names it.
     pub user_id: String,
+    /// The token the server issued at sign-in. Sent with every request until
+    /// [`sign_out`](JellyfinClient::sign_out) revokes it.
     pub access_token: String,
+    /// The name the server has for the user, or what was typed at sign-in when
+    /// the server sent none.
     pub username: String,
 }
 
@@ -91,10 +101,14 @@ pub struct PublicSystemInfo {
     pub id: String,
     /// Required, for the same reason.
     pub version: String,
+    /// The name set in the server's dashboard.
     #[serde(default)]
     pub server_name: Option<String>,
+    /// `Jellyfin Server` on a stock server.
     #[serde(default)]
     pub product_name: Option<String>,
+    /// `Some(false)` on a server whose setup hasn't been finished: it has no
+    /// users to sign in as yet.
     #[serde(default)]
     pub startup_wizard_completed: Option<bool>,
 }
@@ -120,6 +134,13 @@ impl JellyfinClient {
     /// Anything that answers but not like Jellyfin (an HTML page, a 404 from a proxy,
     /// JSON without an id and version) is [`Error::NotJellyfin`]. Server errors and
     /// transport failures come back as themselves.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotJellyfin`], carrying the host, as above;
+    /// [`Error::Unauthorized`], [`Error::Http`] and [`Error::Transport`] as the
+    /// server or network gave them. No sign-in is needed, so never
+    /// [`Error::NotSignedIn`].
     pub async fn public_system_info(&self) -> Result<PublicSystemInfo> {
         let not_jellyfin = || Error::NotJellyfin(self.address().host().to_owned());
         match self
@@ -137,6 +158,11 @@ impl JellyfinClient {
 
     /// Signs in with a username and password. A wrong password is
     /// [`Error::Unauthorized`].
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Unauthorized`] for a wrong username or password; otherwise the
+    /// [request errors](JellyfinClient#errors).
     pub async fn authenticate_by_name(
         &self,
         username: &str,
@@ -166,6 +192,11 @@ impl JellyfinClient {
     /// Ends the session on the server, which revokes the token. Best-effort: forgetting
     /// the credentials locally is what actually signs the person out, so callers can
     /// ignore a failure here.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](JellyfinClient#errors). A signed-out client sends no
+    /// token, which the server answers with [`Error::Unauthorized`].
     pub async fn sign_out(&self) -> Result<()> {
         self.send(Method::POST, &["Sessions", "Logout"], &[], None)
             .await

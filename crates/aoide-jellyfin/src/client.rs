@@ -83,6 +83,21 @@ pub(crate) async fn read_capped(
 /// Cheap to clone: clones share one connection pool. Signing in makes a new value
 /// with [`with_credentials`](Self::with_credentials) rather than mutating, so a
 /// request in flight never sees its auth change underneath it.
+///
+/// # Errors
+///
+/// Every request can fail the same ways; each method's own `# Errors` names
+/// what it adds to these:
+///
+/// - [`Error::Transport`]: no HTTP answer (DNS, a refused connection, TLS, a
+///   timeout).
+/// - [`Error::Unauthorized`]: HTTP 401, a token the server has revoked, or none
+///   where one is needed.
+/// - [`Error::NotFound`]: HTTP 404, usually an id the server doesn't have.
+/// - [`Error::Http`]: any other non-2xx status, such as 403 for a user who isn't
+///   an administrator.
+/// - [`Error::Decoding`]: a 2xx answer that isn't the JSON expected, or one over
+///   64 MB.
 #[derive(Debug, Clone)]
 pub struct JellyfinClient {
     http: reqwest::Client,
@@ -93,6 +108,10 @@ pub struct JellyfinClient {
 
 impl JellyfinClient {
     /// A signed-out client. Fails only if the TLS backend can't initialise.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Transport`] when the HTTP client can't be built. Sends nothing.
     pub fn new(address: ServerAddress, device: Device) -> Result<Self> {
         install_crypto();
         let http = reqwest::Client::builder()
@@ -117,14 +136,17 @@ impl JellyfinClient {
         }
     }
 
+    /// The server this client talks to.
     pub fn address(&self) -> &ServerAddress {
         &self.address
     }
 
+    /// The device this client names in every request's `Authorization` header.
     pub fn device(&self) -> &Device {
         &self.device
     }
 
+    /// The signed-in user, or `None` for a signed-out client.
     pub fn credentials(&self) -> Option<&Credentials> {
         self.credentials.as_ref()
     }

@@ -9,15 +9,22 @@ use crate::ticks;
 /// episodes, books) decodes as `Unknown` rather than failing the whole page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Deserialize)]
 pub enum ItemKind {
+    /// A track.
     Audio,
+    /// An album.
     MusicAlbum,
+    /// An artist, credited on a track or an album.
     MusicArtist,
+    /// A genre. Its id is what [`ListQuery::genre_ids`](crate::ListQuery::genre_ids)
+    /// takes.
     MusicGenre,
+    /// A playlist on the server.
     Playlist,
     /// A library. Its `collection_type` says what kind.
     CollectionFolder,
     /// A folder on disk, met when browsing by folder.
     Folder,
+    /// Anything else: a movie, an episode, a book, or a type that wasn't sent.
     #[default]
     #[serde(other)]
     Unknown,
@@ -28,16 +35,25 @@ pub enum ItemKind {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Item {
+    /// The server's id for the item: 32 hex digits, stable for as long as the
+    /// server has it. What every per-item call takes.
     pub id: String,
+    /// The title of a track or album, the name of an artist, genre, playlist or
+    /// folder. Empty when the server sent none.
     #[serde(default, deserialize_with = "nullable")]
     pub name: String,
+    /// What kind of item this is, from the server's `Type`.
     #[serde(rename = "Type", default, deserialize_with = "nullable")]
     pub kind: ItemKind,
     /// Libraries, folders, albums and playlists are folders; tracks are not.
     #[serde(default, deserialize_with = "nullable")]
     pub is_folder: bool,
+    /// A track's album title.
     pub album: Option<String>,
+    /// A track's album's [`id`](Self::id).
     pub album_id: Option<String>,
+    /// The album artist as one name. [`album_artists`](Self::album_artists) has
+    /// each of them with an id.
     pub album_artist: Option<String>,
     /// The album artists with their ids.
     #[serde(default, deserialize_with = "nullable")]
@@ -57,8 +73,11 @@ pub struct Item {
     pub index_number: Option<i32>,
     /// Disc number within its album.
     pub parent_index_number: Option<i32>,
+    /// The release year.
     pub production_year: Option<i32>,
+    /// The id of the folder, album or library the item sits in.
     pub parent_id: Option<String>,
+    /// How many items a folder, album or playlist holds, when the server counted.
     pub child_count: Option<i32>,
     /// On libraries only: `"music"` marks a music library.
     pub collection_type: Option<String>,
@@ -67,6 +86,7 @@ pub struct Item {
     pub image_tags: HashMap<String, String>,
     /// A track's borrowed album cover.
     pub album_primary_image_tag: Option<String>,
+    /// The signed-in user's state for the item: favourite, plays, resume point.
     pub user_data: Option<UserData>,
 }
 
@@ -88,6 +108,8 @@ impl ItemKind {
 }
 
 impl Item {
+    /// The item's length, from [`run_time_ticks`](Self::run_time_ticks). `None`
+    /// when the server doesn't know it; negative ticks are zero.
     pub fn duration(&self) -> Option<Duration> {
         self.run_time_ticks.map(ticks::to_duration)
     }
@@ -109,7 +131,9 @@ impl Item {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct NameId {
+    /// The named item's [`Item::id`].
     pub id: String,
+    /// The name as shown. Empty when the server sent none.
     #[serde(default, deserialize_with = "nullable")]
     pub name: String,
 }
@@ -118,13 +142,17 @@ pub struct NameId {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct UserData {
+    /// Marked as a favourite.
     #[serde(default, deserialize_with = "nullable")]
     pub is_favorite: bool,
     /// Jellyfin counts a play when playback starts, so this is "times started".
     #[serde(default, deserialize_with = "nullable")]
     pub play_count: u32,
+    /// The server's "played" mark for the user.
     #[serde(default, deserialize_with = "nullable")]
     pub played: bool,
+    /// Where playback was left, in [ticks](crate::ticks); 0 when there's nothing
+    /// to resume.
     #[serde(default, deserialize_with = "nullable")]
     pub playback_position_ticks: i64,
     /// `None` when never played, or when the server's date couldn't be read.
@@ -136,10 +164,13 @@ pub struct UserData {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "PascalCase", bound(deserialize = "T: Deserialize<'de>"))]
 pub struct Page<T> {
+    /// This page's items, at most the query's `limit`.
     #[serde(default, deserialize_with = "nullable")]
     pub items: Vec<T>,
+    /// How many items match across every page.
     #[serde(default, deserialize_with = "nullable")]
     pub total_record_count: u32,
+    /// The 0-based index of this page's first item among them all.
     #[serde(default, deserialize_with = "nullable")]
     pub start_index: u32,
 }

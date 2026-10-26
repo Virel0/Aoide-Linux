@@ -6,8 +6,11 @@ use std::time::Duration;
 /// Whether something is playing, as MPRIS spells it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PlaybackStatus {
+    /// A track is playing.
     Playing,
+    /// A track is loaded and paused.
     Paused,
+    /// Nothing plays. The default.
     #[default]
     Stopped,
 }
@@ -58,16 +61,22 @@ impl LoopStatus {
 }
 
 /// What is playing. Strings come from the Jellyfin server and are cleaned
-/// before they go on the bus (see [`crate::metadata`]).
+/// before they go on the bus: NUL characters, which a D-Bus string can't hold,
+/// are removed. Empty fields are left out of the map rather than sent empty.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Metadata {
     /// The Jellyfin item id. It becomes the MPRIS track id through
     /// [`crate::track_object_path`].
     pub jellyfin_id: String,
+    /// `xesam:title`.
     pub title: String,
+    /// `xesam:artist`, in credit order.
     pub artists: Vec<String>,
+    /// `xesam:album`.
     pub album: Option<String>,
+    /// `xesam:albumArtist`.
     pub album_artists: Vec<String>,
+    /// `mpris:length`, sent in microseconds.
     pub length: Option<Duration>,
     /// Cover art. Only `https://` and `file://` URLs are published, and an
     /// `https` URL carrying credentials (user info, or an `api_key`/token query
@@ -75,6 +84,8 @@ pub struct Metadata {
     /// Jellyfin's image endpoints need no token, or the app can pass a cached
     /// `file://` copy.
     pub art_url: Option<String>,
+    /// `xesam:trackNumber`, the track's number on its disc. Left out above
+    /// `i32::MAX`.
     pub track_number: Option<u32>,
 }
 
@@ -83,6 +94,7 @@ pub struct Metadata {
 /// changed.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerState {
+    /// Playing, paused or stopped.
     pub status: PlaybackStatus,
     /// `None` when nothing is loaded.
     pub metadata: Option<Metadata>,
@@ -90,12 +102,21 @@ pub struct PlayerState {
     pub position: Duration,
     /// 0.0 to 1.0.
     pub volume: f64,
+    /// Whether the queue plays shuffled.
     pub shuffle: bool,
+    /// The repeat mode.
     pub loop_status: LoopStatus,
+    /// There is a next track. False drops [`Command::Next`].
     pub can_go_next: bool,
+    /// There is a previous track. False drops [`Command::Previous`].
     pub can_go_previous: bool,
+    /// Something is loaded that could play. False drops [`Command::Play`].
     pub can_play: bool,
+    /// Playback can be paused. False drops [`Command::Pause`] and refuses
+    /// [`Command::PlayPause`].
     pub can_pause: bool,
+    /// The track can be sought. False drops [`Command::Seek`] and
+    /// [`Command::SetPosition`].
     pub can_seek: bool,
 }
 
@@ -132,11 +153,17 @@ impl PlayerState {
 /// the MPRIS spec asks.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
+    /// Start or resume playback.
     Play,
+    /// Pause playback.
     Pause,
+    /// Pause if playing, play if not.
     PlayPause,
+    /// Stop playback.
     Stop,
+    /// Skip to the next track.
     Next,
+    /// Go back to the previous track.
     Previous,
     /// Move by this many microseconds, negative for backwards (MPRIS `Seek`).
     /// The spec asks a seek past the end to act like `Next`.
@@ -147,10 +174,13 @@ pub enum Command {
     SetPosition(String, Duration),
     /// Already clamped to 0.0..=1.0.
     SetVolume(f64),
+    /// Turn shuffle on or off.
     SetShuffle(bool),
+    /// Set the repeat mode.
     SetLoop(LoopStatus),
     /// Bring the window to the front.
     Raise,
+    /// Quit the app.
     Quit,
 }
 

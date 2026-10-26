@@ -41,6 +41,9 @@
 //! cargo test -p aoide-mpris -- --include-ignored
 //! ```
 
+#![warn(missing_docs)]
+#![warn(clippy::missing_errors_doc)]
+
 // Only the Linux side uses these, but they are built and tested everywhere.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod diff;
@@ -100,12 +103,17 @@ pub enum Instance {
     /// gives the name up. Each `()` on `raise` is a later launch asking for the
     /// window.
     First {
+        /// Holds the app's bus name while it lives.
         guard: InstanceGuard,
+        /// One `()` per later launch; at most one waits unread.
         raise: tokio::sync::mpsc::Receiver<()>,
     },
     /// Another Aoide is running; this one should exit. `raised` says whether
     /// that one acknowledged the request to come to the front.
-    Other { raised: bool },
+    Other {
+        /// The first instance answered `Raise` within five seconds.
+        raised: bool,
+    },
 }
 
 /// Asks the bus for the app's name. On a platform without D-Bus, always
@@ -113,22 +121,37 @@ pub enum Instance {
 ///
 /// If the session bus cannot be reached this is an error; the app can then
 /// carry on as if it were first.
+///
+/// # Errors
+///
+/// `Error::DBus` on Linux when the bus can't be reached, the object can't
+/// be served, or the name request fails other than by being taken (which is
+/// [`Instance::Other`]). Never an error elsewhere.
 pub async fn single_instance(bus: &Bus) -> Result<Instance> {
     platform::single_instance(bus).await
 }
 
+/// Everything the D-Bus side can fail with.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// Not Linux: there is no D-Bus to serve on.
     #[error("D-Bus is not available on this platform")]
     Unavailable,
+    /// Another process holds this bus name, such as a second player claiming
+    /// [`MPRIS_BUS_NAME`].
     #[error("the bus name {0} is already taken")]
     NameTaken(&'static str),
+    /// Neither the desktop portal nor the screensaver service took the
+    /// inhibition.
     #[error("no sleep inhibitor answered (tried the desktop portal and the screensaver)")]
     NoInhibitor,
+    /// The bus itself failed: unreachable, a refused call, a lost
+    /// connection.
     #[cfg(target_os = "linux")]
     #[error("D-Bus: {0}")]
     DBus(#[from] zbus::Error),
 }
 
+/// Shorthand for this crate's results.
 pub type Result<T, E = Error> = std::result::Result<T, E>;

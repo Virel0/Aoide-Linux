@@ -77,12 +77,20 @@ struct Record {
 
 impl Lrclib {
     /// The provider for lrclib.net. Sends nothing until searched.
+    ///
+    /// # Errors
+    ///
+    /// [`ProviderError::Transport`] when the HTTP client can't be built.
     pub fn new() -> Result<Self, ProviderError> {
         Self::with_base_url(Url::parse(LRCLIB_URL).expect("LRCLIB_URL is a URL"))
     }
 
     /// The provider against another LRCLIB server (LRCLIB's server is open
     /// source, and the tests use a local stand-in).
+    ///
+    /// # Errors
+    ///
+    /// [`ProviderError::Transport`] when the HTTP client can't be built.
     pub fn with_base_url(base: Url) -> Result<Self, ProviderError> {
         install_crypto();
         let http = reqwest::Client::builder()

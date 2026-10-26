@@ -51,6 +51,12 @@ impl JellyfinClient {
     /// Two requests, made together: `/Items/Filters2` for genres with ids and
     /// tags, and `/Items/Filters` for years, which only it reports. A server that
     /// has dropped the older one (a 404) still gives genres and tags, with no years.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`] without credentials, before any request; otherwise
+    /// the [request errors](JellyfinClient#errors) from either request, except a
+    /// 404 from `/Items/Filters`.
     pub async fn query_filters(
         &self,
         parent_id: Option<&str>,

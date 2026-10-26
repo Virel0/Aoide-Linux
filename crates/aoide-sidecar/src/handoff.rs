@@ -21,6 +21,7 @@ use crate::types::QueueEntry;
 /// Where the server's view of every device's queue comes from — the sidecar, or a
 /// stand-in in tests.
 pub trait QueueSource: Send + Sync {
+    /// Every device's latest queue row, as `GET /aoide/queue` lists them.
     fn queues(&self) -> impl Future<Output = Result<Vec<QueueEntry>, SidecarError>> + Send;
 }
 
@@ -36,6 +37,11 @@ impl QueueSource for SidecarClient {
 /// From `source` when it answers — even with nothing, since the server holds the
 /// latest row of every device — and from the store's rows when it fails or there is
 /// no `source` (signed in to a server without a sidecar).
+///
+/// # Errors
+///
+/// [`StoreError`] only from the store's fallback rows, read when `source` is `None`
+/// or fails; a failing `source` is not an error.
 pub async fn resumable_queues<S: QueueSource>(
     source: Option<&S>,
     store: &Store,

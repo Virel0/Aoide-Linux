@@ -20,11 +20,16 @@ use super::json::extract_object;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Ordering {
+    /// A to Z by name. The default.
     #[default]
     ByName,
+    /// The most played first.
     MostPlayed,
+    /// The newest release first.
     NewestFirst,
+    /// Shuffled.
     Random,
+    /// The most recently played first.
     RecentlyPlayed,
 }
 
@@ -38,6 +43,7 @@ impl Ordering {
         Self::RecentlyPlayed,
     ];
 
+    /// The camelCase spelling: `byName`, `mostPlayed`, ….
     pub fn as_str(self) -> &'static str {
         match self {
             Self::ByName => "byName",
@@ -67,13 +73,18 @@ impl Ordering {
 /// What a phrase becomes. Every field is a filter the server understands.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MusicQuery {
+    /// Only the listener's favourites.
     pub favorites_only: bool,
+    /// The earliest release year, inclusive; never after `to_year`.
     pub from_year: Option<i32>,
     /// Always a subset of the library's own genres, in the library's
     /// spelling. Never the model's invention.
     pub genres: Vec<String>,
+    /// The order to list the results in.
     pub ordering: Ordering,
+    /// Words to match names against, when the phrase named something.
     pub search_term: Option<String>,
+    /// The latest release year, inclusive.
     pub to_year: Option<i32>,
 }
 

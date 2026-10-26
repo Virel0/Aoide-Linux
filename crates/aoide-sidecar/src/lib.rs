@@ -19,6 +19,9 @@
 //!   [`match_playlist`] over the app's [`JellyfinSearch`].
 //! - **Status**: [`SyncEngine::overview`].
 
+#![warn(missing_docs)]
+#![warn(clippy::missing_errors_doc)]
+
 mod client;
 mod covers;
 mod engine;

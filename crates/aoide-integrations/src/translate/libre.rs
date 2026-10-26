@@ -30,18 +30,29 @@ const MAX_BODY: usize = 4 << 20;
 /// What a server answered in words, cut to this many characters.
 const MESSAGE_CHARS: usize = 140;
 
+/// Why a LibreTranslate server gave no translation.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LibreError {
+    /// No answer (DNS, a refused connection, TLS, the 60-second timeout), or
+    /// an address that doesn't parse.
     #[error("couldn't reach the translation server ({0})")]
     Unreachable(String),
+    /// HTTP 401 or 403, or a 429 to a translation sent without a key: the
+    /// server wants a key, or a different one.
     #[error("the translation server wants an API key, or didn't accept this one")]
     Unauthorised,
+    /// HTTP 429 otherwise: over the server's request limit.
     #[error("the translation server is busy; try again in a minute")]
     Busy,
+    /// The server has no language for the target code, which is carried.
     #[error("the translation server can't translate into {0}")]
     Unsupported(String),
+    /// Any other non-2xx status, with the server's `error` text (one short
+    /// line) or the status.
     #[error("the translation server said: {0}")]
     Refused(String),
+    /// A 2xx answer that isn't the JSON expected, over 4 MB, or with a
+    /// different number of lines than were sent.
     #[error("the translation server's answer wasn't understood ({0})")]
     Unreadable(String),
 }
@@ -49,7 +60,9 @@ pub enum LibreError {
 /// A language the server has.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Language {
+    /// The server's code for it: `en`, `zh-Hans`.
     pub code: String,
+    /// Its English name, as the server gives it.
     pub name: String,
 }
 
@@ -85,6 +98,11 @@ pub struct LibreTranslate {
 impl LibreTranslate {
     /// `base` is the server's address (`https://translate.example.net/`, or
     /// one under a path); `key` its API key when it wants one.
+    ///
+    /// # Errors
+    ///
+    /// [`LibreError::Unreachable`] when `base` isn't a URL or the HTTP client can't
+    /// be built. Sends nothing.
     pub fn new(base: &str, key: Option<String>) -> Result<Self, LibreError> {
         crate::install_crypto();
         let mut base = Url::parse(base).map_err(|e| LibreError::Unreachable(e.to_string()))?;
@@ -107,6 +125,13 @@ impl LibreTranslate {
     }
 
     /// The languages the server has.
+    ///
+    /// # Errors
+    ///
+    /// [`LibreError::Unreachable`] without an answer; [`LibreError::Unauthorised`]
+    /// for a 401 or 403; [`LibreError::Busy`] for a 429; [`LibreError::Refused`]
+    /// for another non-2xx status; [`LibreError::Unreadable`] when the list isn't
+    /// the JSON expected.
     pub async fn languages(&self) -> Result<Vec<Language>, LibreError> {
         let response = self
             .http
@@ -120,6 +145,16 @@ impl LibreTranslate {
 
     /// `lines` in `target` (ISO 639-1, as the locale gives it), in order;
     /// blank lines stay blank and aren't sent.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`languages`](Self::languages), asked first; then
+    /// [`LibreError::Unsupported`] when the server has no form of `target`; then,
+    /// for any batch of lines, [`LibreError::Unauthorised`] for a 401 or 403, or a
+    /// 429 without a key; [`LibreError::Busy`] for a 429 with one;
+    /// [`LibreError::Refused`], [`LibreError::Unreachable`] or
+    /// [`LibreError::Unreadable`] as for the list. Batches already translated are
+    /// dropped.
     pub async fn translate_lines(
         &self,
         lines: &[String],

@@ -13,8 +13,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
+    /// Where the sidecar's SQLite database is, on the server's disk.
     #[serde(default)]
     pub database_path: Option<String>,
+    /// The version of the database's schema.
     #[serde(default)]
     pub schema_version: Option<i64>,
     /// `false` with `error` set means pushes will fail while pulls keep working.
@@ -23,27 +25,39 @@ pub struct SyncStatus {
     /// Should read `wal`.
     #[serde(default)]
     pub journal_mode: Option<String>,
+    /// Whether the database's directory is writable, which SQLite's journal
+    /// files need as much as the database file itself.
     #[serde(default)]
     pub directory_writable: Option<bool>,
+    /// The newest op's sequence number: the cursor a pull that has caught up
+    /// ends at.
     #[serde(default)]
     pub cursor: Option<i64>,
+    /// How many ops the server's log holds.
     #[serde(default)]
     pub op_count: Option<i64>,
+    /// The sidecar plugin's version, in four parts: `1.9.0.0`.
     #[serde(default)]
     pub plugin_version: Option<String>,
     /// Absent on servers before 1.9.0.0 — which then accept only the original six.
     #[serde(default)]
     pub accepted_entities: Option<Vec<String>>,
+    /// What is wrong with the database, when something is; see `writable`.
     #[serde(default)]
     pub error: Option<String>,
 }
 
 // MARK: - What plays next
 
+/// Which kind of queue `POST /aoide/next` is filling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NextMode {
+    /// A queue that keeps going: ranked by taste, freshness, similarity to the
+    /// seed and arc.
     Infinity,
+    /// Auto DJ: the same, plus how well each candidate mixes out of the seed
+    /// ([`NextFactors::mixability`]).
     Autodj,
 }
 
@@ -56,14 +70,18 @@ pub struct NextRequest {
     pub queue: Vec<String>,
     /// What this device heard lately, newest first. At most 40.
     pub recent: Vec<String>,
+    /// What the queue is for; Auto DJ adds mixability to the score.
     pub mode: NextMode,
-    /// 1 to 200.
+    /// How many candidates to return, best first. 1 to 200.
     pub limit: u32,
 }
 
 impl NextRequest {
+    /// The most `queue` ids the contract takes.
     pub const MAX_QUEUE: usize = 1000;
+    /// The most `recent` ids the contract takes.
     pub const MAX_RECENT: usize = 40;
+    /// The largest `limit` the contract takes.
     pub const MAX_LIMIT: u32 = 200;
 
     /// Anything past the contract's ceilings is dropped from the far end — the oldest
@@ -91,7 +109,10 @@ impl NextRequest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileSummary {
+    /// How many finished plays the taste profile was built from (the latest 200
+    /// within 90 days, from every device). 0 means no taste yet.
     pub events: i64,
+    /// Milliseconds since the Unix epoch: where the counted history begins.
     pub since: i64,
 }
 
@@ -99,16 +120,23 @@ pub struct ProfileSummary {
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NextFactors {
+    /// How well the record fits what this user finishes: genre, artist, and
+    /// their own finish rate. Reported clamped to 0…1.
     pub taste: f64,
     /// Whether the record is of the seed's kind. Absent before 1.17.0.0.
     #[serde(default)]
     pub kinship: Option<f64>,
+    /// 1 when not heard lately, 0.5 when its artist was, 0 when it was itself.
     pub freshness: f64,
+    /// Closeness to the seed in genre, tempo, key and energy: the mean of the
+    /// parts both sides have data for.
     pub similarity: f64,
     /// `null` outside Auto DJ and for a pair either side of which is unread — absent,
     /// not 0.
     #[serde(default)]
     pub mixability: Option<f64>,
+    /// How well the record's energy follows the set's direction; 0.5 when it
+    /// has no arrangement to read.
     pub arc: f64,
 }
 
@@ -143,19 +171,26 @@ impl NextFactors {
     }
 }
 
+/// One record `POST /aoide/next` proposes.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NextCandidate {
+    /// The track's Jellyfin item id.
     pub id: String,
+    /// The weighted sum the candidates are ranked by. Not bounded to 0…1: the
+    /// freshness penalties take it below zero.
     pub score: f64,
+    /// The parts of the score, for showing why it was picked.
     pub factors: NextFactors,
 }
 
+/// `POST /aoide/next`'s answer.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NextResponse {
     /// In the order they should play.
     pub candidates: Vec<NextCandidate>,
+    /// How much history the taste term stood on.
     pub profile: ProfileSummary,
 }
 
@@ -167,24 +202,34 @@ pub struct NextResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiscoverFactors {
+    /// As [`NextFactors::taste`]: the one factor Discover ranks by.
     pub taste: f64,
+    /// `null` from the server: there is no seed.
     #[serde(default)]
     pub kinship: Option<f64>,
+    /// 1 when sent: nothing in the pool has been heard.
     #[serde(default)]
     pub freshness: Option<f64>,
+    /// `null` from the server: there is no seed.
     #[serde(default)]
     pub similarity: Option<f64>,
+    /// `null` from the server: there is no seed.
     #[serde(default)]
     pub mixability: Option<f64>,
+    /// `null` from the server: there is no seed.
     #[serde(default)]
     pub arc: Option<f64>,
 }
 
+/// One record of the week's Discover list.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiscoverCandidate {
+    /// The track's Jellyfin item id.
     pub id: String,
+    /// What the list is ranked by: taste alone.
     pub score: f64,
+    /// The parts of the score.
     pub factors: DiscoverFactors,
 }
 
@@ -194,12 +239,16 @@ pub struct DiscoverCandidate {
 pub struct DiscoverResponse {
     /// The ISO week the list belongs to, in UTC: `2026-W43`. Refresh when it changes.
     pub week: String,
+    /// Tracks this user has never played, best first.
     pub candidates: Vec<DiscoverCandidate>,
+    /// How much history the taste term stood on.
     pub profile: ProfileSummary,
 }
 
 impl DiscoverResponse {
+    /// How many candidates the clients ask for.
     pub const DEFAULT_LIMIT: u32 = 30;
+    /// The largest `limit` the server takes; more is a 400.
     pub const MAX_LIMIT: u32 = 100;
 }
 
@@ -244,7 +293,11 @@ fn lookup<'a, T>(
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SoundBounds {
+    /// Where the first sound is, less 60 ms of margin, from the start of the
+    /// file; never below 0.
     pub sound_start_ms: i64,
+    /// Where the last sound is, plus 200 ms of margin, from the start of the
+    /// file; never past its end.
     pub sound_end_ms: i64,
 }
 
@@ -252,13 +305,18 @@ pub struct SoundBounds {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SoundBoundsResponse {
+    /// Measured tracks by Jellyfin id; `None` for one measured with nothing to
+    /// trim.
     #[serde(default)]
     pub bounds: BTreeMap<String, Option<SoundBounds>>,
+    /// Ids queued for measuring, not yet done.
     #[serde(default)]
     pub pending: Vec<String>,
 }
 
 impl SoundBoundsResponse {
+    /// What the answer says about track `id`, in the four states of
+    /// [`Measurement`].
     pub fn get(&self, id: &str) -> Measurement<&SoundBounds> {
         lookup(&self.bounds, &self.pending, id)
     }
@@ -283,6 +341,7 @@ pub struct AudioAnalysis {
     /// Not sent below 0.5 confidence.
     #[serde(default)]
     pub bpm: Option<f64>,
+    /// How sure the tempo detector is of `bpm`, 0…1.
     #[serde(default)]
     pub bpm_confidence: Option<f64>,
     /// How much of the track keeps that tempo. Absent before 1.12.0.0.
@@ -294,13 +353,18 @@ pub struct AudioAnalysis {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioAnalysisResponse {
+    /// Measured tracks by Jellyfin id; `None` for one measured with nothing to
+    /// report.
     #[serde(default)]
     pub analysis: BTreeMap<String, Option<AudioAnalysis>>,
+    /// Ids queued for measuring, not yet done.
     #[serde(default)]
     pub pending: Vec<String>,
 }
 
 impl AudioAnalysisResponse {
+    /// What the answer says about track `id`, in the four states of
+    /// [`Measurement`].
     pub fn get(&self, id: &str) -> Measurement<&AudioAnalysis> {
         lookup(&self.analysis, &self.pending, id)
     }
@@ -316,8 +380,11 @@ impl AudioAnalysisResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnalysisCoverage {
+    /// Audio tracks on the server.
     pub tracks: i64,
+    /// Of those, how many have sound bounds measured.
     pub sound_bounds: i64,
+    /// Of those, how many have loudness and tempo measured.
     pub audio_analysis: i64,
     /// Decoded for a grid — a progress bar wants this against `tracks`.
     #[serde(default)]
@@ -325,13 +392,18 @@ pub struct AnalysisCoverage {
     /// Of those, how many came out with a grid. Not a backlog.
     #[serde(default)]
     pub gridded: Option<i64>,
+    /// How many have an arrangement (sections and their energy) read.
     #[serde(default)]
     pub arrangements: Option<i64>,
+    /// Of `tracks`, how many the server has described. Absent from older
+    /// servers.
     #[serde(default)]
     pub described: Option<i64>,
     /// Queued or decoding right now. Zero with work outstanding means nothing is
     /// asking, not that anything is stuck.
     pub measuring: i64,
+    /// Whether the server measures the whole library in the background, rather
+    /// than only what clients ask for.
     #[serde(default)]
     pub sweep_enabled: Option<bool>,
     /// The same in a sentence, for a person.
@@ -349,6 +421,7 @@ pub struct AnalysisCoverage {
 /// every handover with.
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueueEntry {
+    /// The writing device's id, as its sync ops carry it.
     pub device_id: String,
     /// This device's own row.
     pub is_current_device: bool,
@@ -358,9 +431,13 @@ pub struct QueueEntry {
     pub received_at: Option<i64>,
     /// The **writing** device's clock. Not for judging freshness.
     pub updated_at: Option<i64>,
+    /// The name the device gave itself, shown as "Pick up from …".
     pub device_name: Option<String>,
+    /// The queue's tracks as Jellyfin ids, in play order.
     pub track_ids: Vec<String>,
+    /// The 0-based index into `track_ids` of the track playing.
     pub position: i64,
+    /// How far into that track, in milliseconds.
     pub elapsed_ms: i64,
 }
 
@@ -438,8 +515,11 @@ pub(crate) fn list_from<'a>(body: &'a serde_json::Value, keys: &[&str]) -> &'a [
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistShare {
+    /// The Aoide playlist's id, as its sync ops carry it.
     pub playlist_id: String,
+    /// The Jellyfin user id the playlist is shared with.
     pub grantee_user_id: String,
+    /// The grantee may edit, not only listen.
     #[serde(default)]
     pub can_edit: bool,
     /// Absent when the server does not name an owner.
@@ -468,7 +548,10 @@ impl PlaylistShare {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShareRequest {
+    /// The Aoide playlist to share.
     pub playlist_id: String,
+    /// The Jellyfin user id to share it with.
     pub grantee_user_id: String,
+    /// Whether they may edit it, or only listen.
     pub can_edit: bool,
 }

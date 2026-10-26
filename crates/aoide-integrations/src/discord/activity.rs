@@ -12,8 +12,9 @@ use crate::links::{clean_link, public_https};
 const LISTENING: u8 = 2;
 /// The asset key of Aoide's icon in the Discord application.
 pub const ICON_ASSET: &str = "icon";
-/// Asset keys of the small play-state badges.
+/// Asset key of the small badge shown while playing.
 pub const PLAYING_ASSET: &str = "playing";
+/// Asset key of the small badge shown while paused.
 pub const PAUSED_ASSET: &str = "paused";
 /// Discord refuses text fields outside 2..=128 characters.
 const MIN_TEXT: usize = 2;
@@ -26,9 +27,9 @@ pub enum DisplayType {
     /// "Listening to Aoide".
     #[default]
     AppName,
-    /// "Listening to <artist>".
+    /// "Listening to" and the artist.
     Artist,
-    /// "Listening to <song>".
+    /// "Listening to" and the song's title.
     Song,
 }
 
@@ -50,6 +51,7 @@ impl DisplayType {
 pub struct PresenceOptions {
     /// Nothing reaches Discord, not even a connection, unless this is on.
     pub enabled: bool,
+    /// What follows "Listening to" in the member list.
     pub display: DisplayType,
     /// Keep the presence up while paused (without the time bar). Off clears
     /// it on pause.
@@ -83,9 +85,16 @@ impl Default for PresenceOptions {
 /// The track as the presence describes it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Track {
+    /// The first line under the name. Cut to 128 characters; an empty one is
+    /// sent as "Unknown song".
     pub title: String,
+    /// Joined with ", " for the second line, cut to 128 characters; none
+    /// leaves the line out.
     pub artists: Vec<String>,
+    /// Shown when hovering over the large image.
     pub album: Option<String>,
+    /// With it, the time bar has an end; without it (or zero), only the time
+    /// elapsed.
     pub length: Option<Duration>,
     /// A public cover image. See [`PresenceOptions::show_cover`].
     pub cover_url: Option<String>,
@@ -100,7 +109,10 @@ pub struct Track {
 /// What plays now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NowPlaying {
+    /// The track.
     pub track: Track,
+    /// Playing rather than paused. Paused has no time bar, and with
+    /// [`PresenceOptions::show_when_paused`] off, no presence.
     pub playing: bool,
     /// Position in the track at `at`.
     pub position: Duration,

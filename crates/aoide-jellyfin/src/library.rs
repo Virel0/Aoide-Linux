@@ -17,12 +17,18 @@ pub(crate) const MAX_IDS_PER_REQUEST: usize = 100;
 /// Sort orders, named for how the UI describes them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Sort {
+    /// By the server's sort name (`SortName`). The default.
     #[default]
     Name,
+    /// By when the server first saw the item (`DateCreated`).
     DateAdded,
+    /// By when the signed-in user last played it.
     DatePlayed,
+    /// By how many times the signed-in user started it.
     PlayCount,
+    /// By album artist, then name.
     Artist,
+    /// By release date, then year where there's no date, then name.
     ReleaseDate,
     /// Unseeded on the server: every page is a new shuffle, so only use it unpaged.
     Random,
@@ -46,10 +52,13 @@ impl Sort {
     }
 }
 
+/// Which way a [`Sort`] runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SortOrder {
+    /// A to Z, oldest first, least first. The default.
     #[default]
     Ascending,
+    /// Z to A, newest first, most first.
     Descending,
 }
 
@@ -83,8 +92,11 @@ pub struct ListQuery {
     /// [`albums`](JellyfinClient::albums), [`artists`](JellyfinClient::artists),
     /// [`album_artists`](JellyfinClient::album_artists), and the rest.
     pub favorites_only: bool,
+    /// What to sort by.
     pub sort: Sort,
+    /// Which way to sort.
     pub order: SortOrder,
+    /// How many items to skip: the 0-based index of the page's first item.
     pub start_index: u32,
     /// `None` asks for everything.
     pub limit: Option<u32>,
@@ -93,8 +105,11 @@ pub struct ListQuery {
 /// What a search found, by kind.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SearchResults {
+    /// Tracks whose titles match, in name order.
     pub songs: Vec<Item>,
+    /// Albums whose titles match, in name order.
     pub albums: Vec<Item>,
+    /// Album artists whose names match, in name order.
     pub artists: Vec<Item>,
 }
 
@@ -103,6 +118,11 @@ type Query = Vec<(&'static str, String)>;
 impl JellyfinClient {
     /// The signed-in user's music libraries. A server may have several, or none
     /// the user can see.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn music_libraries(&self) -> Result<Vec<Item>> {
         let page: Page<Item> = self
             .get(&["UserViews"], &[("userId", self.user_id()?.to_owned())])
@@ -114,31 +134,63 @@ impl JellyfinClient {
             .collect())
     }
 
+    /// One page of albums, as `query` asks.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn albums(&self, query: &ListQuery) -> Result<Page<Item>> {
         self.items("MusicAlbum", query, None).await
     }
 
+    /// One page of tracks, as `query` asks.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn songs(&self, query: &ListQuery) -> Result<Page<Item>> {
         self.items("Audio", query, None).await
     }
 
     /// Every artist, including ones only featured on a track.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn artists(&self, query: &ListQuery) -> Result<Page<Item>> {
         self.by_name(&["Artists"], query).await
     }
 
     /// Artists credited with an album, which is what an artist page can show.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn album_artists(&self, query: &ListQuery) -> Result<Page<Item>> {
         self.by_name(&["Artists", "AlbumArtists"], query).await
     }
 
     /// Playlists. Jellyfin keeps them in their own top-level folder, so a music
     /// library's id as `parent_id` finds none: leave it unset.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn playlists(&self, query: &ListQuery) -> Result<Page<Item>> {
         self.items("Playlist", query, None).await
     }
 
     /// A playlist's entries, in playlist order.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn playlist_items(&self, playlist_id: &str) -> Result<Vec<Item>> {
         let query = [
             ("userId", self.user_id()?.to_owned()),
@@ -150,17 +202,32 @@ impl JellyfinClient {
         Ok(page.items)
     }
 
+    /// One page of music genres, each an
+    /// [`ItemKind::MusicGenre`](crate::ItemKind::MusicGenre) item whose id is what
+    /// [`ListQuery::genre_ids`] takes.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn genres(&self, query: &ListQuery) -> Result<Page<Item>> {
         self.by_name(&["MusicGenres"], query).await
     }
 
     /// Items by id, in the order asked for.
     ///
-    /// Asked for in chunks of [`MAX_IDS_PER_REQUEST`]. The server answers in its own
-    /// order and leaves out ids it no longer has (a file deleted since a playlist was
-    /// saved); the result is put back in the requested order and a missing id is
-    /// simply absent, which is how a caller tells an entry has dangled. An id asked
-    /// for twice appears twice.
+    /// Asked for 100 ids at a time. The server answers in its own order and leaves
+    /// out ids it no longer has (a file deleted since a playlist was saved); the
+    /// result is put back in the requested order and a missing id is simply
+    /// absent, which is how a caller tells an entry has dangled. An id asked for
+    /// twice appears twice.
+    ///
+    /// # Errors
+    ///
+    /// No ids is `Ok(vec![])` without a request. Otherwise
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials, or
+    /// the [request errors](JellyfinClient#errors) from any chunk; the chunks
+    /// already fetched are dropped.
     pub async fn items_by_ids<S: AsRef<str>>(&self, ids: &[S]) -> Result<Vec<Item>> {
         if ids.is_empty() {
             return Ok(Vec::new());
@@ -189,6 +256,11 @@ impl JellyfinClient {
     }
 
     /// An album's tracks in disc, then track, order.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Item>> {
         let query = ListQuery {
             parent_id: Some(album_id.to_owned()),
@@ -199,6 +271,11 @@ impl JellyfinClient {
     }
 
     /// Every album credited to an artist as album artist, newest first.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn artist_albums(&self, artist_id: &str) -> Result<Vec<Item>> {
         let query = [
             ("userId", self.user_id()?.to_owned()),
@@ -221,6 +298,12 @@ impl JellyfinClient {
     /// library parent, so `/Items` with a `parentId` never returns them, and album
     /// artists rather than every artist, so a name featured on one track doesn't
     /// lead to an empty artist page.
+    ///
+    /// # Errors
+    ///
+    /// A blank `term` is `Ok` with nothing, without a request. Otherwise
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials, or
+    /// the [request errors](JellyfinClient#errors) from any of the three requests.
     pub async fn search(
         &self,
         term: &str,
@@ -250,6 +333,11 @@ impl JellyfinClient {
     }
 
     /// Jellyfin's Instant Mix: a station seeded from a track, album, artist or genre.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn instant_mix(&self, item_id: &str, limit: u32) -> Result<Vec<Item>> {
         let query = [
             ("userId", self.user_id()?.to_owned()),
@@ -261,6 +349,13 @@ impl JellyfinClient {
     }
 
     /// Marks or unmarks an item as a favourite; returns the user's updated state.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; [`Error::NotFound`](crate::Error::NotFound) for an id
+    /// the server doesn't have; otherwise the [request
+    /// errors](JellyfinClient#errors).
     pub async fn set_favorite(&self, item_id: &str, favorite: bool) -> Result<UserData> {
         let method = if favorite {
             Method::POST
@@ -282,6 +377,11 @@ impl JellyfinClient {
     /// `/Items/Latest` ranks by the tracks, so an old album that just gained tracks
     /// resurfaces, which sorting albums by date added would miss. Pass the music
     /// library as `parent_id`: without one the server picks a library itself.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn recently_added(&self, parent_id: Option<&str>, limit: u32) -> Result<Vec<Item>> {
         let mut query = vec![
             ("userId", self.user_id()?.to_owned()),
@@ -305,12 +405,22 @@ impl JellyfinClient {
     /// The tracks played most recently, newest first.
     ///
     /// Tracks, not albums: Jellyfin keeps no play statistics on albums at all.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn recently_played(&self, parent_id: Option<&str>, limit: u32) -> Result<Vec<Item>> {
         self.played_tracks(parent_id, limit, Sort::DatePlayed).await
     }
 
     /// The tracks played most often, most first. Jellyfin counts a play when it
     /// starts, so skipping through an album counts every track on it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn most_played(&self, parent_id: Option<&str>, limit: u32) -> Result<Vec<Item>> {
         self.played_tracks(parent_id, limit, Sort::PlayCount).await
     }

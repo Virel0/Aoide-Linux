@@ -24,6 +24,11 @@ impl JellyfinClient {
     ///
     /// [`instant_mix`](Self::instant_mix) is the kind-blind `/Items/{id}/InstantMix`;
     /// this asks the endpoint the API documents for the seed's kind.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn instant_mix_from(&self, seed: &MixSeed, limit: u32) -> Result<Vec<Item>> {
         let mut query = vec![
             ("userId", self.user_id()?.to_owned()),
@@ -44,16 +49,31 @@ impl JellyfinClient {
     }
 
     /// Up to `limit` items like this one, of whatever kind it is.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn similar_items(&self, item_id: &str, limit: u32) -> Result<Vec<Item>> {
         self.similar("Items", item_id, limit).await
     }
 
     /// Up to `limit` albums like this album.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn similar_albums(&self, album_id: &str, limit: u32) -> Result<Vec<Item>> {
         self.similar("Albums", album_id, limit).await
     }
 
     /// Up to `limit` artists like this artist.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn similar_artists(&self, artist_id: &str, limit: u32) -> Result<Vec<Item>> {
         self.similar("Artists", artist_id, limit).await
     }

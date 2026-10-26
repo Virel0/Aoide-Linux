@@ -42,6 +42,11 @@ pub struct DiscoveredServer {
 impl DiscoveredServer {
     /// The reported address, normalised, ready for
     /// [`JellyfinClient::new`](crate::JellyfinClient::new).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::MalformedAddress`] when the reported address isn't an http(s) URL
+    /// with a host.
     pub fn server_address(&self) -> Result<ServerAddress> {
         ServerAddress::parse(&self.address)
     }
@@ -54,6 +59,12 @@ impl DiscoveredServer {
 /// it sends (one per network interface, say). Datagrams that aren't a server's
 /// answer are ignored. An empty list means nothing answered: no server, or one
 /// with discovery turned off, or a firewall in between.
+///
+/// # Errors
+///
+/// [`Error::Transport`], its message starting `LAN discovery:`, when the UDP socket
+/// can't be opened or set to broadcast, the probe can't be sent, or receiving fails
+/// for any reason but a refused port. Silence is `Ok(vec![])`.
 pub async fn discover_servers(wait: Duration) -> Result<Vec<DiscoveredServer>> {
     discover_servers_at(
         SocketAddr::from((Ipv4Addr::BROADCAST, DISCOVERY_PORT)),
@@ -64,6 +75,10 @@ pub async fn discover_servers(wait: Duration) -> Result<Vec<DiscoveredServer>> {
 
 /// [`discover_servers`] with the probe sent to `target` instead of the
 /// broadcast address: a subnet's broadcast address, or one host.
+///
+/// # Errors
+///
+/// As for [`discover_servers`].
 pub async fn discover_servers_at(
     target: SocketAddr,
     wait: Duration,

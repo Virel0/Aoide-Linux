@@ -15,6 +15,8 @@ use crate::romaji::{kana_to_romaji, to_hiragana};
 /// A run of a line with, over its kanji, how they're read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ruby {
+    /// The run as written in the line. The runs of a line, joined, give the
+    /// line back.
     pub text: String,
     /// In hiragana. `None` for kana, punctuation and anything not Japanese.
     pub reading: Option<String>,
@@ -53,6 +55,11 @@ struct Morpheme {
 
 impl JapaneseReader {
     /// Loads the built-in IPADIC dictionary.
+    ///
+    /// # Errors
+    ///
+    /// [`ReaderError`], with lindera's message, when the embedded dictionary
+    /// doesn't load.
     pub fn new() -> Result<Self, ReaderError> {
         let dictionary =
             load_dictionary("embedded://ipadic").map_err(|e| ReaderError(e.to_string()))?;

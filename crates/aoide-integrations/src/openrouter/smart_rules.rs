@@ -18,20 +18,35 @@ use serde_json::Value;
 
 use super::json::{extract_object, whole_number};
 
+/// What a rule tests. Text fields take text, number fields whole numbers,
+/// date fields a time, and `liked` true or false; each kind has its own
+/// operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RuleField {
+    /// The album title (text).
     Album,
+    /// The album artist (text).
     AlbumArtist,
+    /// The track's artists (text).
     Artist,
+    /// The track's length in milliseconds (number).
     DurationMs,
+    /// When the listener first played it (date, from the local history).
     FirstPlayed,
+    /// The track's genres (text).
     Genre,
+    /// When the listener last played it (date, from the local history).
     LastPlayed,
+    /// Liked by the listener (true or false).
     Liked,
+    /// How many times the listener played it (number, from the local history).
     PlayCount,
+    /// How many times the listener skipped it (number, from the local history).
     SkipCount,
+    /// The track's title (text).
     Title,
+    /// The release year (number).
     Year,
 }
 
@@ -114,19 +129,32 @@ impl RuleField {
     }
 }
 
+/// How a rule compares its field with its value. Which operators a field
+/// takes depends on its kind; any other pair is refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RuleOperator {
+    /// Dates: later than the value.
     After,
+    /// Dates: earlier than the value.
     Before,
+    /// Text: starts with the value.
     BeginsWith,
+    /// Text: has the value in it.
     Contains,
+    /// Text: doesn't have the value in it.
     DoesNotContain,
+    /// Numbers: more than the value.
     GreaterThan,
+    /// Dates: within a span back from now, such as `-30d`.
     InTheLast,
+    /// Text, numbers and `liked`: equal to the value.
     Is,
+    /// Text, numbers and `liked`: not equal to the value.
     IsNot,
+    /// Numbers: less than the value.
     LessThan,
+    /// Dates: not within a span back from now.
     NotInTheLast,
 }
 
@@ -145,6 +173,7 @@ impl RuleOperator {
         Self::NotInTheLast,
     ];
 
+    /// The camelCase spelling the rule document uses.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::After => "after",
@@ -161,6 +190,8 @@ impl RuleOperator {
         }
     }
 
+    /// The operator spelled `text`, exactly as [`as_str`](Self::as_str) spells
+    /// it; `None` for anything else.
     pub fn parse(text: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|o| o.as_str() == text)
     }
@@ -178,11 +209,16 @@ fn operators(kind: Kind) -> &'static [RuleOperator] {
     }
 }
 
+/// What a rule compares with, as a bare JSON value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RuleValue {
+    /// For `liked`.
     Flag(bool),
+    /// For number fields, and for a date as milliseconds since the Unix epoch.
     Number(i64),
+    /// For text fields, and for a date as a span back from now: `-30d`, `6m`,
+    /// `2y` (days, weeks, months, years).
     Text(String),
 }
 
@@ -208,13 +244,21 @@ impl RuleValue {
 /// `JSONEncoder(.sortedKeys)` does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SmartRule {
+    /// What is tested.
     pub field: RuleField,
+    /// How it is compared.
     pub op: RuleOperator,
+    /// What it is compared with.
     pub value: RuleValue,
 }
 
 impl SmartRule {
     /// A rule both apps can evaluate, or the reason it is not one.
+    ///
+    /// # Errors
+    ///
+    /// The reason, as [`rule_problem`] words it, when `op` doesn't apply to
+    /// `field` or `value` is the wrong kind for it.
     pub fn new(field: RuleField, op: RuleOperator, value: RuleValue) -> Result<Self, String> {
         let rule = SmartRule { field, op, value };
         match rule_problem(&rule) {
@@ -229,24 +273,33 @@ impl SmartRule {
     }
 }
 
+/// How a rule set combines its rules.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Match {
+    /// A track must pass every rule. The default.
     #[default]
     All,
+    /// A track must pass at least one rule.
     Any,
 }
 
+/// Which way a [`RuleSort`] runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SortDirection {
+    /// Smallest, earliest or A first.
     Asc,
+    /// Largest, latest or Z first.
     Desc,
 }
 
+/// The order a rule set's tracks are listed in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuleSort {
+    /// Which way.
     pub dir: SortDirection,
+    /// By what.
     pub field: RuleField,
 }
 
@@ -254,11 +307,15 @@ pub struct RuleSort {
 /// phone writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SmartRules {
+    /// The most tracks the playlist holds; `None` for no cap.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub limit: Option<u32>,
+    /// Whether a track must pass every rule or any one.
     #[serde(rename = "match")]
     pub match_: Match,
+    /// The rules. None at all, with [`Match::All`], is the whole library.
     pub rules: Vec<SmartRule>,
+    /// The order to list them in; `None` when the rules give none.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub sort: Option<RuleSort>,
 }
@@ -323,6 +380,8 @@ pub struct ParsedRules {
     pub names: Vec<String>,
     /// Rules that were dropped, and why. Shown rather than swallowed.
     pub rejected: Vec<String>,
+    /// The rule set, with only the legal rules; `None` when the reply had no
+    /// rule set to read.
     pub rules: Option<SmartRules>,
 }
 

@@ -20,6 +20,11 @@ pub struct ServerAddress {
 impl ServerAddress {
     /// Normalises a typed address. Fails on anything that isn't an http(s) URL
     /// with a host.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::MalformedAddress`], carrying `raw` as typed, for blank text, a
+    /// scheme other than http or https, or no host.
     pub fn parse(raw: &str) -> Result<Self, Error> {
         let malformed = || Error::MalformedAddress(raw.to_owned());
         let trimmed = raw.trim();

@@ -23,13 +23,16 @@ use crate::{Item, Page, Result};
 /// give each entry its own id. Either way, pass back what this returned.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlaylistEntry {
+    /// The entry's id within the playlist, for removing and moving it.
     pub entry_id: String,
+    /// The track the entry plays.
     pub item: Item,
 }
 
 /// What to change about a playlist. A `None` field is left as it is.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PlaylistEdit {
+    /// A new name.
     pub name: Option<String>,
     /// Whether every user on the server can see the playlist.
     pub is_public: Option<bool>,
@@ -55,6 +58,11 @@ impl JellyfinClient {
     ///
     /// The ids go in the JSON body rather than the URL, so a long first selection
     /// can't overrun a proxy's URL limit.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn create_playlist<S: AsRef<str>>(
         &self,
         name: &str,
@@ -75,6 +83,11 @@ impl JellyfinClient {
 
     /// Renames a playlist or changes who can see it. Only the fields set in
     /// `edit` are sent; an empty edit sends nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials, even
+    /// for an empty edit; otherwise the [request errors](JellyfinClient#errors).
     pub async fn edit_playlist(&self, playlist_id: &str, edit: &PlaylistEdit) -> Result<()> {
         self.require_credentials()?;
         let mut body = Map::new();
@@ -97,6 +110,13 @@ impl JellyfinClient {
     /// a song's file just as readily. So the id is first looked up as a playlist
     /// (`GET /Playlists/{id}`), and anything that isn't one stops here as
     /// [`Error::NotFound`](crate::Error::NotFound) with nothing deleted.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; [`Error::NotFound`](crate::Error::NotFound) when
+    /// `playlist_id` isn't a playlist, with nothing deleted; otherwise the [request
+    /// errors](JellyfinClient#errors).
     pub async fn delete_playlist(&self, playlist_id: &str) -> Result<()> {
         self.require_credentials()?;
         let _: Value = self.get(&["Playlists", playlist_id], &[]).await?;
@@ -108,6 +128,11 @@ impl JellyfinClient {
     ///
     /// [`playlist_items`](Self::playlist_items) is the same list without entry
     /// ids, for playing.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn playlist_entries(&self, playlist_id: &str) -> Result<Vec<PlaylistEntry>> {
         let query = [
             ("userId", self.user_id()?.to_owned()),
@@ -130,6 +155,12 @@ impl JellyfinClient {
     ///
     /// The ids travel in the URL, so they go 100 at a time, each chunk placed
     /// after the one before, so a long selection keeps its order.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors)
+    /// from the first chunk that fails. Chunks sent before it stay added.
     pub async fn add_to_playlist<S: AsRef<str>>(
         &self,
         playlist_id: &str,
@@ -151,6 +182,12 @@ impl JellyfinClient {
 
     /// Removes entries from a playlist by their entry ids (from
     /// [`playlist_entries`](Self::playlist_entries)). No ids sends nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors)
+    /// from the first chunk that fails. Chunks sent before it stay removed.
     pub async fn remove_from_playlist<S: AsRef<str>>(
         &self,
         playlist_id: &str,
@@ -167,6 +204,11 @@ impl JellyfinClient {
 
     /// Moves one entry to `new_index` (0-based, counted among the entries the user
     /// can see). An index past the end moves it to the end.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn move_playlist_entry(
         &self,
         playlist_id: &str,
@@ -189,6 +231,13 @@ impl JellyfinClient {
     /// Jellyfin reads this body as base64 text, whatever the content type says,
     /// so the bytes are encoded here. The server only lets administrators change
     /// images: anyone else gets HTTP 403 as [`Error::Http`](crate::Error::Http).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; [`Error::Http`](crate::Error::Http) with status 403 for
+    /// a user who isn't an administrator; otherwise the [request
+    /// errors](JellyfinClient#errors).
     pub async fn set_playlist_cover(
         &self,
         playlist_id: &str,
@@ -212,6 +261,11 @@ impl JellyfinClient {
 
     /// Removes a playlist's own cover. Administrators only, as for
     /// [`set_playlist_cover`](Self::set_playlist_cover).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn delete_playlist_cover(&self, playlist_id: &str) -> Result<()> {
         self.require_credentials()?;
         self.send_empty(

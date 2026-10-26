@@ -52,6 +52,11 @@ impl Mpris {
     ///
     /// Must be awaited inside a tokio runtime. Fails with
     /// [`Error::NameTaken`] if another process already holds the name.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NameTaken`] when another process holds the name; [`Error::DBus`]
+    /// when the bus can't be reached or the interfaces can't be served.
     pub async fn start(bus: &Bus) -> Result<(Mpris, Receiver<Command>)> {
         let shared: Shared = Arc::new(Mutex::new(Tracker::new(Instant::now())));
         let (tx, rx) = mpsc::channel(COMMAND_QUEUE);
@@ -83,6 +88,11 @@ impl Mpris {
     /// the properties that differ from the last update, and `Seeked` if the
     /// position jumped. Calling it on every position tick is fine: steady
     /// playback emits nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::DBus`] when a signal can't be sent; the new state is kept either
+    /// way.
     pub async fn update(&self, state: PlayerState) -> Result<()> {
         let (changed, seeked) = {
             let mut tracker = lock(&self.shared);

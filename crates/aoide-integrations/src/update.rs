@@ -58,7 +58,9 @@ fn seconds(time: SystemTime) -> u64 {
 /// A newer release.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Release {
+    /// The version the tag names.
     pub version: Version,
+    /// The git tag, as written: `v1.2.3`.
     pub tag: String,
     /// The release's title, if it has one.
     pub name: Option<String>,
@@ -68,23 +70,31 @@ pub struct Release {
     pub page: Option<String>,
 }
 
+/// What a check found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UpdateCheck {
     /// Checked less than a day ago; nothing was sent.
     NotDue,
     /// The running version is the latest (or newer, or there is no release).
     UpToDate,
+    /// A newer release, neither a draft nor a pre-release.
     Available(Release),
 }
 
+/// Why a check couldn't say.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum UpdateError {
+    /// The version passed as the running one isn't semver; carried as given.
     #[error("the running version {0:?} is not a version number")]
     BadCurrentVersion(String),
+    /// No answer from GitHub (DNS, a refused connection, TLS, the 15-second
+    /// timeout), or a URL that doesn't parse.
     #[error("could not reach GitHub: {0}")]
     Unreachable(String),
+    /// A non-2xx status other than 404, such as 403 or 429 when rate-limited.
     #[error("GitHub returned HTTP {0}")]
     Refused(u16),
+    /// The answer isn't a release, or its tag isn't a version.
     #[error("GitHub's answer was not a release with a version tag")]
     UnfamiliarReply,
 }
@@ -146,11 +156,22 @@ pub struct UpdateChecker {
 }
 
 impl UpdateChecker {
+    /// A checker for this app's releases on GitHub. Sends nothing until
+    /// [`check`](Self::check).
+    ///
+    /// # Errors
+    ///
+    /// [`UpdateError::Unreachable`] when the HTTP client can't be built.
     pub fn new() -> Result<Self, UpdateError> {
         Self::with_url(RELEASES_URL)
     }
 
     /// Another address answering as GitHub's API does (tests).
+    ///
+    /// # Errors
+    ///
+    /// [`UpdateError::Unreachable`] when `url` isn't a URL or the HTTP client can't
+    /// be built.
     pub fn with_url(url: &str) -> Result<Self, UpdateError> {
         crate::install_crypto();
         let url = Url::parse(url).map_err(|e| UpdateError::Unreachable(e.to_string()))?;
@@ -167,6 +188,15 @@ impl UpdateChecker {
     /// [`UpdateCheck::NotDue`] if `state` says the last attempt was less than
     /// a day before `now`; otherwise records this attempt in `state` first,
     /// so a failure also waits a day.
+    ///
+    /// # Errors
+    ///
+    /// [`UpdateError::BadCurrentVersion`] when `current` isn't semver, before
+    /// anything else; [`UpdateError::Unreachable`] without an answer;
+    /// [`UpdateError::Refused`] for a non-2xx status but 404 (no release yet, which
+    /// is [`UpdateCheck::UpToDate`]); [`UpdateError::UnfamiliarReply`] when the
+    /// answer isn't a release with a version tag. Every error but the first still
+    /// records the attempt in `state`.
     pub async fn check(
         &self,
         current: &str,

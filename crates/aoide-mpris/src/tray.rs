@@ -8,11 +8,15 @@ use crate::types::PlaybackStatus;
 /// whenever any of it changes; an unchanged state sends nothing on the bus.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TrayState {
+    /// Playing, paused or stopped: picks the Play/Pause item's label, and
+    /// Stop is enabled unless stopped.
     pub status: PlaybackStatus,
     /// What plays, as one line ("Title — Artist"), shown under "Aoide" in the
     /// tooltip. `None` when nothing is loaded.
     pub now_playing: Option<String>,
+    /// Whether the Next item is enabled.
     pub can_go_next: bool,
+    /// Whether the Previous item is enabled.
     pub can_go_previous: bool,
     /// Whether anything is loaded that Play could start.
     pub can_play: bool,
@@ -22,15 +26,20 @@ pub struct TrayState {
 /// returns, like MPRIS's [`crate::Command`]s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayCommand {
+    /// The Play/Pause item.
     PlayPause,
+    /// The Next item.
     Next,
+    /// The Previous item.
     Previous,
+    /// The Stop item.
     Stop,
     /// "Open Aoide" in the menu: show the window and bring it to the front.
     OpenWindow,
     /// A left click on the icon: hide the window if it shows, show it if not.
     /// The crate does not know which; the app does.
     ToggleWindow,
+    /// The Quit item.
     Quit,
 }
 
@@ -41,6 +50,7 @@ pub enum TrayCommand {
 pub struct TrayIcon {
     /// A freedesktop icon name, normally the app's desktop id.
     pub name: String,
+    /// The icon drawn at one or more sizes, for hosts without the icon theme.
     pub pixmaps: Vec<Pixmap>,
 }
 
@@ -49,8 +59,11 @@ pub struct TrayIcon {
 /// to bottom.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pixmap {
+    /// Pixels across.
     pub width: i32,
+    /// Pixels down.
     pub height: i32,
+    /// `width * height * 4` bytes, as above.
     pub argb: Vec<u8>,
 }
 

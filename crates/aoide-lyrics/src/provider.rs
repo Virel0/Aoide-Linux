@@ -29,11 +29,15 @@ pub trait LyricsProvider: Send + Sync {
 /// The track to find lyrics for.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TrackQuery {
+    /// The track's title, as the server has it.
     pub title: String,
     /// The track's (first) artist, rather than the album artist: a compilation's
     /// album artist is "Various Artists", which matches nothing.
     pub artist: String,
+    /// The album, when known. Narrows an exact lookup; a search goes without it.
     pub album: Option<String>,
+    /// The track's length, when known. Candidates timed against a recording
+    /// too far from it are dropped ([`DEFAULT_MAX_DURATION_GAP`](crate::DEFAULT_MAX_DURATION_GAP)).
     pub duration: Option<Duration>,
 }
 
@@ -64,14 +68,18 @@ impl TrackQuery {
 /// One set of lyrics a provider found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Candidate {
+    /// The lyrics, with line and word times when the provider had them.
     pub lyrics: Lyrics,
     /// The provider says the track has no words. `lyrics` is then empty.
     pub instrumental: bool,
     /// The length of the recording the lyrics were timed against, if known.
     pub duration: Option<Duration>,
-    /// What the provider matched, for showing and for debugging a bad match.
+    /// The title the provider matched, for showing and for debugging a bad
+    /// match.
     pub title: String,
+    /// The artist the provider matched.
     pub artist: String,
+    /// The album the provider matched, if it names one.
     pub album: Option<String>,
 }
 
@@ -84,12 +92,18 @@ pub enum ProviderError {
     Transport(String),
     /// A non-2xx answer other than the provider's "not found".
     #[error("HTTP {status}")]
-    Http { status: u16 },
+    Http {
+        /// The status code the provider answered with.
+        status: u16,
+    },
     /// The provider asked us to wait (HTTP 429, or 503 with `Retry-After`). It
     /// sends nothing more until the wait is over: asking again sooner gets this
     /// error back at once, with what is left of the wait.
     #[error("asked to wait {}s", .retry_after.as_secs())]
-    RateLimited { retry_after: Duration },
+    RateLimited {
+        /// How much of the wait is left.
+        retry_after: Duration,
+    },
     /// A 2xx answer that didn't decode.
     #[error("couldn't read the answer: {0}")]
     Decoding(String),
