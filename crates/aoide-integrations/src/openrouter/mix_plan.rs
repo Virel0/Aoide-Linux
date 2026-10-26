@@ -99,7 +99,10 @@ pub fn wants_rule_candidates(rules: Option<&SmartRules>, names: &[String]) -> bo
 pub struct MixPlan {
     /// The library genres the description resolved to, the library's way.
     pub genres: Vec<String>,
+    /// Artists, albums or works the description named, as
+    /// [`ParsedRules::names`](super::smart_rules::ParsedRules::names) has them.
     pub names: Vec<String>,
+    /// The rules to ask the library with, when there are any.
     pub rules: Option<SmartRules>,
 }
 

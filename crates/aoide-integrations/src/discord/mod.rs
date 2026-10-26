@@ -145,6 +145,7 @@ impl Presence {
         });
     }
 
+    /// Where the presence stands now.
     pub fn status(&self) -> PresenceStatus {
         *self.status.borrow()
     }

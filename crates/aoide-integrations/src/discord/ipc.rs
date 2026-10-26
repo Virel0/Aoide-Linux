@@ -13,10 +13,15 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
+/// The opcode of the first frame a client sends, naming its application id.
 pub const HANDSHAKE: u32 = 0;
+/// The opcode of commands, their answers and events.
 pub const FRAME: u32 = 1;
+/// The opcode that ends the session, from either side.
 pub const CLOSE: u32 = 2;
+/// The opcode of a keep-alive; answered with [`PONG`].
 pub const PING: u32 = 3;
+/// The opcode of the answer to a [`PING`], with the same payload.
 pub const PONG: u32 = 4;
 
 /// Discord's frames are small; anything this big is not Discord.
@@ -66,16 +71,29 @@ pub fn socket_candidates(env: impl Fn(&str) -> Option<OsString>) -> Vec<PathBuf>
     candidates
 }
 
+/// Why a frame couldn't be written or read.
 #[derive(Debug, thiserror::Error)]
 pub enum FrameError {
+    /// The socket failed or closed, mid-frame included.
     #[error("socket: {0}")]
     Io(#[from] std::io::Error),
+    /// A frame too long, with its length: over 64 KiB read (no Discord frame
+    /// is), or over 4 GiB written.
     #[error("frame of {0} bytes is too large")]
     TooLarge(u32),
+    /// A payload that isn't JSON (read) or won't serialise (write).
     #[error("frame is not JSON: {0}")]
     Json(#[from] serde_json::Error),
 }
 
+/// Writes one frame: `opcode`, the length, then `payload` as compact JSON,
+/// and flushes.
+///
+/// # Errors
+///
+/// [`FrameError::Json`] when `payload` won't serialise,
+/// [`FrameError::TooLarge`] when it is over 4 GiB, and [`FrameError::Io`]
+/// when the write or flush fails.
 pub async fn write_frame<W: AsyncWrite + Unpin>(
     writer: &mut W,
     opcode: u32,
@@ -92,6 +110,13 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
     Ok(())
 }
 
+/// Reads one frame: its opcode and its payload, `Null` for an empty one.
+///
+/// # Errors
+///
+/// [`FrameError::Io`] when the socket fails or closes before a whole frame
+/// arrives; [`FrameError::TooLarge`] for a declared length over 64 KiB,
+/// before reading the body; [`FrameError::Json`] when the body isn't JSON.
 pub async fn read_frame<R: AsyncRead + Unpin>(reader: &mut R) -> Result<(u32, Value), FrameError> {
     let mut header = [0u8; 8];
     reader.read_exact(&mut header).await?;

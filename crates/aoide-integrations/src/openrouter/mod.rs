@@ -82,6 +82,7 @@ impl fmt::Debug for ApiKey {
     }
 }
 
+/// The keyring failed, in its own words.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct KeyStoreError(pub String);
@@ -90,10 +91,24 @@ pub struct KeyStoreError(pub String);
 /// [`KEYRING_ENTRY`]. The app implements it over its own credential store;
 /// [`MemoryKeyStore`] is for tests.
 pub trait ApiKeyStore: Send + Sync {
-    /// `None` when no key is set.
+    /// The key, `None` when no key is set.
+    ///
+    /// # Errors
+    ///
+    /// [`KeyStoreError`] when the keyring can't be read (locked, or no
+    /// keyring service).
     fn load(&self) -> Result<Option<ApiKey>, KeyStoreError>;
+    /// Keeps `key`, replacing any key already kept.
+    ///
+    /// # Errors
+    ///
+    /// [`KeyStoreError`] when the keyring can't be written.
     fn save(&self, key: &ApiKey) -> Result<(), KeyStoreError>;
-    /// Clearing a key that is not there is not an error.
+    /// Forgets the key. Clearing a key that is not there is not an error.
+    ///
+    /// # Errors
+    ///
+    /// [`KeyStoreError`] when the keyring can't be written.
     fn clear(&self) -> Result<(), KeyStoreError>;
 }
 
@@ -124,25 +139,40 @@ impl ApiKeyStore for MemoryKeyStore {
 /// A model OpenRouter offers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Model {
+    /// OpenRouter's id, what a request names: `openai/gpt-4o-mini`.
     pub id: String,
+    /// The name to show; the id when OpenRouter gives none.
     pub name: String,
     /// US dollars per prompt token, when OpenRouter says.
     pub prompt_price: Option<f64>,
     /// US dollars per completion token, when OpenRouter says.
     pub completion_price: Option<f64>,
+    /// The most tokens the model takes, prompt and reply together, when
+    /// OpenRouter says.
     pub context_length: Option<u64>,
 }
 
+/// Why a call to OpenRouter gave no answer.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum OpenRouterError {
     /// OpenRouter refused, in its own words (out of credit, unknown model,
     /// invalid key), the body cut to 200 characters.
     #[error("OpenRouter returned HTTP {status}: {body}")]
-    Refused { status: u16, body: String },
+    Refused {
+        /// The HTTP status, outside 2xx.
+        status: u16,
+        /// The start of the answer's body.
+        body: String,
+    },
+    /// No answer within 15 seconds.
     #[error("OpenRouter did not answer in time.")]
     Timeout,
+    /// No answer at all (DNS, a refused connection, TLS), or a base URL that
+    /// doesn't parse.
     #[error("Could not reach OpenRouter: {0}")]
     Unreachable(String),
+    /// A 2xx answer that isn't the JSON expected, or a completion with no
+    /// text in its first choice.
     #[error("OpenRouter returned a reply in an unfamiliar shape.")]
     UnfamiliarReply,
 }
@@ -164,7 +194,9 @@ pub struct MixOutcome {
     pub names: Vec<String>,
     /// Rules the model produced that no app could evaluate, and why.
     pub rejected: Vec<String>,
+    /// The rules that survived, or `None` when there was no usable answer.
     pub rules: Option<SmartRules>,
+    /// Set only when the call failed, in the service's own words.
     pub reason: Option<String>,
 }
 
@@ -177,11 +209,21 @@ pub struct OpenRouter {
 
 impl OpenRouter {
     /// A client for OpenRouter itself.
+    ///
+    /// # Errors
+    ///
+    /// [`OpenRouterError::Unreachable`] when the HTTP client can't be built. Sends
+    /// nothing.
     pub fn new() -> Result<Self, OpenRouterError> {
         Self::with_base_url(DEFAULT_BASE_URL)
     }
 
     /// A client for another address with OpenRouter's API (tests).
+    ///
+    /// # Errors
+    ///
+    /// [`OpenRouterError::Unreachable`] when `base` isn't a URL or the HTTP client
+    /// can't be built. Sends nothing.
     pub fn with_base_url(base: &str) -> Result<Self, OpenRouterError> {
         crate::install_crypto();
         let mut base = Url::parse(base).map_err(|e| OpenRouterError::Unreachable(e.to_string()))?;
@@ -204,6 +246,13 @@ impl OpenRouter {
     /// The models OpenRouter offers now, cheapest prompt first (those without
     /// a price last). Fetched, not hard-coded: the catalogue changes weekly.
     /// Sent without the key, so the picker works before one is entered.
+    ///
+    /// # Errors
+    ///
+    /// [`OpenRouterError::Timeout`] or [`OpenRouterError::Unreachable`] without an
+    /// answer; [`OpenRouterError::Refused`] for a non-2xx status;
+    /// [`OpenRouterError::UnfamiliarReply`] when the list isn't the JSON expected.
+    /// A model without an id is skipped, not an error.
     pub async fn models(&self) -> Result<Vec<Model>, OpenRouterError> {
         let response = self
             .http
@@ -238,6 +287,13 @@ impl OpenRouter {
 
     /// One prompt, one reply: the text of the first choice. Temperature 0:
     /// the same phrase should give the same filters twice.
+    ///
+    /// # Errors
+    ///
+    /// [`OpenRouterError::Timeout`] or [`OpenRouterError::Unreachable`] without an
+    /// answer; [`OpenRouterError::Refused`] for a non-2xx status (a bad key, no
+    /// credit, an unknown model); [`OpenRouterError::UnfamiliarReply`] when the
+    /// answer isn't a completion or its first choice has no text.
     pub async fn complete(
         &self,
         key: &ApiKey,

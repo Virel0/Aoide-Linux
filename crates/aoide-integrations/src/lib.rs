@@ -17,6 +17,9 @@
 //! anything until the app turns it on, and none sends an identifier of the
 //! listener or the machine.
 
+#![warn(missing_docs)]
+#![warn(clippy::missing_errors_doc)]
+
 pub mod discord;
 mod links;
 pub mod openrouter;
