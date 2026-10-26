@@ -29,6 +29,7 @@ pub enum Error {
         .detail.as_deref().map(|d| format!(": {d}")).unwrap_or_default()
     )]
     Http {
+        /// The HTTP status: any outside 200–299 but 401 and 404.
         status: u16,
         /// The request path, relative to the server address.
         path: String,
@@ -38,7 +39,13 @@ pub enum Error {
     },
     /// A 2xx response whose body didn't decode.
     #[error("couldn't read the server's answer to {path}: {message}")]
-    Decoding { path: String, message: String },
+    Decoding {
+        /// The request path, relative to the server address.
+        path: String,
+        /// What didn't fit: serde_json's message, or that the answer was larger
+        /// than any Jellyfin answer.
+        message: String,
+    },
     /// The request never got an HTTP answer: DNS, refused connection, TLS, timeout.
     #[error("{0}")]
     Transport(String),

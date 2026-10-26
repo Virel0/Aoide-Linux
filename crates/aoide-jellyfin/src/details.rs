@@ -12,6 +12,7 @@ use crate::{Item, Result};
 /// file the server hasn't probed yet has none.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemDetails {
+    /// The item, as the lists return it.
     pub item: Item,
     /// Where the file is, on the server's disk.
     pub path: Option<String>,
@@ -25,6 +26,7 @@ pub struct ItemDetails {
     pub sample_rate: Option<u32>,
     /// Bits per sample. Lossy codecs have none.
     pub bit_depth: Option<u32>,
+    /// How many audio channels: 2 for stereo.
     pub channels: Option<u32>,
     /// `stereo`, `mono`, `5.1`, …
     pub channel_layout: Option<String>,
@@ -34,6 +36,8 @@ pub struct ItemDetails {
     pub date_added: Option<SystemTime>,
     /// The signed-in user's plays, counted at each start.
     pub play_count: u32,
+    /// When the signed-in user last played it. `None` when never played, or
+    /// when the server's date couldn't be read.
     pub last_played: Option<SystemTime>,
 }
 
@@ -135,6 +139,13 @@ impl ItemDetails {
 
 impl JellyfinClient {
     /// One item in full, with its file's details, from `GET /Items/{id}`.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; [`Error::NotFound`](crate::Error::NotFound) for an id
+    /// the server doesn't have; otherwise the [request
+    /// errors](JellyfinClient#errors).
     pub async fn item_details(&self, item_id: &str) -> Result<ItemDetails> {
         let query = [("userId", self.user_id()?.to_owned())];
         let wire: WireDetails = self.get(&["Items", item_id], &query).await?;

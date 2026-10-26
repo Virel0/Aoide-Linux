@@ -28,7 +28,10 @@ pub enum ItemRefresh {
     /// Look up metadata the item is missing, keeping what it has.
     FillMissing,
     /// Replace all metadata, and the images too when `images` is set.
-    ReplaceAll { images: bool },
+    ReplaceAll {
+        /// Replace the item's images as well.
+        images: bool,
+    },
 }
 
 impl ItemRefresh {
@@ -57,6 +60,13 @@ impl JellyfinClient {
     /// Not `POST /Library/Refresh`: that runs the whole scan inside the request and
     /// only answers when it ends, which on a big library outlasts the client's
     /// timeout. A server without the task answers [`Error::NotFound`].
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`] without credentials, before any request;
+    /// [`Error::Http`] with status 403 for a user who isn't an administrator;
+    /// [`Error::NotFound`] when the server has no scan task; otherwise the [request
+    /// errors](JellyfinClient#errors).
     pub async fn refresh_library(&self) -> Result<()> {
         self.require_credentials()?;
         let tasks: Vec<TaskInfo> = self.get(&["ScheduledTasks"], &[]).await?;
@@ -75,6 +85,13 @@ impl JellyfinClient {
     ///
     /// The modes are always sent: left out, the server's default is `None`, which
     /// refreshes nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`] without credentials, before any request;
+    /// [`Error::Http`] with status 403 for a user who isn't an administrator;
+    /// [`Error::NotFound`] for an id the server doesn't have; otherwise the
+    /// [request errors](JellyfinClient#errors).
     pub async fn refresh_item(&self, item_id: &str, refresh: ItemRefresh) -> Result<()> {
         self.require_credentials()?;
         self.send_empty(

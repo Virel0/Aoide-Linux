@@ -28,6 +28,9 @@
 //! - **Lyrics:** [`JellyfinClient::lyrics`], the server's own. The aoide-lyrics
 //!   crate looks on the internet when this has none.
 
+#![warn(missing_docs)]
+#![warn(clippy::missing_errors_doc)]
+
 mod address;
 mod auth;
 mod client;

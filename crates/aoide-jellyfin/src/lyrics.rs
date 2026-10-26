@@ -12,11 +12,16 @@ const MAX_SWEEP: Duration = LyricWord::MAX_SWEEP;
 /// A track's lyrics, as lines.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Lyrics {
+    /// The lines in the order they're sung. [`line_at`](Self::line_at) expects
+    /// the timed ones in time order.
     pub lines: Vec<LyricLine>,
 }
 
+/// One line of lyrics, with its start time and word times when the source has
+/// them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LyricLine {
+    /// The line as shown. May be empty: a timed empty line marks a break.
     pub text: String,
     /// `None` when the source had no timings: the line can be shown, not followed.
     pub start: Option<Duration>,
@@ -27,7 +32,9 @@ pub struct LyricLine {
 /// One timed word in a line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LyricWord {
+    /// The word, without the spaces around it.
     pub text: String,
+    /// When the word is sung, from the start of the track.
     pub start: Duration,
     /// When the word's highlight should finish: the next word's start, or the cue's
     /// own end for the last word, capped at [`MAX_SWEEP`](Self::MAX_SWEEP) after `start`.
@@ -52,6 +59,7 @@ impl Lyrics {
         self.lines.iter().any(|line| !line.words.is_empty())
     }
 
+    /// No lines at all.
     pub fn is_empty(&self) -> bool {
         self.lines.is_empty()
     }
@@ -160,6 +168,12 @@ fn words(line: &WireLine) -> Vec<LyricWord> {
 impl JellyfinClient {
     /// A track's lyrics, or `None` when it has none. A 404 here is the ordinary
     /// "no lyrics" answer, not an error; every other failure still is one.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](JellyfinClient#errors) other than a 404. A signed-out
+    /// client sends no token, which the server answers with
+    /// [`Error::Unauthorized`].
     pub async fn lyrics(&self, item_id: &str) -> Result<Option<Lyrics>> {
         match self
             .get::<LyricsDocument>(&["Audio", item_id, "Lyrics"], &[])

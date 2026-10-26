@@ -14,6 +14,11 @@ impl JellyfinClient {
     /// took a folder for an album; files as [`ItemKind::Audio`](crate::ItemKind::Audio).
     ///
     /// `limit: None` asks for everything in the folder.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials,
+    /// before any request; otherwise the [request errors](JellyfinClient#errors).
     pub async fn folder_children(
         &self,
         parent_id: &str,

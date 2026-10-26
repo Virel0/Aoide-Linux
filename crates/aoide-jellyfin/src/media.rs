@@ -50,6 +50,11 @@ impl JellyfinClient {
     /// The token travels as the `ApiKey` query parameter, so the URL works without
     /// headers. Not `api_key`: that spelling is legacy authorisation, off by default
     /// from Jellyfin 10.12, and a server with it off answers every stream with 401.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials. Sends
+    /// nothing either way.
     pub fn stream_url(&self, item_id: &str, quality: StreamQuality) -> Result<Url> {
         let credentials = self.require_credentials()?;
         let mut query = vec![
@@ -71,6 +76,11 @@ impl JellyfinClient {
     }
 
     /// The original file, for a full download. Token as `ApiKey`, as for streams.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotSignedIn`](crate::Error::NotSignedIn) without credentials. Sends
+    /// nothing either way.
     pub fn download_url(&self, item_id: &str) -> Result<Url> {
         let credentials = self.require_credentials()?;
         Ok(self.url(
