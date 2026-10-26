@@ -8,15 +8,19 @@
 
 use aoide_audio::eq;
 use iced::widget::{
-    Column, button, canvas, column, container, pick_list, row, slider, text, text_input, toggler,
-    vertical_slider,
+    Column, Row, button, canvas, column, container, pick_list, row, slider, text, text_input,
+    toggler, vertical_slider,
 };
-use iced::{Center, Color, Element, Fill, Length, Point, Rectangle, Renderer, Task, Theme, mouse};
+use iced::{Center, Element, Fill, Length, Task, Theme};
 
 use super::{PageMsg, View};
 use crate::app::{App, Message as AppMsg};
 use crate::sound::{self, CompressorChoice, CompressorField, EqualizerSettings, SoundSettings};
 use crate::{theme, widgets};
+
+mod graph;
+
+use graph::CurveGraph;
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -225,6 +229,52 @@ fn equalizer<'a>(
     message: impl Fn(Message) -> AppMsg + Copy + 'a,
 ) -> Element<'a, AppMsg> {
     let curve = sound::editable(&eq.curve);
+    let graph = canvas(CurveGraph {
+        points: sound::curve_points(&curve, sample_rate, 160),
+        enabled: eq.enabled,
+    })
+    .width(Fill)
+    .height(Length::Fixed(170.0));
+
+    let mut body = column![presets(state, eq, message)];
+    if let Some(error) = &state.error {
+        body = body.push(
+            text(error.as_str())
+                .size(13)
+                .style(|t: &Theme| text::Style {
+                    color: Some(t.palette().danger),
+                }),
+        );
+    }
+    body = body
+        .push(graph)
+        .push(preamp(curve.preamp_db, message))
+        .push(bands(&curve, message));
+    if eq.enabled
+        && let Some(advice) = clip_advice(curve.preamp_db, curve.peak_db(sample_rate))
+    {
+        body = body.push(widgets::secondary(advice).size(12));
+    }
+    section(
+        "Equaliser",
+        toggler(eq.enabled)
+            .style(theme::switch)
+            .on_toggle(move |on| message(Message::Equalizer(on)))
+            .into(),
+        body,
+        "Shapes the sound on this computer: the preamp first, then ten bands an octave apart. \
+         The built-in presets lower the preamp by their highest boost, so they never make a \
+         track clip. Off, the sound is left exactly as it was.",
+    )
+}
+
+/// The preset picker, Delete Preset for the listener's own, and a name and
+/// Save Preset for a new one.
+fn presets<'a>(
+    state: &'a State,
+    eq: &'a EqualizerSettings,
+    message: impl Fn(Message) -> AppMsg + Copy + 'a,
+) -> Row<'a, AppMsg> {
     let mut names = eq.preset_names();
     let label = eq.label();
     if !names.contains(&label) {
@@ -257,20 +307,19 @@ fn equalizer<'a>(
             .width(Length::Fixed(180.0))
             .style(theme::field),
     );
-    presets = presets.push(
+    presets.push(
         button(text("Save preset").size(13))
             .style(theme::tonal)
             .padding([6, 12])
             .on_press_maybe((!state.name.trim().is_empty()).then(|| message(Message::SavePreset))),
-    );
+    )
+}
 
-    let graph = canvas(CurveGraph {
-        points: sound::curve_points(&curve, sample_rate, 160),
-        enabled: eq.enabled,
-    })
-    .width(Fill)
-    .height(Length::Fixed(170.0));
-
+/// A vertical slider per band, its gain above and its frequency below.
+fn bands<'a>(
+    curve: &eq::EqCurve,
+    message: impl Fn(Message) -> AppMsg + Copy + 'a,
+) -> Row<'a, AppMsg> {
     let band = |index: usize, freq: f32, db: f32| -> Element<'a, AppMsg> {
         column![
             widgets::secondary(sound::gain_label(db)).size(11),
@@ -290,58 +339,32 @@ fn equalizer<'a>(
         .width(Fill)
         .into()
     };
-    let bands = row(curve
+    row(curve
         .bands
         .iter()
         .enumerate()
         .map(|(i, b)| band(i, b.freq_hz, b.gain_db)))
     .spacing(4)
-    .width(Fill);
+    .width(Fill)
+}
 
-    let preamp = row![
+fn preamp<'a>(preamp_db: f32, message: impl Fn(Message) -> AppMsg + Copy + 'a) -> Row<'a, AppMsg> {
+    row![
         text("Preamp").width(Length::Fixed(70.0)),
         slider(
             -eq::GAIN_LIMIT_DB..=eq::GAIN_LIMIT_DB,
-            curve.preamp_db,
+            preamp_db,
             move |v| message(Message::Preamp(v))
         )
         .step(0.5_f32)
         .on_release(message(Message::Commit))
         .style(theme::scrubber),
-        widgets::secondary(sound::gain_label(curve.preamp_db))
+        widgets::secondary(sound::gain_label(preamp_db))
             .size(13)
             .width(Length::Fixed(64.0)),
     ]
     .spacing(10)
-    .align_y(Center);
-
-    let mut body = column![presets];
-    if let Some(error) = &state.error {
-        body = body.push(
-            text(error.as_str())
-                .size(13)
-                .style(|t: &Theme| text::Style {
-                    color: Some(t.palette().danger),
-                }),
-        );
-    }
-    body = body.push(graph).push(preamp).push(bands);
-    if eq.enabled
-        && let Some(advice) = clip_advice(curve.preamp_db, curve.peak_db(sample_rate))
-    {
-        body = body.push(widgets::secondary(advice).size(12));
-    }
-    section(
-        "Equaliser",
-        toggler(eq.enabled)
-            .style(theme::switch)
-            .on_toggle(move |on| message(Message::Equalizer(on)))
-            .into(),
-        body,
-        "Shapes the sound on this computer: the preamp first, then ten bands an octave apart. \
-         The built-in presets lower the preamp by their highest boost, so they never make a \
-         track clip. Off, the sound is left exactly as it was.",
-    )
+    .align_y(Center)
 }
 
 fn compressor<'a>(
@@ -419,100 +442,6 @@ pub fn clip_advice(preamp_db: f32, peak_db: f64) -> Option<String> {
              highest bands to keep it under."
         )
     })
-}
-
-/// The equaliser's response, drawn from 20 Hz to 20 kHz and ±15 dB.
-struct CurveGraph {
-    points: Vec<(f64, f64)>,
-    enabled: bool,
-}
-
-const GRAPH_DB: f64 = 15.0;
-
-impl<Message> canvas::Program<Message> for CurveGraph {
-    type State = ();
-
-    fn draw(
-        &self,
-        _state: &(),
-        renderer: &Renderer,
-        theme: &Theme,
-        bounds: Rectangle,
-        _cursor: mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        let mut frame = canvas::Frame::new(renderer, bounds.size());
-        let (width, height) = (f64::from(bounds.width), f64::from(bounds.height));
-        let (low, high) = (
-            f64::from(eq::MIN_FREQ_HZ),
-            f64::from(eq::MAX_FREQ_HZ).max(f64::from(eq::MIN_FREQ_HZ) * 2.0),
-        );
-        let x = |freq: f64| ((freq / low).ln() / (high / low).ln() * width) as f32;
-        let y = |db: f64| {
-            ((GRAPH_DB - db.clamp(-GRAPH_DB, GRAPH_DB)) / (2.0 * GRAPH_DB) * height) as f32
-        };
-        let faint = theme::secondary(theme).scale_alpha(0.35);
-        let label = theme::secondary(theme);
-
-        for db in [-12.0, -6.0, 0.0, 6.0, 12.0] {
-            let line = canvas::Path::line(Point::new(0.0, y(db)), Point::new(width as f32, y(db)));
-            frame.stroke(
-                &line,
-                canvas::Stroke::default()
-                    .with_color(if db == 0.0 {
-                        label.scale_alpha(0.6)
-                    } else {
-                        faint
-                    })
-                    .with_width(1.0),
-            );
-            frame.fill_text(canvas::Text {
-                content: sound::gain_label(db as f32),
-                position: Point::new(4.0, y(db) - 14.0),
-                color: label,
-                size: 11.0.into(),
-                font: widgets::REGULAR,
-                ..canvas::Text::default()
-            });
-        }
-        for freq in [32.0, 125.0, 500.0, 2_000.0, 8_000.0] {
-            let at = x(freq);
-            frame.stroke(
-                &canvas::Path::line(Point::new(at, 0.0), Point::new(at, height as f32)),
-                canvas::Stroke::default().with_color(faint).with_width(1.0),
-            );
-            frame.fill_text(canvas::Text {
-                content: format!("{} Hz", sound::frequency_label(freq as f32)),
-                position: Point::new(at + 4.0, height as f32 - 15.0),
-                color: label,
-                size: 11.0.into(),
-                font: widgets::REGULAR,
-                ..canvas::Text::default()
-            });
-        }
-        let curve = canvas::Path::new(|path| {
-            for (i, (freq, db)) in self.points.iter().enumerate() {
-                let point = Point::new(x(*freq), y(*db));
-                if i == 0 {
-                    path.move_to(point);
-                } else {
-                    path.line_to(point);
-                }
-            }
-        });
-        let colour: Color = if self.enabled {
-            theme::accent(theme)
-        } else {
-            theme::secondary(theme)
-        };
-        frame.stroke(
-            &curve,
-            canvas::Stroke::default()
-                .with_color(colour)
-                .with_width(2.5)
-                .with_line_join(canvas::LineJoin::Round),
-        );
-        vec![frame.into_geometry()]
-    }
 }
 
 #[cfg(test)]

@@ -5,18 +5,18 @@
 //! own (its collections are box sets), so they stay on this computer.
 
 use aoide_jellyfin::{Item, ItemKind, ListQuery, QueryFilters, Sort, SortOrder};
-use aoide_store::PlaySource;
-use iced::widget::{Column, button, column, row, text, text_input};
-use iced::{Center, Element, Fill, Task};
+use iced::widget::Column;
+use iced::{Element, Fill, Task};
 use serde::{Deserialize, Serialize};
 
-use super::{Ctx, Load, PageMsg, Section, View, fetch};
+use super::{Ctx, Load, PageMsg, Section, fetch};
 use crate::app::{App, Message as AppMessage};
 use crate::artwork::ArtKey;
 use crate::failure::Failure;
 use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
-use crate::{theme, widgets};
+
+mod view;
 
 /// How many results a filter shows.
 pub const RESULTS: u32 = 200;
@@ -230,12 +230,7 @@ impl State {
                 self.filters = Load::Failed("That collection has been deleted.".into());
                 return Task::none();
             }
-            Message::Saved(Some(filter)) => {
-                self.name.clone_from(&filter.name);
-                self.filter = filter;
-                self.saved = true;
-                return Task::batch([self.load_filters(ctx), self.load_results(ctx)]);
-            }
+            Message::Saved(Some(filter)) => return self.saved(filter, ctx),
             Message::Kind(kind) => {
                 if kind == self.filter.kind {
                     return Task::none();
@@ -262,20 +257,7 @@ impl State {
                 self.name = name;
                 return Task::none();
             }
-            Message::Save => {
-                let name = self.name.trim().to_owned();
-                if name.is_empty() {
-                    return Task::none();
-                }
-                let mut filter = self.filter.clone();
-                filter.name = name;
-                if filter.id.is_empty() {
-                    filter.id = aoide_store::new_id();
-                }
-                self.filter = filter.clone();
-                self.saved = true;
-                return Task::done(AppMessage::Collections(Msg::Save(filter)));
-            }
+            Message::Save => return self.save(),
             Message::Delete => {
                 self.confirm_delete = true;
                 return Task::none();
@@ -292,6 +274,31 @@ impl State {
         self.load_results(ctx)
     }
 
+    /// The saved collection this page opens, read from the config.
+    fn saved(&mut self, filter: SavedFilter, ctx: &Ctx<'_>) -> Task<AppMessage> {
+        self.name.clone_from(&filter.name);
+        self.filter = filter;
+        self.saved = true;
+        Task::batch([self.load_filters(ctx), self.load_results(ctx)])
+    }
+
+    /// Saves the filter under the name typed, as a new collection or over
+    /// the one this page is.
+    fn save(&mut self) -> Task<AppMessage> {
+        let name = self.name.trim().to_owned();
+        if name.is_empty() {
+            return Task::none();
+        }
+        let mut filter = self.filter.clone();
+        filter.name = name;
+        if filter.id.is_empty() {
+            filter.id = aoide_store::new_id();
+        }
+        self.filter = filter.clone();
+        self.saved = true;
+        Task::done(AppMessage::Collections(Msg::Save(filter)))
+    }
+
     pub fn artwork(&self) -> Vec<ArtKey> {
         match self.filter.kind {
             Kind::Songs => self
@@ -305,193 +312,6 @@ impl State {
                 .map(|t| t.iter().filter_map(|t| t.art.clone()).collect())
                 .unwrap_or_default(),
         }
-    }
-
-    pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, AppMessage> {
-        let key = view.key;
-        let message = move |m: Message| AppMessage::Page(key, PageMsg::Collections(m));
-        let title = if self.saved {
-            self.filter.name.as_str()
-        } else {
-            "New collection"
-        };
-        let chip = |label: String, on: bool, m: Message| -> Element<'a, AppMessage> {
-            button(text(label).size(13))
-                .style(if on { theme::filled } else { theme::tonal })
-                .padding([5, 12])
-                .on_press(message(m))
-                .into()
-        };
-        let kinds = row![
-            chip(
-                "Songs".into(),
-                self.filter.kind == Kind::Songs,
-                Message::Kind(Kind::Songs)
-            ),
-            chip(
-                "Albums".into(),
-                self.filter.kind == Kind::Albums,
-                Message::Kind(Kind::Albums)
-            ),
-        ]
-        .spacing(8);
-        let mut body = column![
-            widgets::title_bar(title, view.can_go_back),
-            widgets::secondary(self.filter.summary()).size(13),
-            kinds,
-        ]
-        .spacing(14);
-        match &self.filters {
-            Load::Loading => body = body.push(widgets::loading()),
-            Load::Failed(error) => body = body.push(view.failure(error)),
-            Load::Ready(filters) => {
-                let group = |label: &'a str, chips: Vec<Element<'a, AppMessage>>| {
-                    column![
-                        widgets::secondary(label).size(12).font(widgets::SEMIBOLD),
-                        row(chips).spacing(6).wrap().vertical_spacing(6),
-                    ]
-                    .spacing(6)
-                };
-                if !filters.genres.is_empty() {
-                    body = body.push(group(
-                        "Genres",
-                        filters
-                            .genres
-                            .iter()
-                            .map(|g| {
-                                chip(
-                                    g.name.clone(),
-                                    self.filter.genre_ids.contains(&g.id),
-                                    Message::Genre(g.id.clone(), g.name.clone()),
-                                )
-                            })
-                            .collect(),
-                    ));
-                }
-                if !filters.years.is_empty() {
-                    body = body.push(group(
-                        "Years",
-                        filters
-                            .years
-                            .iter()
-                            .map(|y| {
-                                chip(
-                                    y.to_string(),
-                                    self.filter.years.contains(y),
-                                    Message::Year(*y),
-                                )
-                            })
-                            .collect(),
-                    ));
-                }
-                if !filters.tags.is_empty() {
-                    body = body.push(group(
-                        "Tags",
-                        filters
-                            .tags
-                            .iter()
-                            .map(|t| {
-                                chip(
-                                    t.clone(),
-                                    self.filter.tags.contains(t),
-                                    Message::Tag(t.clone()),
-                                )
-                            })
-                            .collect(),
-                    ));
-                }
-            }
-        }
-        body = body.push(
-            widgets::switch("Only favourites", self.filter.favourites_only, move |on| {
-                message(Message::Favourites(on))
-            })
-            .width(iced::Length::Fixed(260.0)),
-        );
-        let ready = !self.name.trim().is_empty();
-        let mut save = row![
-            text_input("Collection name", &self.name)
-                .on_input(move |s| message(Message::Name(s)))
-                .on_submit_maybe(ready.then(|| message(Message::Save)))
-                .padding(8)
-                .style(theme::field),
-            button(text(if self.saved {
-                "Save changes"
-            } else {
-                "Save as collection"
-            }))
-            .style(theme::filled)
-            .padding([8, 14])
-            .on_press_maybe(ready.then(|| message(Message::Save))),
-        ]
-        .spacing(10)
-        .align_y(Center);
-        if self.saved {
-            save = save.push(if self.confirm_delete {
-                Element::from(
-                    row![
-                        text("Delete this collection?").size(13),
-                        button(text("Delete").size(13))
-                            .style(theme::destructive)
-                            .padding([6, 12])
-                            .on_press(message(Message::ConfirmDelete(true))),
-                        button(text("Cancel").size(13))
-                            .style(theme::tonal)
-                            .padding([6, 12])
-                            .on_press(message(Message::ConfirmDelete(false))),
-                    ]
-                    .spacing(8)
-                    .align_y(Center),
-                )
-            } else {
-                button(text("Delete"))
-                    .style(theme::destructive)
-                    .padding([8, 14])
-                    .on_press(message(Message::Delete))
-                    .into()
-            });
-        }
-        body = body.push(save);
-        body = body.push(match self.filter.kind {
-            Kind::Songs => match &self.songs {
-                Load::Loading => widgets::loading(),
-                Load::Failed(error) => view.failure(error),
-                Load::Ready(songs) if songs.is_empty() => {
-                    widgets::empty("Nothing matches this filter.")
-                }
-                Load::Ready(songs) => column![
-                    widgets::play_buttons(songs, format!("{key}:collection"), PlaySource::Unknown),
-                    widgets::track_list(
-                        songs,
-                        view,
-                        widgets::ListStyle {
-                            numbered: false,
-                            show_album: true,
-                        },
-                        PlaySource::Unknown,
-                    ),
-                ]
-                .spacing(12)
-                .into(),
-            },
-            Kind::Albums => match &self.albums {
-                Load::Loading => widgets::loading(),
-                Load::Failed(error) => view.failure(error),
-                Load::Ready(tiles) if tiles.is_empty() => {
-                    widgets::empty("Nothing matches this filter.")
-                }
-                Load::Ready(tiles) => {
-                    widgets::tile_grid(tiles, view.artwork, super::home::open_album)
-                }
-            },
-        });
-        if let Some(menu) = view
-            .menu
-            .filter(|m| m.anchor == format!("{key}:collection"))
-        {
-            body = body.push(widgets::menu_strip(menu, view));
-        }
-        widgets::page(body)
     }
 }
 

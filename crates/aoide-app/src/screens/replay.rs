@@ -199,20 +199,11 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
-        let key = view.key;
-        let periods = row(ReplayPeriod::ALL.into_iter().map(|period| {
-            button(text(period_title(period)).size(14))
-                .style(if period == self.period {
-                    theme::filled
-                } else {
-                    theme::tonal
-                })
-                .padding([6, 14])
-                .on_press(App::Page(key, PageMsg::Replay(Message::Period(period))))
-                .into()
-        }))
-        .spacing(8);
-        let mut body = column![widgets::title_bar("Replay", view.can_go_back), periods].spacing(24);
+        let mut body = column![
+            widgets::title_bar("Replay", view.can_go_back),
+            self.periods(view.key)
+        ]
+        .spacing(24);
         let recap = match &self.recap {
             Load::Loading => return widgets::page(body.push(widgets::loading())),
             Load::Failed(error) => return widgets::page(body.push(view.failure(error))),
@@ -223,47 +214,7 @@ impl State {
                 "Nothing to Replay yet. Play some music and it'll add up here.",
             )));
         }
-        let (time, time_label) = listened(recap);
-        let tiles = [
-            (
-                counted(recap.total_plays, "Play", "Plays"),
-                thousands(recap.total_plays),
-            ),
-            (time_label, time),
-            (
-                counted(recap.distinct_tracks, "Song", "Songs"),
-                thousands(recap.distinct_tracks),
-            ),
-            (
-                counted(recap.distinct_artists, "Artist", "Artists"),
-                thousands(recap.distinct_artists),
-            ),
-        ]
-        .into_iter()
-        .map(|(label, value)| {
-            container(
-                column![
-                    text(value).size(30).font(widgets::BOLD),
-                    widgets::secondary(label).size(13),
-                ]
-                .spacing(2),
-            )
-            .padding(14)
-            .width(Fill)
-            .style(theme::menu)
-            .into()
-        });
-        let mut totals = column![
-            grid(tiles)
-                .columns(4)
-                .spacing(10)
-                .height(grid::Sizing::EvenlyDistribute(iced::Length::Fixed(84.0)))
-        ]
-        .spacing(10);
-        if let Some(busiest) = busiest(recap) {
-            totals = totals.push(widgets::secondary(busiest).size(13));
-        }
-        body = body.push(totals);
+        body = body.push(totals(recap));
         if !self.top.is_empty() {
             body = body.push(
                 column![
@@ -304,6 +255,68 @@ impl State {
         }
         widgets::page(body)
     }
+
+    /// This month, this year, all time: the one shown filled.
+    fn periods<'a>(&self, key: u64) -> Element<'a, App> {
+        row(ReplayPeriod::ALL.into_iter().map(|period| {
+            button(text(period_title(period)).size(14))
+                .style(if period == self.period {
+                    theme::filled
+                } else {
+                    theme::tonal
+                })
+                .padding([6, 14])
+                .on_press(App::Page(key, PageMsg::Replay(Message::Period(period))))
+                .into()
+        }))
+        .spacing(8)
+        .into()
+    }
+}
+
+/// The four totals as tiles, and the busiest day under them.
+fn totals<'a>(recap: &Recap) -> Column<'a, App> {
+    let (time, time_label) = listened(recap);
+    let tiles = [
+        (
+            counted(recap.total_plays, "Play", "Plays"),
+            thousands(recap.total_plays),
+        ),
+        (time_label, time),
+        (
+            counted(recap.distinct_tracks, "Song", "Songs"),
+            thousands(recap.distinct_tracks),
+        ),
+        (
+            counted(recap.distinct_artists, "Artist", "Artists"),
+            thousands(recap.distinct_artists),
+        ),
+    ]
+    .into_iter()
+    .map(|(label, value)| {
+        container(
+            column![
+                text(value).size(30).font(widgets::BOLD),
+                widgets::secondary(label).size(13),
+            ]
+            .spacing(2),
+        )
+        .padding(14)
+        .width(Fill)
+        .style(theme::menu)
+        .into()
+    });
+    let mut totals = column![
+        grid(tiles)
+            .columns(4)
+            .spacing(10)
+            .height(grid::Sizing::EvenlyDistribute(iced::Length::Fixed(84.0)))
+    ]
+    .spacing(10);
+    if let Some(busiest) = busiest(recap) {
+        totals = totals.push(widgets::secondary(busiest).size(13));
+    }
+    totals
 }
 
 /// A numbered list of names with their play counts.

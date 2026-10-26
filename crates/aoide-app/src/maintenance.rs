@@ -221,42 +221,12 @@ impl App {
                 state.file = None;
                 Task::none()
             }
-            Message::Export => {
-                let path = resolve(&state.path());
-                let contents = export(&self.config);
-                Task::perform(
-                    async move {
-                        tokio::task::spawn_blocking(move || {
-                            write_whole(&path, &contents)
-                                .map(|()| format!("Saved to {}.", path.display()))
-                                .map_err(|e| format!("The file couldn't be written: {e}."))
-                        })
-                        .await
-                        .unwrap_or_else(|e| Err(e.to_string()))
-                    },
-                    |r| AppMessage::System(Message::Exported(r)),
-                )
-            }
+            Message::Export => export_task(resolve(&state.path()), export(&self.config)),
             Message::Exported(result) => {
                 state.file = Some(result);
                 Task::none()
             }
-            Message::Import => {
-                let path = resolve(&state.path());
-                let config = self.config.clone();
-                Task::perform(
-                    async move {
-                        tokio::task::spawn_blocking(move || {
-                            let contents = fs::read_to_string(&path)
-                                .map_err(|e| format!("The file couldn't be read: {e}."))?;
-                            import(&config, &contents).map(Box::new)
-                        })
-                        .await
-                        .unwrap_or_else(|e| Err(e.to_string()))
-                    },
-                    |r| AppMessage::System(Message::Imported(r)),
-                )
-            }
+            Message::Import => import_task(resolve(&state.path()), self.config.clone()),
             Message::Imported(result) => {
                 match result {
                     Ok(config) => {
@@ -274,29 +244,7 @@ impl App {
                 self.save_config();
                 Task::none()
             }
-            Message::Clear(index) => {
-                let Some(cache) = self
-                    .paths
-                    .as_ref()
-                    .and_then(|p| caches(p).into_iter().nth(index))
-                else {
-                    return Task::none();
-                };
-                if cache.name == "Artwork" {
-                    self.artwork.clear();
-                }
-                let name = cache.name;
-                Task::perform(
-                    async move {
-                        tokio::task::spawn_blocking(move || {
-                            clear_dir(&cache.dir).map_err(|e| e.to_string())
-                        })
-                        .await
-                        .unwrap_or_else(|e| Err(e.to_string()))
-                    },
-                    move |r| AppMessage::System(Message::Cleared(name, r)),
-                )
-            }
+            Message::Clear(index) => self.clear_cache(index),
             Message::Cleared(name, result) => {
                 state.cleared = Some(match result {
                     Ok((0, _)) => Ok(format!("{name}: nothing to clear.")),
@@ -312,6 +260,31 @@ impl App {
         }
     }
 
+    /// Clears the cache at `index` of [`caches`].
+    fn clear_cache(&mut self, index: usize) -> Task<AppMessage> {
+        let Some(cache) = self
+            .paths
+            .as_ref()
+            .and_then(|p| caches(p).into_iter().nth(index))
+        else {
+            return Task::none();
+        };
+        if cache.name == "Artwork" {
+            self.artwork.clear();
+        }
+        let name = cache.name;
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    clear_dir(&cache.dir).map_err(|e| e.to_string())
+                })
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()))
+            },
+            move |r| AppMessage::System(Message::Cleared(name, r)),
+        )
+    }
+
     /// An import replaced the settings: save them and hand each to what it
     /// governs.
     fn settings_imported(&mut self) {
@@ -325,8 +298,47 @@ impl App {
     }
 }
 
+/// Writes the exported settings to `path`, off the UI thread.
+fn export_task(path: PathBuf, contents: String) -> Task<AppMessage> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                write_whole(&path, &contents)
+                    .map(|()| format!("Saved to {}.", path.display()))
+                    .map_err(|e| format!("The file couldn't be written: {e}."))
+            })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+        },
+        |r| AppMessage::System(Message::Exported(r)),
+    )
+}
+
+/// Reads settings from `path` over `config`, off the UI thread.
+fn import_task(path: PathBuf, config: Config) -> Task<AppMessage> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let contents = fs::read_to_string(&path)
+                    .map_err(|e| format!("The file couldn't be read: {e}."))?;
+                import(&config, &contents).map(Box::new)
+            })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()))
+        },
+        |r| AppMessage::System(Message::Imported(r)),
+    )
+}
+
 /// Settings → System → Settings File, Logging and Caches.
 pub fn settings_sections(app: &App) -> Element<'_, AppMessage> {
+    column![file_section(app), logging_section(app), cache_section(app)]
+        .spacing(24)
+        .into()
+}
+
+/// The settings file: where it goes, Export and Import.
+fn file_section(app: &App) -> Element<'_, AppMessage> {
     let state = &app.system.maintenance;
     let send = |m: Message| AppMessage::System(m);
     let path = state.path.clone().unwrap_or_else(default_path);
@@ -351,15 +363,18 @@ pub fn settings_sections(app: &App) -> Element<'_, AppMessage> {
     if let Some(Ok(words) | Err(words)) = &state.file {
         file_rows = file_rows.push(widgets::secondary(words.as_str()).size(13));
     }
-    let file = crate::screens::settings::section(
+    crate::screens::settings::section(
         "Settings file",
         file_rows,
         "Export writes these settings to a JSON file, to keep or to bring to another computer; \
          Import reads one back. The file never holds your server, account, password, token or \
          OpenRouter key.",
-    );
+    )
+}
 
-    let logging = crate::screens::settings::section(
+/// How much the log says.
+fn logging_section(app: &App) -> Element<'_, AppMessage> {
+    crate::screens::settings::section(
         "Logging",
         column![
             row![
@@ -375,8 +390,13 @@ pub fn settings_sections(app: &App) -> Element<'_, AppMessage> {
          keeps in its journal. Warnings is the default; Debugging says the most. Other parts of \
          the app never log more than warnings, and nothing logged names your server, token or \
          key.",
-    );
+    )
+}
 
+/// Each cache with its Clear, and what the last one cleared.
+fn cache_section(app: &App) -> Element<'_, AppMessage> {
+    let state = &app.system.maintenance;
+    let send = |m: Message| AppMessage::System(m);
     let mut cache_rows = column![];
     if let Some(paths) = &app.paths {
         for (index, cache) in caches(paths).into_iter().enumerate() {
@@ -405,13 +425,12 @@ pub fn settings_sections(app: &App) -> Element<'_, AppMessage> {
     if let Some(Ok(words) | Err(words)) = &state.cleared {
         cache_rows = cache_rows.push(widgets::secondary(words.as_str()).size(13));
     }
-    let caches = crate::screens::settings::section(
+    crate::screens::settings::section(
         "Caches",
         cache_rows,
         "The server's answers aren't kept on disk, so there is nothing of theirs to clear. Your \
          listening history and playlists are not a cache and stay.",
-    );
-    column![file, logging, caches].spacing(24).into()
+    )
 }
 
 #[cfg(test)]

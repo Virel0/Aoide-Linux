@@ -59,7 +59,6 @@ pub fn item<'a>(
 }
 
 fn more(app: &App) -> Element<'_, Message> {
-    let sleep = |choice: Choice| Message::Listening(Msg::Sleep(choice));
     let mut list = column![
         item(
             Some(Icon::Equalizer),
@@ -87,6 +86,13 @@ fn more(app: &App) -> Element<'_, Message> {
         heading("What you're doing"),
     ]
     .spacing(2);
+    list = activity_items(app, list);
+    list = list.push(rule::horizontal(1)).push(heading("Sleep timer"));
+    sleep_items(app, list).into()
+}
+
+/// What you're doing: None, then each activity, the one set checked.
+fn activity_items<'a>(app: &App, mut list: Column<'a, Message>) -> Column<'a, Message> {
     // None first and always there: taking a tag off is as cheap as putting
     // it on, since one left on files every later play under it.
     let activity = Activity::parse(app.config.activity.as_deref());
@@ -102,18 +108,21 @@ fn more(app: &App) -> Element<'_, Message> {
             Message::Listening(Msg::Activity(Some(option))),
         ));
     }
-    list = list
-        .push(
-            container(
-                crate::widgets::secondary(
-                    "Each song you start is tagged with it, on this computer only.",
-                )
-                .size(12),
+    list.push(
+        container(
+            crate::widgets::secondary(
+                "Each song you start is tagged with it, on this computer only.",
             )
-            .padding([0, 10]),
+            .size(12),
         )
-        .push(rule::horizontal(1))
-        .push(heading("Sleep timer"));
+        .padding([0, 10]),
+    )
+}
+
+/// The sleep timer: Turn Off while one runs, the ends of the song and the
+/// album, the preset minutes, and minutes typed.
+fn sleep_items<'a>(app: &'a App, mut list: Column<'a, Message>) -> Column<'a, Message> {
+    let sleep = |choice: Choice| Message::Listening(Msg::Sleep(choice));
     if let Some(timer) = &app.listening.sleep {
         let left = match timer {
             SleepTimer::At { .. } => format!("{} left", timer.label(app.now())),
@@ -155,7 +164,7 @@ fn more(app: &App) -> Element<'_, Message> {
     }
     let typed = &app.listening.sleep_minutes;
     let valid = crate::playback::sleep_timer::parse_minutes(typed).is_some();
-    list = list.push(
+    list.push(
         container(
             row![
                 text_input("Minutes", typed)
@@ -173,8 +182,7 @@ fn more(app: &App) -> Element<'_, Message> {
             .align_y(Center),
         )
         .padding([4, 10]),
-    );
-    list.into()
+    )
 }
 
 /// What the player bar says under the song: the sleep timer while it is
@@ -377,34 +385,7 @@ pub fn transcode_rows<'a>(transcode: &crate::sound::Transcode) -> Element<'a, Me
     ]
     .spacing(8);
     if t.enabled {
-        let bitrates: Vec<String> = Transcode::BITRATES
-            .iter()
-            .map(|b| format!("{b} kbps"))
-            .collect();
-        rows = rows.push(
-            row![
-                text("Bitrate").width(Fill),
-                pick_list(
-                    bitrates,
-                    Some(format!("{} kbps", t.bitrate_kbps)),
-                    move |label: String| {
-                        let kbps = label
-                            .split(' ')
-                            .next()
-                            .and_then(|n| n.parse().ok())
-                            .unwrap_or(t.bitrate_kbps);
-                        set(Transcode {
-                            bitrate_kbps: kbps,
-                            ..t
-                        })
-                    }
-                )
-                .padding([6, 10])
-                .text_size(14)
-                .width(Length::Fixed(160.0)),
-            ]
-            .align_y(Center),
-        );
+        rows = rows.push(bitrate_row(t));
         rows = rows.push(
             row![
                 text("Format").width(Fill),
@@ -419,4 +400,36 @@ pub fn transcode_rows<'a>(transcode: &crate::sound::Transcode) -> Element<'a, Me
         );
     }
     rows.into()
+}
+
+/// Transcoding's bitrate, picked from the ones offered.
+fn bitrate_row<'a>(t: crate::sound::Transcode) -> Element<'a, Message> {
+    use crate::sound::Transcode;
+    let bitrates: Vec<String> = Transcode::BITRATES
+        .iter()
+        .map(|b| format!("{b} kbps"))
+        .collect();
+    row![
+        text("Bitrate").width(Fill),
+        pick_list(
+            bitrates,
+            Some(format!("{} kbps", t.bitrate_kbps)),
+            move |label: String| {
+                let kbps = label
+                    .split(' ')
+                    .next()
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(t.bitrate_kbps);
+                Message::Listening(Msg::Transcode(Transcode {
+                    bitrate_kbps: kbps,
+                    ..t
+                }))
+            }
+        )
+        .padding([6, 10])
+        .text_size(14)
+        .width(Length::Fixed(160.0)),
+    ]
+    .align_y(Center)
+    .into()
 }

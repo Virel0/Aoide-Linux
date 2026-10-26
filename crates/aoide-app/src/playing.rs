@@ -5,8 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use aoide_audio::{EngineEvent, RepeatMode};
-use aoide_jellyfin::{Item, JellyfinClient};
+use aoide_audio::EngineEvent;
 use aoide_sidecar::{AudioAnalysisResponse, SidecarClient, SidecarError, SoundBoundsResponse};
 use aoide_store::PlaySource;
 use iced::Task;
@@ -14,10 +13,13 @@ use iced::Task;
 use crate::actions::PlayRequest;
 use crate::app::{App, Message};
 use crate::playback::Enqueue;
-use crate::playback::infinity::{self, TopUp};
-use crate::playback::report::Report;
 use crate::playback::tracks::{self, TrackMeta};
-use crate::session;
+
+mod report;
+mod saved;
+mod top_up;
+
+pub use report::{leave_server, report_on_quit};
 
 /// How long queueing waits for the sidecar's measurements before playing
 /// without them.
@@ -101,51 +103,6 @@ pub fn next_batch(
         .filter(|id| !asked.contains(id))
         .take(MEASURE_AHEAD)
         .collect()
-}
-
-/// The saved queue, read back: ids in order, where it was, how far in.
-#[derive(Debug, Clone)]
-pub struct Saved {
-    pub items: Vec<Item>,
-    pub position: usize,
-    pub elapsed_ms: u64,
-}
-
-/// Reads the saved queue and fetches its tracks. The saved position names a
-/// track; if some tracks have gone from the server since, the position follows
-/// that track rather than its old index.
-pub async fn read_saved(
-    store: crate::store_worker::StoreHandle,
-    client: JellyfinClient,
-) -> Result<Option<Saved>, aoide_jellyfin::Error> {
-    let saved = store
-        .call(|w| w.store.local_queue().ok().flatten())
-        .await
-        .flatten();
-    let Some(saved) = saved else {
-        return Ok(None);
-    };
-    let ids = saved.track_id_list();
-    if ids.is_empty() {
-        return Ok(None);
-    }
-    let position = usize::try_from(saved.position.max(0))
-        .unwrap_or(0)
-        .min(ids.len() - 1);
-    let current = ids[position].clone();
-    let items = client.items_by_ids(&ids).await?;
-    if items.is_empty() {
-        return Ok(None);
-    }
-    let position = items
-        .iter()
-        .position(|item| item.id == current)
-        .unwrap_or(0);
-    Ok(Some(Saved {
-        items,
-        position,
-        elapsed_ms: u64::try_from(saved.elapsed_ms.max(0)).unwrap_or(0),
-    }))
 }
 
 impl App {
@@ -313,98 +270,27 @@ impl App {
         self.measure_queue()
     }
 
-    /// At launch: the queue as it was left, held, not playing.
-    pub(crate) fn restore_queue(&self) -> Task<Message> {
-        let Some(signed) = &self.session else {
-            return Task::none();
-        };
-        if self.playback.queue().is_some_and(|q| !q.is_empty()) {
-            return Task::none();
-        }
-        let store = self.store.clone();
-        let client = signed.connection.client.clone();
-        let generation = signed.play_generation;
-        Task::perform(read_saved(store, client), move |result| match result {
-            Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
-            Ok(Some(saved)) => Message::Restore(Box::new(Pending {
-                tracks: saved.items.iter().map(TrackMeta::from_item).collect(),
-                how: Destination::Restore {
-                    position: saved.position,
-                    elapsed_ms: saved.elapsed_ms,
-                },
-                generation,
-            })),
-            _ => Message::Ignore,
-        })
-    }
-
-    /// Writes the queue as it stands, when it has changed enough to matter:
-    /// through the handoff broadcast, which settles a burst of changes into
-    /// one row and publishes it (see `handoff`).
-    pub(crate) fn save_queue(&self) -> Task<Message> {
-        self.broadcast_queue()
-    }
-
     pub(crate) fn engine_event(&mut self, event: EngineEvent) -> Task<Message> {
         if let Err(error) = self.playback.handle(&event) {
             self.notice = Some(error);
         }
         let now = self.now();
-        let mut tasks = Vec::new();
-        match &event {
-            EngineEvent::TrackStarted { id } => {
-                if let Some(queued) = self.playback.queued(*id).cloned() {
-                    let reports = self
-                        .session
-                        .as_mut()
-                        .map(|s| s.reporter.started(*id, &queued.meta.id, now))
-                        .unwrap_or_default();
-                    tasks.push(self.send_reports(reports));
-                    let entry = *id;
-                    let row = queued.meta.track_ref(aoide_store::now_millis());
-                    let source = queued.source;
-                    let at = aoide_store::now_millis();
-                    let activity = aoide_store::Activity::parse(self.config.activity.as_deref());
-                    // Private listening opens no play events.
-                    if !self.listening.private {
-                        self.store.send(move |w| {
-                            let _ = w
-                                .recorder
-                                .started(&w.store, entry, &row, source, activity, at);
-                        });
-                    }
-                    tasks.push(self.check_infinity());
-                    tasks.push(self.save_queue());
-                    tasks.push(self.track_changed());
-                }
-            }
+        let task = match &event {
+            EngineEvent::TrackStarted { id } => self.track_started(*id, now),
             EngineEvent::TrackEnded { id } => {
                 let entry = *id;
                 self.store.send(move |w| w.recorder.ended(entry));
+                Task::none()
             }
-            EngineEvent::Position { id, ms } => {
-                let (entry, ms) = (*id, *ms);
-                self.store.send(move |w| w.recorder.progress(entry, ms));
-                let report = self
-                    .session
-                    .as_mut()
-                    .and_then(|s| s.reporter.position(entry, ms, now));
-                tasks.push(self.follow_lyrics());
-                if let Some(report) = report {
-                    tasks.push(self.send_reports(vec![report]));
-                    // Every ten seconds, with the report: the store skips a
-                    // save that moved less than its own threshold.
-                    tasks.push(self.save_queue());
-                }
-            }
+            EngineEvent::Position { id, ms } => self.position(*id, *ms, now),
             EngineEvent::Finished => {
                 let report = self.session.as_mut().and_then(|s| s.reporter.stopped());
-                tasks.push(self.send_reports(report.into_iter().collect()));
+                let reported = self.send_reports(report.into_iter().collect());
                 let at = aoide_store::now_millis();
                 self.store.send(move |w| {
                     let _ = w.recorder.stopped(&w.store, at);
                 });
-                tasks.push(self.save_queue());
+                Task::batch([reported, self.save_queue()])
             }
             EngineEvent::Error { id, message } => {
                 let title = self.playback.queued(*id).map_or_else(
@@ -412,206 +298,71 @@ impl App {
                     |q| format!("\u{201c}{}\u{201d}", q.meta.title),
                 );
                 self.notice = Some(format!("{title} couldn't be played: {message}"));
+                Task::none()
             }
-            EngineEvent::DeviceError { .. } | EngineEvent::DeviceRestored => {}
-        }
-        tasks.push(self.sleep_on_event(&event));
-        Task::batch(tasks)
+            EngineEvent::DeviceError { .. } | EngineEvent::DeviceRestored => Task::none(),
+        };
+        Task::batch([task, self.sleep_on_event(&event)])
     }
 
-    /// Pause and resume are reported straight away.
-    pub(crate) fn report_pause_state(&mut self) -> Task<Message> {
-        let paused = !self.playback.is_playing();
-        let now = self.now();
+    /// A track started: reported, its play event opened (unless listening
+    /// privately), and what follows a new track.
+    fn track_started(&mut self, entry: aoide_audio::EntryId, now: u64) -> Task<Message> {
+        let Some(queued) = self.playback.queued(entry).cloned() else {
+            return Task::none();
+        };
+        let reports = self
+            .session
+            .as_mut()
+            .map(|s| s.reporter.started(entry, &queued.meta.id, now))
+            .unwrap_or_default();
+        let reported = self.send_reports(reports);
+        let row = queued.meta.track_ref(aoide_store::now_millis());
+        let source = queued.source;
+        let at = aoide_store::now_millis();
+        let activity = aoide_store::Activity::parse(self.config.activity.as_deref());
+        // Private listening opens no play events.
+        if !self.listening.private {
+            self.store.send(move |w| {
+                let _ = w
+                    .recorder
+                    .started(&w.store, entry, &row, source, activity, at);
+            });
+        }
+        Task::batch([
+            reported,
+            self.check_infinity(),
+            self.save_queue(),
+            self.track_changed(),
+        ])
+    }
+
+    /// Four times a second: the play event's progress, the lit lyric line,
+    /// and every ten seconds a report.
+    fn position(&mut self, entry: aoide_audio::EntryId, ms: u64, now: u64) -> Task<Message> {
+        self.store.send(move |w| w.recorder.progress(entry, ms));
         let report = self
             .session
             .as_mut()
-            .and_then(|s| s.reporter.paused(paused, now));
-        self.send_reports(report.into_iter().collect())
-    }
-
-    pub(crate) fn send_reports(&self, reports: Vec<Report>) -> Task<Message> {
-        let Some(signed) = &self.session else {
-            return Task::none();
+            .and_then(|s| s.reporter.position(entry, ms, now));
+        let lyrics = self.follow_lyrics();
+        let Some(report) = report else {
+            return lyrics;
         };
-        // Private listening: Jellyfin hears nothing.
-        if self.listening.private {
-            return Task::none();
-        }
-        Task::batch(reports.into_iter().map(|report| {
-            let client = signed.connection.client.clone();
-            Task::perform(send_report(client, report), |result| match result {
-                Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
-                _ => Message::Ignore,
-            })
-        }))
+        // Every ten seconds, with the report: the store skips a save that
+        // moved less than its own threshold.
+        Task::batch([lyrics, self.send_reports(vec![report]), self.save_queue()])
     }
-
-    /// Tops the queue up if Infinity is on and it is running short.
-    pub(crate) fn check_infinity(&mut self) -> Task<Message> {
-        let enabled = self.config.settings.infinity;
-        let repeat_off = self.playback.repeat() == RepeatMode::Off;
-        let current = self
-            .playback
-            .current()
-            .map(|(entry, q)| (entry, q.meta.id.clone()));
-        let ahead = self.playback.ahead();
-        let length = self.playback.queue().map_or(0, |q| q.entries().len());
-        let known = self.playback.known_ids();
-        let queue = self.playback.up_next_ids();
-        let store = self.store.clone();
-        let Some(signed) = self.session.as_mut() else {
-            return Task::none();
-        };
-        if !signed.infinity.should_fire(
-            enabled,
-            repeat_off,
-            current.as_ref().map(|c| c.0),
-            ahead,
-            length,
-        ) {
-            return Task::none();
-        }
-        let Some((_, seed)) = current else {
-            return Task::none();
-        };
-        if self.config.settings.infinity_albums {
-            return self.top_up_with_albums();
-        }
-        let ask = infinity::Ask {
-            seed,
-            queue,
-            known,
-            use_sidecar: signed.next_available,
-        };
-        let client = signed.connection.client.clone();
-        let sidecar = signed.sidecar.clone();
-        Task::perform(
-            infinity::top_up(client, sidecar, store, ask, aoide_store::now_millis()),
-            |found| Message::ToppedUp(Box::new(found)),
-        )
-    }
-
-    pub(crate) fn topped_up(&mut self, found: TopUp) -> Task<Message> {
-        let Some(signed) = self.session.as_mut() else {
-            return Task::none();
-        };
-        signed.infinity.finished();
-        if found.sidecar_absent {
-            signed.next_available = false;
-        }
-        if found.items.is_empty() {
-            return Task::none();
-        }
-        let pending = Pending {
-            tracks: found.items.iter().map(TrackMeta::from_item).collect(),
-            how: Destination::Play {
-                how: Enqueue::Extend,
-                source: PlaySource::Unknown,
-                reasons: found.reasons,
-            },
-            generation: signed.play_generation,
-        };
-        self.measure_then_queue(pending)
-    }
-
-    /// Infinity was switched on: look at the queue now, not at the next track.
-    pub(crate) fn infinity_switched(&mut self) -> Task<Message> {
-        if let Some(signed) = self.session.as_mut() {
-            signed.infinity.reset();
-        }
-        self.check_infinity()
-    }
-
-    /// Stops reporting: signing out or quitting. Returns the report to send.
-    pub(crate) fn final_report(&mut self) -> Option<Report> {
-        let report = self.session.as_mut().and_then(|s| s.reporter.stopped());
-        report.filter(|_| !self.listening.private)
-    }
-
-    /// Hands what is playing to the desktop. The cover goes as the cached
-    /// file, never as a server URL: that one carries the token.
-    pub(crate) fn publish(&self) {
-        let current = self.playback.current().map(|(_, q)| &q.meta);
-        let art_url = current
-            .and_then(|m| m.artwork.as_ref())
-            .zip(self.artwork.dir())
-            .and_then(|((id, tag), dir)| {
-                crate::integration::art_url(
-                    &dir.join(crate::artwork::ArtKey::new(id, tag).file_name()),
-                )
-            });
-        crate::integration::publish(
-            &self.desktop,
-            &crate::integration::NowPlaying {
-                track_id: current.map(|m| m.id.clone()),
-                title: current.map(|m| m.title.clone()).unwrap_or_default(),
-                artist: current.map(|m| m.artist.clone()).unwrap_or_default(),
-                album_artist: current.and_then(|m| m.album_artist.clone()),
-                album: current.map(|m| m.album.clone()).unwrap_or_default(),
-                track_number: current
-                    .and_then(|m| m.track_number)
-                    .and_then(|n| u32::try_from(n).ok()),
-                art_url,
-                length_ms: current
-                    .and_then(|m| m.duration_ms)
-                    .map(|ms| ms.max(0) as u64),
-                position_ms: self.playback.position_ms(),
-                playing: self.playback.is_playing(),
-                has_next: self.playback.ahead() > 0,
-                shuffle: self.playback.is_shuffled(),
-                repeat: self.playback.repeat(),
-                volume: self.playback.volume(),
-            },
-        );
-    }
-}
-
-/// One report to Jellyfin.
-pub async fn send_report(
-    client: JellyfinClient,
-    report: Report,
-) -> Result<(), aoide_jellyfin::Error> {
-    let ms = |ms: u64| Duration::from_millis(ms);
-    match report {
-        Report::Started { item, position_ms } => {
-            client.report_playback_started(&item, ms(position_ms)).await
-        }
-        Report::Progress {
-            item,
-            position_ms,
-            paused,
-        } => {
-            client
-                .report_playback_progress(&item, ms(position_ms), paused)
-                .await
-        }
-        Report::Stopped { item, position_ms } => {
-            client.report_playback_stopped(&item, ms(position_ms)).await
-        }
-    }
-}
-
-/// The last report and the sign-out together, inside the grace period: the
-/// token has to be alive for both, and neither may hold up the screen.
-pub async fn leave_server(client: JellyfinClient, report: Option<Report>) {
-    let _ = tokio::time::timeout(session::SIGN_OUT_GRACE, async {
-        if let Some(report) = report {
-            let _ = send_report(client.clone(), report).await;
-        }
-        let _ = client.sign_out().await;
-    })
-    .await;
-}
-
-/// The window is closing: the last report gets a moment, no more.
-pub async fn report_on_quit(client: JellyfinClient, report: Report) {
-    let _ = tokio::time::timeout(Duration::from_millis(1_500), send_report(client, report)).await;
 }
 
 #[cfg(test)]
 mod tests {
+    use aoide_jellyfin::JellyfinClient;
+
+    use super::report::send_report;
+    use super::saved::read_saved;
     use super::*;
+    use crate::playback::report::Report;
     use aoide_jellyfin::{Credentials, Device, ServerAddress};
     use wiremock::matchers::{body_partial_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};

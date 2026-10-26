@@ -8,13 +8,13 @@
 //! among those the sign-in screen shows, or a pasted user id.
 
 use aoide_sidecar::{BlockedEdit, PlaylistShare, SidecarError};
-use iced::widget::{Column, button, checkbox, column, container, row, text, text_input};
-use iced::{Center, Element, Fill, Task};
+use iced::Task;
 
-use super::{Ctx, Load, PageMsg, View};
+use super::{Ctx, Load, PageMsg};
 use crate::app::{App, Message as AppMessage};
 use crate::users::{self, ServerUser, Users};
-use crate::{theme, widgets};
+
+mod view;
 
 /// Everything the page shows, read together.
 #[derive(Debug, Clone, PartialEq)]
@@ -171,31 +171,7 @@ impl App {
         };
         let client = signed.connection.client.clone();
         match message {
-            Msg::Load { key, playlist } => Task::perform(
-                async move {
-                    // Through the engine, so a share given back lets its held
-                    // edits go at once.
-                    let shares = engine
-                        .refresh_shares()
-                        .await
-                        .map_err(|e| refusal(&e, Call::List))?;
-                    let users = users::users(client, me).await;
-                    let held = engine
-                        .blocked_edits()
-                        .into_iter()
-                        .filter(|edit| edit.playlist_id.as_deref() == Some(playlist.as_str()))
-                        .collect();
-                    Ok(Box::new(Snapshot {
-                        shares: shares
-                            .into_iter()
-                            .filter(|s| s.playlist_id == playlist)
-                            .collect(),
-                        users,
-                        held,
-                    }))
-                },
-                move |result| AppMessage::Page(key, PageMsg::Share(Message::Loaded(result))),
-            ),
+            Msg::Load { key, playlist } => load(engine, client, me, key, playlist),
             Msg::Share {
                 key,
                 playlist,
@@ -231,6 +207,42 @@ impl App {
     }
 }
 
+/// Reads the playlist's shares, the server's users and the held edits for
+/// the page with this key.
+fn load(
+    engine: crate::sync::Engine,
+    client: aoide_jellyfin::JellyfinClient,
+    me: String,
+    key: u64,
+    playlist: String,
+) -> Task<AppMessage> {
+    Task::perform(
+        async move {
+            // Through the engine, so a share given back lets its held
+            // edits go at once.
+            let shares = engine
+                .refresh_shares()
+                .await
+                .map_err(|e| refusal(&e, Call::List))?;
+            let users = users::users(client, me).await;
+            let held = engine
+                .blocked_edits()
+                .into_iter()
+                .filter(|edit| edit.playlist_id.as_deref() == Some(playlist.as_str()))
+                .collect();
+            Ok(Box::new(Snapshot {
+                shares: shares
+                    .into_iter()
+                    .filter(|s| s.playlist_id == playlist)
+                    .collect(),
+                users,
+                held,
+            }))
+        },
+        move |result| AppMessage::Page(key, PageMsg::Share(Message::Loaded(result))),
+    )
+}
+
 impl State {
     fn known(&self) -> &[ServerUser] {
         match self.snapshot.ready().map(|s| &s.users) {
@@ -261,45 +273,9 @@ impl State {
                 self.can_edit = on;
                 Task::none()
             }
-            Message::With(grantee) => {
-                let name = users::name_of(&grantee, self.known()).to_owned();
-                self.busy = true;
-                self.note = None;
-                Task::done(AppMessage::Sharing(Msg::Share {
-                    key,
-                    playlist: self.id.clone(),
-                    grantee,
-                    can_edit: self.can_edit,
-                    name,
-                }))
-            }
-            Message::WithTyped => match users::resolve_typed(&self.typed, self.known()) {
-                Some(grantee) => {
-                    self.typed.clear();
-                    self.update(Message::With(grantee), ctx)
-                }
-                None => {
-                    self.note = Some(Err(format!(
-                        "No one called \u{201c}{}\u{201d} is shown on this server's sign-in \
-                         screen. Type their username exactly, or paste their user ID (an \
-                         administrator can find it under Dashboard → Users).",
-                        self.typed.trim()
-                    )));
-                    Task::none()
-                }
-            },
-            Message::Stop(grantee) => {
-                let name = users::name_of(&grantee, self.known()).to_owned();
-                self.confirm = None;
-                self.busy = true;
-                self.note = None;
-                Task::done(AppMessage::Sharing(Msg::Revoke {
-                    key,
-                    playlist: self.id.clone(),
-                    grantee,
-                    name,
-                }))
-            }
+            Message::With(grantee) => self.share_with(grantee, key),
+            Message::WithTyped => self.share_with_typed(ctx),
+            Message::Stop(grantee) => self.stop(grantee, key),
             Message::Confirm(grantee) => {
                 self.confirm = grantee;
                 Task::none()
@@ -312,186 +288,51 @@ impl State {
         }
     }
 
-    pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, AppMessage> {
-        let key = view.key;
-        let me = self.me.as_str();
-        let message = move |m: Message| AppMessage::Page(key, PageMsg::Share(m));
-        let title = format!("Share \u{201c}{}\u{201d}", self.name);
-        let mut body = column![
-            widgets::title_bar("", view.can_go_back),
-            text(title).size(28).font(widgets::BOLD),
-            widgets::secondary(
-                "People you share with see this playlist in their Aoide apps. Those who can \
-                 edit change it for everyone; their changes travel with the normal sync."
-            )
-            .size(13),
-        ]
-        .spacing(16);
-        let snapshot = match &self.snapshot {
-            Load::Loading => return widgets::page(body.push(widgets::loading())),
-            Load::Failed(error) => return widgets::page(body.push(view.failure(error))),
-            Load::Ready(snapshot) => snapshot,
-        };
-        let known = self.known();
-
-        let mut shared = Column::new().spacing(8);
-        if snapshot.shares.is_empty() {
-            shared = shared.push(widgets::secondary("Not shared with anyone yet.").size(13));
-        }
-        for share in &snapshot.shares {
-            let mine = share
-                .owner_user_id
-                .as_deref()
-                .is_none_or(|owner| users::same_id(owner, me));
-            // The owner stops a share; the person it was shared with can leave it.
-            let (stop, question) = if mine {
-                (
-                    "Stop sharing",
-                    "Stop sharing with them? Changes stop reaching them; nothing they already changed is undone.",
-                )
-            } else {
-                (
-                    "Leave",
-                    "Leave this shared playlist? Its changes stop reaching you.",
-                )
-            };
-            let grantee = share.grantee_user_id.clone();
-            let line = row![text(describe_share(share, me, known)).size(14).width(Fill),]
-                .spacing(8)
-                .align_y(Center);
-            let line = if self.confirm.as_deref() == Some(grantee.as_str()) {
-                line.push(text(question).size(13))
-                    .push(
-                        button(text(stop).size(13))
-                            .style(theme::destructive)
-                            .padding([6, 12])
-                            .on_press_maybe(
-                                (!self.busy).then(|| message(Message::Stop(grantee.clone()))),
-                            ),
-                    )
-                    .push(
-                        button(text("Cancel").size(13))
-                            .style(theme::tonal)
-                            .padding([6, 12])
-                            .on_press(message(Message::Confirm(None))),
-                    )
-            } else {
-                line.push(
-                    button(text(stop).size(13))
-                        .style(theme::tonal)
-                        .padding([6, 12])
-                        .on_press(message(Message::Confirm(Some(grantee)))),
-                )
-            };
-            shared = shared.push(line);
-        }
-        body = body.push(section("Shared with", shared.into()));
-
-        let already: Vec<&str> = snapshot
-            .shares
-            .iter()
-            .map(|s| s.grantee_user_id.as_str())
-            .collect();
-        let edit = checkbox(self.can_edit)
-            .label("They can edit it")
-            .on_toggle(move |on| message(Message::CanEdit(on)));
-        let add: Element<'a, AppMessage> = match &snapshot.users {
-            Users::Listed(list) => {
-                let mut people = Column::new().spacing(6).push(edit);
-                let candidates: Vec<&ServerUser> = list
-                    .iter()
-                    .filter(|u| !already.iter().any(|a| users::same_id(a, &u.id)))
-                    .collect();
-                if candidates.is_empty() {
-                    people = people.push(
-                        widgets::secondary("It's shared with everyone else on this server.")
-                            .size(13),
-                    );
-                }
-                for user in candidates {
-                    people = people.push(
-                        row![
-                            text(user.name.as_str()).size(14).width(Fill),
-                            button(text("Share").size(13))
-                                .style(theme::filled)
-                                .padding([6, 14])
-                                .on_press_maybe(
-                                    (!self.busy).then(|| message(Message::With(user.id.clone()))),
-                                ),
-                        ]
-                        .align_y(Center),
-                    );
-                }
-                people.into()
-            }
-            Users::Typed(_) => {
-                let ready = !self.typed.trim().is_empty() && !self.busy;
-                column![
-                    widgets::secondary(
-                        "This server doesn't list its users for your account, so type their \
-                         Jellyfin username, or paste their user ID."
-                    )
-                    .size(13),
-                    row![
-                        text_input("Username", &self.typed)
-                            .on_input(move |s| message(Message::Typed(s)))
-                            .on_submit_maybe(ready.then(|| message(Message::WithTyped)))
-                            .padding(8)
-                            .style(theme::field),
-                        button(text("Share"))
-                            .style(theme::filled)
-                            .padding([8, 14])
-                            .on_press_maybe(ready.then(|| message(Message::WithTyped))),
-                    ]
-                    .spacing(10)
-                    .align_y(Center),
-                    edit,
-                ]
-                .spacing(8)
-                .into()
-            }
-        };
-        body = body.push(section("Share with", add));
-        if let Some(note) = &self.note {
-            body = body.push(match note {
-                Ok(note) => widgets::secondary(note.as_str()).size(13).into(),
-                Err(error) => widgets::plain_failure(error),
-            });
-        }
-        if !snapshot.held.is_empty() {
-            let count = match snapshot.held.len() {
-                1 => "1 of your edits to it is".to_owned(),
-                n => format!("{n} of your edits to it are"),
-            };
-            body = body.push(section(
-                "Held back",
-                widgets::secondary(format!(
-                    "{count} held: its owner no longer shares it with you for editing. They're \
-                     kept, and go with the next sync if it's shared with you again."
-                ))
-                .size(13)
-                .into(),
-            ));
-        }
-        widgets::page(body.max_width(720))
+    fn share_with(&mut self, grantee: String, key: u64) -> Task<AppMessage> {
+        let name = users::name_of(&grantee, self.known()).to_owned();
+        self.busy = true;
+        self.note = None;
+        Task::done(AppMessage::Sharing(Msg::Share {
+            key,
+            playlist: self.id.clone(),
+            grantee,
+            can_edit: self.can_edit,
+            name,
+        }))
     }
-}
 
-fn section<'a>(title: &'a str, content: Element<'a, AppMessage>) -> Element<'a, AppMessage> {
-    column![
-        text(title)
-            .size(13)
-            .font(widgets::SEMIBOLD)
-            .style(|t| text::Style {
-                color: Some(theme::secondary(t)),
-            }),
-        container(content)
-            .padding(14)
-            .width(Fill)
-            .style(theme::menu),
-    ]
-    .spacing(8)
-    .into()
+    /// Share with whoever was typed: a username shown on the sign-in screen,
+    /// or a user id.
+    fn share_with_typed(&mut self, ctx: &Ctx<'_>) -> Task<AppMessage> {
+        match users::resolve_typed(&self.typed, self.known()) {
+            Some(grantee) => {
+                self.typed.clear();
+                self.update(Message::With(grantee), ctx)
+            }
+            None => {
+                self.note = Some(Err(format!(
+                    "No one called \u{201c}{}\u{201d} is shown on this server's sign-in \
+                     screen. Type their username exactly, or paste their user ID (an \
+                     administrator can find it under Dashboard → Users).",
+                    self.typed.trim()
+                )));
+                Task::none()
+            }
+        }
+    }
+
+    fn stop(&mut self, grantee: String, key: u64) -> Task<AppMessage> {
+        let name = users::name_of(&grantee, self.known()).to_owned();
+        self.confirm = None;
+        self.busy = true;
+        self.note = None;
+        Task::done(AppMessage::Sharing(Msg::Revoke {
+            key,
+            playlist: self.id.clone(),
+            grantee,
+            name,
+        }))
+    }
 }
 
 #[cfg(test)]

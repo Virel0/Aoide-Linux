@@ -4,18 +4,16 @@
 //! images, and anyone else is told so in those words.
 
 use aoide_jellyfin::{Item, PlaylistEdit, PlaylistEntry};
-use aoide_store::PlaySource;
-use iced::widget::{Column, button, column, row, text, text_input};
-use iced::{Center, Element, Length, Task};
+use iced::Task;
 
-use super::{Ctx, Load, PageMsg, Section, View, fetch};
-use crate::actions::PlayRequest;
+use super::{Ctx, Load, PageMsg, Section, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
 use crate::failure::Failure;
-use crate::icons::{Icon, Tone, icon};
 use crate::playback::tracks::TrackMeta;
-use crate::{theme, widgets};
+use crate::widgets;
+
+mod view;
 
 /// The largest file offered as a cover.
 pub const MAX_COVER_BYTES: usize = 20 * 1024 * 1024;
@@ -159,9 +157,6 @@ impl State {
     }
 
     pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {
-        let client = ctx.client.clone();
-        let id = self.id.clone();
-        let key = ctx.key;
         match message {
             Message::Item(result) => {
                 if let Some(item) = result.ok().and_then(|items| items.into_iter().next()) {
@@ -172,17 +167,7 @@ impl State {
                 Task::none()
             }
             Message::Entries(result) => {
-                match result {
-                    Ok(entries) => {
-                        let (ids, tracks) = entries
-                            .iter()
-                            .map(|e| (e.entry_id.clone(), TrackMeta::from_item(&e.item)))
-                            .unzip();
-                        self.entries = ids;
-                        self.tracks = Load::Ready(tracks);
-                    }
-                    Err(error) => self.tracks = Load::Failed(error),
-                }
+                self.entries_found(result);
                 Task::none()
             }
             Message::Reload => Task::batch([self.load_item(ctx), self.load_entries(ctx)]),
@@ -194,36 +179,8 @@ impl State {
                 self.renaming = Some(name);
                 Task::none()
             }
-            Message::SaveName => {
-                let Some(name) = self.renaming.take().map(|n| n.trim().to_owned()) else {
-                    return Task::none();
-                };
-                if name.is_empty() || name == self.name {
-                    return Task::none();
-                }
-                fetch(
-                    key,
-                    async move {
-                        let edit = PlaylistEdit {
-                            name: Some(name.clone()),
-                            ..PlaylistEdit::default()
-                        };
-                        client.edit_playlist(&id, &edit).await.map(|()| name)
-                    },
-                    |r| PageMsg::JellyfinPlaylist(Message::Renamed(r)),
-                )
-            }
-            Message::Renamed(result) => match result {
-                Ok(name) => {
-                    self.name = name;
-                    self.error = None;
-                    Task::done(App::JellyfinPlaylistChanged(None))
-                }
-                Err(error) => {
-                    self.error = Some(error.after("The playlist couldn't be renamed."));
-                    Task::none()
-                }
-            },
+            Message::SaveName => self.save_name(ctx),
+            Message::Renamed(result) => self.renamed(result),
             Message::Delete => {
                 self.confirm_delete = true;
                 Task::none()
@@ -232,12 +189,7 @@ impl State {
                 self.confirm_delete = false;
                 Task::none()
             }
-            Message::ConfirmDelete(true) => {
-                self.confirm_delete = false;
-                fetch(key, async move { client.delete_playlist(&id).await }, |r| {
-                    PageMsg::JellyfinPlaylist(Message::Deleted(r))
-                })
-            }
+            Message::ConfirmDelete(true) => self.delete(ctx),
             Message::Deleted(Ok(())) => Task::done(App::JellyfinPlaylistChanged(None))
                 .chain(Task::done(App::Section(Section::JellyfinPlaylists))),
             Message::Deleted(Err(error)) => {
@@ -248,38 +200,8 @@ impl State {
                 self.editing = on;
                 Task::none()
             }
-            Message::Move { entry, up } => {
-                let Some(at) = self.entries.iter().position(|e| *e == entry) else {
-                    return Task::none();
-                };
-                let Some(to) = step(at, up, self.entries.len()) else {
-                    return Task::none();
-                };
-                // Shown at once; the server is told, and read again if it says no.
-                self.entries.swap(at, to);
-                if let Load::Ready(tracks) = &mut self.tracks {
-                    tracks.swap(at, to);
-                }
-                fetch(
-                    key,
-                    async move { client.move_playlist_entry(&id, &entry, to as u32).await },
-                    |r| PageMsg::JellyfinPlaylist(Message::Edited(r)),
-                )
-            }
-            Message::Remove(entry) => {
-                let Some(at) = self.entries.iter().position(|e| *e == entry) else {
-                    return Task::none();
-                };
-                self.entries.remove(at);
-                if let Load::Ready(tracks) = &mut self.tracks {
-                    tracks.remove(at);
-                }
-                fetch(
-                    key,
-                    async move { client.remove_from_playlist(&id, &[entry]).await },
-                    |r| PageMsg::JellyfinPlaylist(Message::Edited(r)),
-                )
-            }
+            Message::Move { entry, up } => self.move_entry(entry, up, ctx),
+            Message::Remove(entry) => self.remove_entry(entry, ctx),
             Message::Edited(Ok(())) => Task::done(App::JellyfinPlaylistChanged(None)),
             Message::Edited(Err(error)) => {
                 self.error = Some(error);
@@ -287,69 +209,182 @@ impl State {
             }
             Message::ChooseCover => {
                 self.cover_note = None;
+                let key = ctx.key;
                 Task::perform(pick_picture("Choose a cover"), move |file| {
                     App::Page(key, PageMsg::JellyfinPlaylist(Message::CoverFile(file)))
                 })
             }
             Message::CoverFile(None) => Task::none(),
-            Message::CoverFile(Some(read)) => {
-                let picture = read
-                    .map_err(|e| format!("That file couldn't be read: {e}"))
-                    .and_then(cover_bytes);
-                let (bytes, mime) = match picture {
-                    Ok(picture) => picture,
-                    Err(error) => {
-                        self.cover_note = Some(error);
-                        return Task::none();
-                    }
+            Message::CoverFile(Some(read)) => self.cover_file(read, ctx),
+            Message::RemoveCover => self.remove_cover(ctx),
+            Message::CoverDone(result) => self.cover_done(result, ctx),
+        }
+    }
+
+    fn entries_found(&mut self, result: Result<Vec<PlaylistEntry>, Failure>) {
+        match result {
+            Ok(entries) => {
+                let (ids, tracks) = entries
+                    .iter()
+                    .map(|e| (e.entry_id.clone(), TrackMeta::from_item(&e.item)))
+                    .unzip();
+                self.entries = ids;
+                self.tracks = Load::Ready(tracks);
+            }
+            Err(error) => self.tracks = Load::Failed(error),
+        }
+    }
+
+    fn save_name(&mut self, ctx: &Ctx<'_>) -> Task<App> {
+        let Some(name) = self.renaming.take().map(|n| n.trim().to_owned()) else {
+            return Task::none();
+        };
+        if name.is_empty() || name == self.name {
+            return Task::none();
+        }
+        let client = ctx.client.clone();
+        let id = self.id.clone();
+        fetch(
+            ctx.key,
+            async move {
+                let edit = PlaylistEdit {
+                    name: Some(name.clone()),
+                    ..PlaylistEdit::default()
                 };
-                self.busy = true;
-                Task::perform(
-                    async move { client.set_playlist_cover(&id, &bytes, mime).await },
-                    move |result| match result {
-                        Err(aoide_jellyfin::Error::Unauthorized) => App::TokenRejected,
-                        result => App::Page(
-                            key,
-                            PageMsg::JellyfinPlaylist(Message::CoverDone(
-                                result
-                                    .map(|()| "The cover has been changed.")
-                                    .map_err(|e| admin_error(&e, "change a playlist's cover")),
-                            )),
-                        ),
-                    },
-                )
+                client.edit_playlist(&id, &edit).await.map(|()| name)
+            },
+            |r| PageMsg::JellyfinPlaylist(Message::Renamed(r)),
+        )
+    }
+
+    fn renamed(&mut self, result: Result<String, Failure>) -> Task<App> {
+        match result {
+            Ok(name) => {
+                self.name = name;
+                self.error = None;
+                Task::done(App::JellyfinPlaylistChanged(None))
             }
-            Message::RemoveCover => {
-                self.busy = true;
-                self.cover_note = None;
-                Task::perform(
-                    async move { client.delete_playlist_cover(&id).await },
-                    move |result| match result {
-                        Err(aoide_jellyfin::Error::Unauthorized) => App::TokenRejected,
-                        result => App::Page(
-                            key,
-                            PageMsg::JellyfinPlaylist(Message::CoverDone(
-                                result
-                                    .map(|()| "The cover has been removed.")
-                                    .map_err(|e| admin_error(&e, "change a playlist's cover")),
-                            )),
-                        ),
-                    },
-                )
+            Err(error) => {
+                self.error = Some(error.after("The playlist couldn't be renamed."));
+                Task::none()
             }
-            Message::CoverDone(result) => {
-                self.busy = false;
-                match result {
-                    Ok(note) => {
-                        self.cover_note = Some(note.to_owned());
-                        // The new picture has a new tag.
-                        self.load_item(ctx)
-                    }
-                    Err(error) => {
-                        self.cover_note = Some(error);
-                        Task::none()
-                    }
-                }
+        }
+    }
+
+    fn delete(&mut self, ctx: &Ctx<'_>) -> Task<App> {
+        self.confirm_delete = false;
+        let client = ctx.client.clone();
+        let id = self.id.clone();
+        fetch(
+            ctx.key,
+            async move { client.delete_playlist(&id).await },
+            |r| PageMsg::JellyfinPlaylist(Message::Deleted(r)),
+        )
+    }
+
+    fn move_entry(&mut self, entry: String, up: bool, ctx: &Ctx<'_>) -> Task<App> {
+        let Some(at) = self.entries.iter().position(|e| *e == entry) else {
+            return Task::none();
+        };
+        let Some(to) = step(at, up, self.entries.len()) else {
+            return Task::none();
+        };
+        // Shown at once; the server is told, and read again if it says no.
+        self.entries.swap(at, to);
+        if let Load::Ready(tracks) = &mut self.tracks {
+            tracks.swap(at, to);
+        }
+        let client = ctx.client.clone();
+        let id = self.id.clone();
+        fetch(
+            ctx.key,
+            async move { client.move_playlist_entry(&id, &entry, to as u32).await },
+            |r| PageMsg::JellyfinPlaylist(Message::Edited(r)),
+        )
+    }
+
+    fn remove_entry(&mut self, entry: String, ctx: &Ctx<'_>) -> Task<App> {
+        let Some(at) = self.entries.iter().position(|e| *e == entry) else {
+            return Task::none();
+        };
+        self.entries.remove(at);
+        if let Load::Ready(tracks) = &mut self.tracks {
+            tracks.remove(at);
+        }
+        let client = ctx.client.clone();
+        let id = self.id.clone();
+        fetch(
+            ctx.key,
+            async move { client.remove_from_playlist(&id, &[entry]).await },
+            |r| PageMsg::JellyfinPlaylist(Message::Edited(r)),
+        )
+    }
+
+    /// The picked file, read: uploaded as the cover if it is a picture.
+    fn cover_file(&mut self, read: Result<Vec<u8>, String>, ctx: &Ctx<'_>) -> Task<App> {
+        let picture = read
+            .map_err(|e| format!("That file couldn't be read: {e}"))
+            .and_then(cover_bytes);
+        let (bytes, mime) = match picture {
+            Ok(picture) => picture,
+            Err(error) => {
+                self.cover_note = Some(error);
+                return Task::none();
+            }
+        };
+        self.busy = true;
+        let client = ctx.client.clone();
+        let id = self.id.clone();
+        let key = ctx.key;
+        Task::perform(
+            async move { client.set_playlist_cover(&id, &bytes, mime).await },
+            move |result| match result {
+                Err(aoide_jellyfin::Error::Unauthorized) => App::TokenRejected,
+                result => App::Page(
+                    key,
+                    PageMsg::JellyfinPlaylist(Message::CoverDone(
+                        result
+                            .map(|()| "The cover has been changed.")
+                            .map_err(|e| admin_error(&e, "change a playlist's cover")),
+                    )),
+                ),
+            },
+        )
+    }
+
+    fn remove_cover(&mut self, ctx: &Ctx<'_>) -> Task<App> {
+        self.busy = true;
+        self.cover_note = None;
+        let client = ctx.client.clone();
+        let id = self.id.clone();
+        let key = ctx.key;
+        Task::perform(
+            async move { client.delete_playlist_cover(&id).await },
+            move |result| match result {
+                Err(aoide_jellyfin::Error::Unauthorized) => App::TokenRejected,
+                result => App::Page(
+                    key,
+                    PageMsg::JellyfinPlaylist(Message::CoverDone(
+                        result
+                            .map(|()| "The cover has been removed.")
+                            .map_err(|e| admin_error(&e, "change a playlist's cover")),
+                    )),
+                ),
+            },
+        )
+    }
+
+    fn cover_done(&mut self, result: Result<&'static str, String>, ctx: &Ctx<'_>) -> Task<App> {
+        self.busy = false;
+        match result {
+            Ok(note) => {
+                self.cover_note = Some(note.to_owned());
+                // The new picture has a new tag.
+                self.load_item(ctx)
+            }
+            Err(error) => {
+                self.cover_note = Some(error);
+                Task::none()
             }
         }
     }
@@ -360,180 +395,6 @@ impl State {
             keys.extend(super::track_art(tracks));
         }
         keys
-    }
-
-    /// What playing from this page is remembered as.
-    fn context(&self) -> aoide_store::RecentContext {
-        aoide_store::RecentContext::new(
-            aoide_store::RecentContextKind::JellyfinPlaylist,
-            self.id.clone(),
-            self.name.clone(),
-            aoide_store::now_millis(),
-        )
-    }
-
-    pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
-        let key = view.key;
-        let message = move |m: Message| App::Page(key, PageMsg::JellyfinPlaylist(m));
-        let tracks: &[TrackMeta] = self.tracks.ready().map(Vec::as_slice).unwrap_or(&[]);
-        let title: Element<'a, App> = match &self.renaming {
-            Some(draft) => row![
-                text_input("Playlist name", draft)
-                    .on_input(move |s| message(Message::RenameText(s)))
-                    .on_submit(message(Message::SaveName))
-                    .padding(8)
-                    .size(20)
-                    .style(theme::field),
-                button("Save")
-                    .style(theme::filled)
-                    .on_press(message(Message::SaveName)),
-            ]
-            .spacing(10)
-            .align_y(Center)
-            .into(),
-            None => text(self.name.as_str()).size(30).font(widgets::BOLD).into(),
-        };
-        let count = match tracks.len() {
-            1 => "1 song".to_owned(),
-            n => format!("{n} songs"),
-        };
-        let small = |label: &'a str, m: Option<Message>| {
-            button(text(label).size(13))
-                .style(theme::tonal)
-                .padding([6, 12])
-                .on_press_maybe(m.map(message))
-        };
-        let mut tools = row![].spacing(8).align_y(Center);
-        if self.renaming.is_none() {
-            tools = tools.push(small("Rename", Some(Message::Rename)));
-        }
-        tools = tools.push(if self.editing {
-            small("Done", Some(Message::Edit(false)))
-        } else {
-            small("Edit", Some(Message::Edit(true)))
-        });
-        tools = tools
-            .push(small(
-                "Choose cover…",
-                (!self.busy).then_some(Message::ChooseCover),
-            ))
-            .push(small(
-                "Remove cover",
-                (!self.busy && self.art.is_some()).then_some(Message::RemoveCover),
-            ));
-        tools = tools.push(
-            button(text("Delete").size(13))
-                .style(theme::destructive)
-                .padding([6, 12])
-                .on_press_maybe((!self.confirm_delete).then(|| message(Message::Delete))),
-        );
-        // On a line of its own: a question beside five buttons runs off the page.
-        let confirm = self.confirm_delete.then(|| {
-            row![
-                text("Delete this playlist from the server, for every app?").size(13),
-                button(text("Delete").size(13))
-                    .style(theme::destructive)
-                    .padding([6, 12])
-                    .on_press(message(Message::ConfirmDelete(true))),
-                small("Cancel", Some(Message::ConfirmDelete(false))),
-            ]
-            .spacing(8)
-            .align_y(Center)
-            .wrap()
-            .vertical_spacing(8)
-        });
-        let mut info = column![
-            title,
-            widgets::secondary(format!("Jellyfin playlist · {count}")).size(13),
-            widgets::play_buttons_with(
-                tracks,
-                format!("{key}:jellyfin-playlist"),
-                PlaySource::Playlist,
-                vec![crate::radio::start_button(crate::radio::Station::new(
-                    aoide_jellyfin::MixSeed::Playlist(self.id.clone()),
-                    self.name.clone(),
-                ))],
-            ),
-            tools.wrap().vertical_spacing(8),
-        ]
-        .spacing(10)
-        .width(Length::Fill);
-        if let Some(confirm) = confirm {
-            info = info.push(confirm);
-        }
-        let mut body = column![
-            widgets::title_bar("", view.can_go_back),
-            row![
-                widgets::art(self.art.as_ref(), view.artwork, Length::Fixed(180.0), 10.0),
-                info
-            ]
-            .spacing(24),
-        ]
-        .spacing(16);
-        if let Some(note) = &self.cover_note {
-            body = body.push(widgets::secondary(note.as_str()).size(13));
-        }
-        if let Some(menu) = view
-            .menu
-            .filter(|m| m.anchor == format!("{key}:jellyfin-playlist"))
-        {
-            body = body.push(widgets::menu_strip(menu, view));
-        }
-        if let Some(error) = &self.error {
-            body = body.push(view.problem(error));
-        }
-        body = body.push(match &self.tracks {
-            Load::Loading => widgets::loading(),
-            Load::Failed(error) => view.failure(error),
-            Load::Ready(tracks) if tracks.is_empty() => {
-                widgets::empty("No songs yet. Add some from any song's … menu.")
-            }
-            Load::Ready(tracks) if self.editing => self.editable(tracks, view),
-            Load::Ready(tracks) => widgets::track_list(tracks, view, LIST, PlaySource::Playlist),
-        });
-        crate::handoff::played_from(widgets::page(body), Some(self.context()))
-    }
-
-    fn editable<'a>(&'a self, tracks: &'a [TrackMeta], view: &View<'a>) -> Element<'a, App> {
-        let key = view.key;
-        let message = move |m: Message| App::Page(key, PageMsg::JellyfinPlaylist(m));
-        let small = |glyph: Icon, m: Option<App>| {
-            button(icon(glyph, 16.0, Tone::Secondary))
-                .padding(6)
-                .style(theme::row)
-                .on_press_maybe(m)
-        };
-        let mut list = Column::with_capacity(tracks.len()).spacing(2);
-        for (index, (track, entry)) in tracks.iter().zip(&self.entries).enumerate() {
-            let anchor = format!("{key}:{index}");
-            let play = move || App::Play(PlayRequest::from(tracks, index, PlaySource::Playlist));
-            let up = (index > 0).then(|| {
-                message(Message::Move {
-                    entry: entry.clone(),
-                    up: true,
-                })
-            });
-            let down = (index + 1 < tracks.len()).then(|| {
-                message(Message::Move {
-                    entry: entry.clone(),
-                    up: false,
-                })
-            });
-            list = list.push(
-                row![
-                    widgets::track_row(track, &anchor, view, LIST, play),
-                    small(Icon::Up, up),
-                    small(Icon::Down, down),
-                    small(Icon::Remove, Some(message(Message::Remove(entry.clone())))),
-                ]
-                .spacing(2)
-                .align_y(Center),
-            );
-            if let Some(menu) = view.menu.filter(|m| m.anchor == anchor) {
-                list = list.push(widgets::menu_strip(menu, view));
-            }
-        }
-        list.into()
     }
 }
 

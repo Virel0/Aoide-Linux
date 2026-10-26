@@ -12,12 +12,14 @@ use std::time::Duration;
 
 use aoide_sidecar::SyncOverview;
 use aoide_store::{Millis, SyncPhase};
-use iced::widget::{Column, button, column, container, row, text};
-use iced::{Center, Element, Fill, Task};
+use iced::widget::{button, text};
+use iced::{Element, Task};
 
-use super::{Ctx, Load, PageMsg, View};
+use super::{Ctx, Load, PageMsg};
 use crate::app::{App, Message as AppMessage};
-use crate::{theme, widgets};
+use crate::theme;
+
+mod view;
 
 /// One line of the panel: what it says, and the longer explanation under it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,7 +106,32 @@ pub fn describe(
         ));
         return lines;
     }
-    lines.push(Line::plain(match (&overview.phase, overview.running) {
+    lines.push(Line::plain(progress(overview, now)));
+    lines.extend(last_outcome(overview));
+    let held_here = overview.held_back + overview.blocked_by_share as i64;
+    let waiting = overview.waiting - held_here;
+    if waiting > 0 {
+        lines.push(Line::plain(format!(
+            "{} waiting to be sent.",
+            changes(waiting)
+        )));
+    }
+    lines.extend(held_back(overview));
+    lines.extend(blocked_by_share(overview, names));
+    lines.extend(set_aside(overview));
+    if let Some(error) = &overview.share_error {
+        lines.push(Line::explained(
+            "The share list couldn't be read.",
+            error.clone(),
+            true,
+        ));
+    }
+    lines
+}
+
+/// The first line: what the sync is doing, or when it last ran.
+fn progress(overview: &SyncOverview, now: Millis) -> String {
+    match (&overview.phase, overview.running) {
         (SyncPhase::Pushing { pushed }, true) => {
             format!("Syncing: sending changes, {pushed} so far.")
         }
@@ -116,104 +143,107 @@ pub fn describe(
             Some(at) => format!("Last synced {}.", ago(at, now)),
             None => "Not synced yet.".to_owned(),
         },
-    }));
+    }
+}
+
+/// How the last sync went: why it failed, or what it moved.
+fn last_outcome(overview: &SyncOverview) -> Option<Line> {
     if let Some(error) = &overview.error {
-        lines.push(Line::explained(
+        return Some(Line::explained(
             "The last sync didn't finish.",
             format!("{error}. Nothing is lost: it tries again at the next sync."),
             true,
         ));
-    } else if overview.last_report.is_some() {
-        let applied = if overview.applied == overview.pulled {
-            String::new()
-        } else {
-            format!(", {} of which changed something here", overview.applied)
-        };
-        lines.push(Line::plain(format!(
-            "Last time: sent {}, brought in {}{applied}.",
-            changes(overview.pushed as i64),
-            changes(overview.pulled as i64),
-        )));
     }
-    let held_here = overview.held_back + overview.blocked_by_share as i64;
-    let waiting = overview.waiting - held_here;
-    if waiting > 0 {
-        lines.push(Line::plain(format!(
-            "{} waiting to be sent.",
-            changes(waiting)
-        )));
+    overview.last_report.as_ref()?;
+    let applied = if overview.applied == overview.pulled {
+        String::new()
+    } else {
+        format!(", {} of which changed something here", overview.applied)
+    };
+    Some(Line::plain(format!(
+        "Last time: sent {}, brought in {}{applied}.",
+        changes(overview.pushed as i64),
+        changes(overview.pulled as i64),
+    )))
+}
+
+/// Changes the server's sidecar doesn't accept yet.
+fn held_back(overview: &SyncOverview) -> Option<Line> {
+    if overview.held_back <= 0 {
+        return None;
     }
-    if overview.held_back > 0 {
-        let kinds: Vec<&str> = overview.held_entities.iter().map(|t| kind(t)).collect();
-        lines.push(Line::explained(
-            format!(
-                "{} held back on this computer.",
-                changes(overview.held_back)
-            ),
-            format!(
-                "Your server's sidecar doesn't accept {} yet. They're kept here and go as soon \
-                 as the sidecar is updated.",
-                if kinds.is_empty() {
-                    "them".to_owned()
-                } else {
-                    kinds.join(" or ")
-                }
-            ),
-            false,
-        ));
+    let kinds: Vec<&str> = overview.held_entities.iter().map(|t| kind(t)).collect();
+    Some(Line::explained(
+        format!(
+            "{} held back on this computer.",
+            changes(overview.held_back)
+        ),
+        format!(
+            "Your server's sidecar doesn't accept {} yet. They're kept here and go as soon \
+             as the sidecar is updated.",
+            if kinds.is_empty() {
+                "them".to_owned()
+            } else {
+                kinds.join(" or ")
+            }
+        ),
+        false,
+    ))
+}
+
+/// Edits to playlists no longer shared with this listener for editing.
+fn blocked_by_share(overview: &SyncOverview, names: &HashMap<String, String>) -> Option<Line> {
+    if overview.blocked_by_share == 0 {
+        return None;
     }
-    if overview.blocked_by_share > 0 {
-        let mut playlists: Vec<String> = overview
-            .blocked_edits
-            .iter()
-            .filter_map(|edit| edit.playlist_id.as_ref())
-            .map(|id| {
-                names.get(id).map_or_else(
-                    || "a playlist".to_owned(),
-                    |n| format!("\u{201c}{n}\u{201d}"),
-                )
-            })
-            .collect();
-        playlists.sort();
-        playlists.dedup();
-        let which = if playlists.is_empty() {
-            "a shared playlist".to_owned()
-        } else {
-            playlists.join(", ")
-        };
-        lines.push(Line::explained(
-            format!(
-                "{} can't be sent: {which} is no longer shared with you for editing.",
-                changes(overview.blocked_by_share as i64)
-            ),
-            "They're kept, not thrown away. If the owner shares it with you again they go \
-             with the next sync; the share list is checked every five minutes.",
-            true,
-        ));
+    let mut playlists: Vec<String> = overview
+        .blocked_edits
+        .iter()
+        .filter_map(|edit| edit.playlist_id.as_ref())
+        .map(|id| {
+            names.get(id).map_or_else(
+                || "a playlist".to_owned(),
+                |n| format!("\u{201c}{n}\u{201d}"),
+            )
+        })
+        .collect();
+    playlists.sort();
+    playlists.dedup();
+    let which = if playlists.is_empty() {
+        "a shared playlist".to_owned()
+    } else {
+        playlists.join(", ")
+    };
+    Some(Line::explained(
+        format!(
+            "{} can't be sent: {which} is no longer shared with you for editing.",
+            changes(overview.blocked_by_share as i64)
+        ),
+        "They're kept, not thrown away. If the owner shares it with you again they go \
+         with the next sync; the share list is checked every five minutes.",
+        true,
+    ))
+}
+
+/// Changes that can't sync as they are, and how many can be retried.
+fn set_aside(overview: &SyncOverview) -> Option<Line> {
+    if overview.quarantined <= 0 {
+        return None;
     }
-    if overview.quarantined > 0 {
-        let retry = match overview.retryable {
-            0 => String::new(),
-            1 => " The server failed on 1 of them; that one can be tried again.".to_owned(),
-            n => format!(" The server failed on {n} of them; those can be tried again."),
-        };
-        lines.push(Line::explained(
-            format!("{} set aside.", changes(overview.quarantined)),
-            format!(
-                "They can't sync as they are: the server refused them, or this version can't \
-                 read them. They're kept on this computer rather than lost.{retry}"
-            ),
-            true,
-        ));
-    }
-    if let Some(error) = &overview.share_error {
-        lines.push(Line::explained(
-            "The share list couldn't be read.",
-            error.clone(),
-            true,
-        ));
-    }
-    lines
+    let retry = match overview.retryable {
+        0 => String::new(),
+        1 => " The server failed on 1 of them; that one can be tried again.".to_owned(),
+        n => format!(" The server failed on {n} of them; those can be tried again."),
+    };
+    Some(Line::explained(
+        format!("{} set aside.", changes(overview.quarantined)),
+        format!(
+            "They can't sync as they are: the server refused them, or this version can't \
+             read them. They're kept on this computer rather than lost.{retry}"
+        ),
+        true,
+    ))
 }
 
 /// What the panel shows: the overview, and the names of held playlists.
@@ -368,76 +398,6 @@ impl State {
                 Task::none()
             }
         }
-    }
-
-    pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, AppMessage> {
-        let key = view.key;
-        let mut body = column![widgets::title_bar("Sync", view.can_go_back)].spacing(20);
-        let snapshot = match &self.snapshot {
-            Load::Loading => return widgets::page(body.push(widgets::loading())),
-            Load::Failed(error) => return widgets::page(body.push(view.failure(error))),
-            Load::Ready(None) => {
-                return widgets::page(body.push(widgets::empty(
-                    "This server has no Aoide sidecar; playlists and history stay on this computer.",
-                )));
-            }
-            Load::Ready(Some(snapshot)) => snapshot,
-        };
-        let overview = &snapshot.overview;
-        let lines = describe(overview, &snapshot.names, aoide_store::now_millis());
-        let mut list = Column::new().spacing(14);
-        for line in lines {
-            let mut block = column![text(line.text).size(15).style(move |t: &iced::Theme| {
-                text::Style {
-                    color: line.warning.then(|| t.extended_palette().danger.base.color),
-                }
-            })]
-            .spacing(3);
-            if let Some(detail) = line.detail {
-                block = block.push(widgets::secondary(detail).size(13));
-            }
-            list = list.push(block);
-        }
-        let running = overview.running;
-        let mut actions = row![
-            button(text(if running { "Syncing…" } else { "Sync now" }))
-                .style(theme::filled)
-                .padding([8, 16])
-                .on_press_maybe((!running).then_some(AppMessage::SyncPanel(Msg::SyncNow(key)))),
-        ]
-        .spacing(10)
-        .align_y(Center);
-        if overview.retryable > 0 {
-            actions = actions.push(
-                button(text(match overview.retryable {
-                    1 => "Retry 1 change".to_owned(),
-                    n => format!("Retry {n} changes"),
-                }))
-                .style(theme::tonal)
-                .padding([8, 16])
-                .on_press_maybe((!running).then_some(AppMessage::SyncPanel(Msg::Retry(key)))),
-            );
-        }
-        actions = actions.push(
-            button(text("Repair covers"))
-                .style(theme::tonal)
-                .padding([8, 16])
-                .on_press(AppMessage::Covers(crate::covers::Msg::Repair { key })),
-        );
-        body = body
-            .push(container(list).padding(16).width(Fill).style(theme::menu))
-            .push(actions)
-            .push(
-                widgets::secondary(
-                    "Repair covers gives each playlist that has no picture the cover of the \
-                     one Jellyfin playlist with exactly its name, and leaves the rest alone.",
-                )
-                .size(12),
-            );
-        if let Some(note) = &self.note {
-            body = body.push(widgets::secondary(note.as_str()).size(13));
-        }
-        widgets::page(body.max_width(720))
     }
 }
 

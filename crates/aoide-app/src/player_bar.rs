@@ -8,6 +8,8 @@ use iced::{Center, Element, Fill, Length};
 use crate::app::{App, Message, Panel, Signed, Transport};
 use crate::artwork::ArtKey;
 use crate::icons::{Icon, Tone, icon};
+use crate::playback::Playback;
+use crate::playback::tracks::TrackMeta;
 use crate::{theme, widgets};
 
 const HEIGHT: f32 = 84.0;
@@ -25,10 +27,35 @@ fn control<'a>(glyph: Icon, size: f32, on: bool, message: Transport) -> Element<
 }
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
-    let playback = &app.playback;
-    let current = playback.current().map(|(_, q)| &q.meta);
+    let current = app.playback.current().map(|(_, q)| &q.meta);
+    let middle = column![
+        container(transport(&app.playback)).center_x(Fill),
+        scrubber(app, signed, current)
+    ]
+    .spacing(4)
+    .width(Fill)
+    .max_width(620);
 
-    let now = row![
+    container(
+        row![
+            now_playing(app, current),
+            container(middle).center_x(Fill),
+            tools(app, signed)
+        ]
+        .spacing(16)
+        .align_y(Center)
+        .padding([0, 16]),
+    )
+    .height(Length::Fixed(HEIGHT))
+    .center_y(Length::Fixed(HEIGHT))
+    .style(theme::bar)
+    .into()
+}
+
+/// The cover (which opens the full player), the title, the artist and the
+/// status line.
+fn now_playing<'a>(app: &'a App, current: Option<&'a TrackMeta>) -> Element<'a, Message> {
+    row![
         crate::player_menu::open_full(widgets::art(
             current
                 .and_then(|m| m.artwork.as_ref())
@@ -52,10 +79,14 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     ]
     .spacing(12)
     .align_y(Center)
-    .width(Length::Fixed(300.0));
+    .width(Length::Fixed(300.0))
+    .into()
+}
 
+/// Shuffle, Previous, Play or Pause, Next and Repeat.
+fn transport<'a>(playback: &Playback) -> Element<'a, Message> {
     let repeat = playback.repeat();
-    let transport = row![
+    row![
         control(
             Icon::Shuffle,
             18.0,
@@ -86,12 +117,16 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         ),
     ]
     .spacing(8)
-    .align_y(Center);
+    .align_y(Center)
+    .into()
+}
 
+/// The seek bar between the time played and the time left.
+fn scrubber<'a>(app: &App, signed: &Signed, current: Option<&TrackMeta>) -> Element<'a, Message> {
     let length = current.and_then(|m| m.duration_ms).unwrap_or(0).max(0) as u64;
     let at = signed
         .scrub
-        .unwrap_or(playback.position_ms())
+        .unwrap_or(app.playback.position_ms())
         .min(length.max(1));
     let seek: Element<'a, Message> = if length > 0 {
         slider(0.0..=length as f32, at as f32, |v| {
@@ -107,21 +142,22 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             .into()
     };
     let clock = |s: String| widgets::secondary(s).size(11).width(44);
-    let scrubber = row![
+    row![
         clock(widgets::duration(at)),
         seek,
         clock(format!("-{}", widgets::duration(length.saturating_sub(at))))
     ]
     .spacing(8)
-    .align_y(Center);
-    let middle = column![container(transport).center_x(Fill), scrubber]
-        .spacing(4)
-        .width(Fill)
-        .max_width(620);
+    .align_y(Center)
+    .into()
+}
 
+/// Crossfade, Infinity, the two panels, the volume and its device menu, and
+/// the `…` menu.
+fn tools<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     let settings = &app.config.settings;
     let panel_on = |p: Panel| signed.panel == Some(p);
-    let tools = row![
+    row![
         control(
             Icon::Crossfade,
             18.0,
@@ -146,7 +182,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             app.listening.menu == Some(crate::listening::BarMenu::Volume),
             crate::listening::BarMenu::Volume
         ),
-        slider(0.0..=1.0, playback.volume(), |v| Message::Player(
+        slider(0.0..=1.0, app.playback.volume(), |v| Message::Player(
             Transport::Volume(v)
         ))
         .step(0.01_f32)
@@ -160,16 +196,6 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     ]
     .spacing(6)
     .align_y(Center)
-    .width(Length::Fixed(360.0));
-
-    container(
-        row![now, container(middle).center_x(Fill), tools]
-            .spacing(16)
-            .align_y(Center)
-            .padding([0, 16]),
-    )
-    .height(Length::Fixed(HEIGHT))
-    .center_y(Length::Fixed(HEIGHT))
-    .style(theme::bar)
+    .width(Length::Fixed(360.0))
     .into()
 }

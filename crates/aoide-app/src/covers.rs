@@ -158,53 +158,12 @@ pub enum Msg {
 
 impl App {
     pub(crate) fn covers(&mut self, message: Msg) -> Task<Message> {
-        let store = self.store.clone();
-        let blobs = open_blobs(self.paths.as_ref());
-        let Some(signed) = self.session.as_mut() else {
+        if self.session.is_none() {
             return Task::none();
-        };
+        }
         match message {
-            Msg::Resolve { key, ids } => {
-                // No ids: every playlist, for the list page.
-                let ids = if ids.is_empty() {
-                    signed.playlists.iter().map(|p| p.id.clone()).collect()
-                } else {
-                    ids
-                };
-                let client = signed.connection.client.clone();
-                let sidecar = signed.sidecar.clone();
-                let shared = store.shared();
-                Task::perform(
-                    resolve(client, store, shared, sidecar, blobs, ids),
-                    move |found| {
-                        Message::Covers(Msg::Resolved {
-                            key,
-                            found: Box::new(found),
-                        })
-                    },
-                )
-            }
-            Msg::Resolved { key, found } => {
-                let Resolved { art, bytes } = *found;
-                for (art_key, bytes) in bytes {
-                    self.artwork.insert(art_key, bytes);
-                }
-                let page = signed
-                    .nav
-                    .as_mut()
-                    .and_then(|nav| nav.iter_mut().find(|e| e.key == key))
-                    .map(|e| &e.page);
-                let message = match page {
-                    Some(Page::Playlist(state)) => PageMsg::Playlist(
-                        crate::screens::playlist::Message::Cover(art.get(state.id()).cloned()),
-                    ),
-                    Some(Page::Playlists(_)) => {
-                        PageMsg::Playlists(crate::screens::playlists::Message::Covers(art))
-                    }
-                    _ => return Task::none(),
-                };
-                Task::done(Message::Page(key, message))
-            }
+            Msg::Resolve { key, ids } => self.resolve_covers(key, ids),
+            Msg::Resolved { key, found } => self.covers_resolved(key, *found),
             Msg::Choose { key, playlist } => Task::perform(
                 crate::screens::jellyfin_playlist::pick_picture("Choose a cover"),
                 move |file| {
@@ -220,55 +179,8 @@ impl App {
                 key,
                 playlist,
                 file: Some(read),
-            } => {
-                let bytes = match read {
-                    Ok(bytes) => bytes,
-                    Err(error) => {
-                        return Task::done(Message::Covers(Msg::Changed {
-                            key,
-                            result: Err(format!("That file couldn't be read: {error}")),
-                        }));
-                    }
-                };
-                let Some(blobs) = blobs else {
-                    return Task::done(Message::Covers(Msg::Changed {
-                        key,
-                        result: Err("There is nowhere on this computer to keep a cover.".into()),
-                    }));
-                };
-                let now = aoide_store::now_millis();
-                Task::perform(
-                    async move {
-                        store
-                            .call(move |w| {
-                                w.store
-                                    .set_cover_image(&playlist, &bytes, &blobs, now)
-                                    .map(|_| "The cover will go to your other devices with the next sync.".to_owned())
-                                    .map_err(|e| format!("That picture can't be a cover: {e}."))
-                            })
-                            .await
-                            .unwrap_or_else(|| Err("the library is closing".into()))
-                    },
-                    move |result| Message::Covers(Msg::Changed { key, result }),
-                )
-            }
-            Msg::Remove { key, playlist } => {
-                let now = aoide_store::now_millis();
-                Task::perform(
-                    async move {
-                        store
-                            .call(move |w| {
-                                w.store
-                                    .clear_cover_image(&playlist, now)
-                                    .map(|_| "The cover has been taken off.".to_owned())
-                                    .map_err(|e| e.to_string())
-                            })
-                            .await
-                            .unwrap_or_else(|| Err("the library is closing".into()))
-                    },
-                    move |result| Message::Covers(Msg::Changed { key, result }),
-                )
-            }
+            } => self.cover_picked(key, playlist, read),
+            Msg::Remove { key, playlist } => self.take_cover_off(key, playlist),
             Msg::Changed { key, result } => Task::batch([
                 Task::done(Message::Page(
                     key,
@@ -277,47 +189,174 @@ impl App {
                 Task::done(Message::PlaylistsChanged),
                 self.refresh_covers(),
             ]),
-            Msg::Repair { key } => {
-                let client = signed.connection.client.clone();
-                let now = aoide_store::now_millis();
-                Task::perform(
-                    async move {
-                        let lists = client
-                            .playlists(&crate::screens::jellyfin_playlists::query())
-                            .await
-                            .map_err(|e| crate::failure::describe(&e).to_string())?;
-                        let named: Vec<NamedJellyfinPlaylist> = lists
-                            .items
-                            .into_iter()
-                            .map(|i| NamedJellyfinPlaylist {
-                                id: i.id,
-                                name: i.name,
-                            })
-                            .collect();
-                        store
-                            .call(move |w| {
-                                w.store
-                                    .repair_covers(&named, now)
-                                    .map(|written| written.len())
-                                    .map_err(|e| e.to_string())
-                            })
-                            .await
-                            .unwrap_or_else(|| Err("the library is closing".into()))
-                    },
-                    move |result| {
-                        Message::Page(
-                            key,
-                            PageMsg::SyncStatus(crate::screens::sync_status::Message::Note(
-                                repair_note(result),
-                            )),
-                        )
-                    },
-                )
-                .chain(Task::done(Message::PlaylistsChanged))
-                .chain(Task::done(Message::Covers(Msg::RefreshAll)))
-            }
+            Msg::Repair { key } => self.repair_covers(key),
             Msg::RefreshAll => self.refresh_covers(),
         }
+    }
+
+    /// Finds the covers of these playlists (none: every playlist, for the
+    /// list page) for the page with `key`.
+    fn resolve_covers(&mut self, key: u64, ids: Vec<String>) -> Task<Message> {
+        let store = self.store.clone();
+        let blobs = open_blobs(self.paths.as_ref());
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        // No ids: every playlist, for the list page.
+        let ids = if ids.is_empty() {
+            signed.playlists.iter().map(|p| p.id.clone()).collect()
+        } else {
+            ids
+        };
+        let client = signed.connection.client.clone();
+        let sidecar = signed.sidecar.clone();
+        let shared = store.shared();
+        Task::perform(
+            resolve(client, store, shared, sidecar, blobs, ids),
+            move |found| {
+                Message::Covers(Msg::Resolved {
+                    key,
+                    found: Box::new(found),
+                })
+            },
+        )
+    }
+
+    /// The covers found: the chosen pictures into the artwork cache, and
+    /// the keys to the page that asked.
+    fn covers_resolved(&mut self, key: u64, found: Resolved) -> Task<Message> {
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let Resolved { art, bytes } = found;
+        for (art_key, bytes) in bytes {
+            self.artwork.insert(art_key, bytes);
+        }
+        let page = signed
+            .nav
+            .as_mut()
+            .and_then(|nav| nav.iter_mut().find(|e| e.key == key))
+            .map(|e| &e.page);
+        let message = match page {
+            Some(Page::Playlist(state)) => PageMsg::Playlist(
+                crate::screens::playlist::Message::Cover(art.get(state.id()).cloned()),
+            ),
+            Some(Page::Playlists(_)) => {
+                PageMsg::Playlists(crate::screens::playlists::Message::Covers(art))
+            }
+            _ => return Task::none(),
+        };
+        Task::done(Message::Page(key, message))
+    }
+
+    /// A picture picked for a playlist: kept in the blob directory and set
+    /// as its cover.
+    fn cover_picked(
+        &mut self,
+        key: u64,
+        playlist: String,
+        read: Result<Vec<u8>, String>,
+    ) -> Task<Message> {
+        let store = self.store.clone();
+        let blobs = open_blobs(self.paths.as_ref());
+        let bytes = match read {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                return Task::done(Message::Covers(Msg::Changed {
+                    key,
+                    result: Err(format!("That file couldn't be read: {error}")),
+                }));
+            }
+        };
+        let Some(blobs) = blobs else {
+            return Task::done(Message::Covers(Msg::Changed {
+                key,
+                result: Err("There is nowhere on this computer to keep a cover.".into()),
+            }));
+        };
+        let now = aoide_store::now_millis();
+        Task::perform(
+            async move {
+                store
+                    .call(move |w| {
+                        w.store
+                            .set_cover_image(&playlist, &bytes, &blobs, now)
+                            .map(|_| {
+                                "The cover will go to your other devices with the next sync."
+                                    .to_owned()
+                            })
+                            .map_err(|e| format!("That picture can't be a cover: {e}."))
+                    })
+                    .await
+                    .unwrap_or_else(|| Err("the library is closing".into()))
+            },
+            move |result| Message::Covers(Msg::Changed { key, result }),
+        )
+    }
+
+    fn take_cover_off(&mut self, key: u64, playlist: String) -> Task<Message> {
+        let store = self.store.clone();
+        let now = aoide_store::now_millis();
+        Task::perform(
+            async move {
+                store
+                    .call(move |w| {
+                        w.store
+                            .clear_cover_image(&playlist, now)
+                            .map(|_| "The cover has been taken off.".to_owned())
+                            .map_err(|e| e.to_string())
+                    })
+                    .await
+                    .unwrap_or_else(|| Err("the library is closing".into()))
+            },
+            move |result| Message::Covers(Msg::Changed { key, result }),
+        )
+    }
+
+    /// Repair Covers: each playlist with no picture borrows the one
+    /// Jellyfin playlist's with exactly its name.
+    fn repair_covers(&mut self, key: u64) -> Task<Message> {
+        let store = self.store.clone();
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let client = signed.connection.client.clone();
+        let now = aoide_store::now_millis();
+        Task::perform(
+            async move {
+                let lists = client
+                    .playlists(&crate::screens::jellyfin_playlists::query())
+                    .await
+                    .map_err(|e| crate::failure::describe(&e).to_string())?;
+                let named: Vec<NamedJellyfinPlaylist> = lists
+                    .items
+                    .into_iter()
+                    .map(|i| NamedJellyfinPlaylist {
+                        id: i.id,
+                        name: i.name,
+                    })
+                    .collect();
+                store
+                    .call(move |w| {
+                        w.store
+                            .repair_covers(&named, now)
+                            .map(|written| written.len())
+                            .map_err(|e| e.to_string())
+                    })
+                    .await
+                    .unwrap_or_else(|| Err("the library is closing".into()))
+            },
+            move |result| {
+                Message::Page(
+                    key,
+                    PageMsg::SyncStatus(crate::screens::sync_status::Message::Note(repair_note(
+                        result,
+                    ))),
+                )
+            },
+        )
+        .chain(Task::done(Message::PlaylistsChanged))
+        .chain(Task::done(Message::Covers(Msg::RefreshAll)))
     }
 
     /// Every open page that draws playlist covers, asked to find them again.
