@@ -69,52 +69,15 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
 }
 
 fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
-    let item = |label: String, glyph: Icon, section: Section| {
-        let selected = signed.section == section
-            || (section == Section::Playlists && signed.section == Section::JellyfinPlaylists);
-        button(
-            row![
-                icon(
-                    glyph,
-                    18.0,
-                    if selected {
-                        Tone::Accent
-                    } else {
-                        Tone::Secondary
-                    }
-                ),
-                crate::ellipsis::ellipsis(label).size(14),
-            ]
-            .spacing(10)
-            .align_y(Center),
-        )
-        .width(Fill)
-        .padding([6, 10])
-        .style(if selected {
-            theme::row_selected
-        } else {
-            theme::row
-        })
-        .on_press(Message::Section(section))
-    };
-    let glyph = |section: &Section| match section {
-        Section::Home => Icon::Home,
-        Section::Albums => Icon::Album,
-        Section::Artists => Icon::Artist,
-        Section::Songs => Icon::Song,
-        Section::Genres => Icon::Genre,
-        Section::Playlists | Section::Playlist(_) | Section::JellyfinPlaylists => Icon::Playlist,
-        Section::Search => Icon::Search,
-        Section::Settings => Icon::Settings,
-        Section::Mixes => Icon::Mix,
-        Section::Favourites => Icon::Heart,
-        Section::Replay => Icon::Sparkle,
-        Section::Collections | Section::Collection(_) => Icon::Genre,
-    };
-
+    let item =
+        |label: String, glyph: Icon, section: Section| sidebar_item(signed, label, glyph, section);
     let mut library = Column::new().spacing(2);
     for section in Section::LIBRARY {
-        library = library.push(item(section.title().to_owned(), glyph(&section), section));
+        library = library.push(item(
+            section.title().to_owned(),
+            section_glyph(&section),
+            section,
+        ));
     }
     let mut lists = Column::new().spacing(2);
     for playlist in &signed.playlists {
@@ -124,24 +87,13 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             Section::Playlist(playlist.id.clone()),
         ));
     }
-    let heading = |s: &'static str| {
-        container(
-            text(s)
-                .size(12)
-                .font(widgets::SEMIBOLD)
-                .style(|t| text::Style {
-                    color: Some(theme::secondary(t)),
-                }),
-        )
-        .padding([0, 10])
-    };
     let mut body = column![
         container(text("Aoide").size(22).font(widgets::BOLD)).padding([4, 10]),
         library,
     ]
     .spacing(14);
     // Before the playlists, which can run long.
-    body = body.push(heading("Collections")).push(
+    body = body.push(sidebar_heading("Collections")).push(
         screens::collections::sidebar(&app.config.collections, |label, section| {
             item(label, Icon::Genre, section).into()
         })
@@ -152,7 +104,7 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         )),
     );
     if !signed.playlists.is_empty() {
-        body = body.push(heading("Aoide playlists")).push(lists);
+        body = body.push(sidebar_heading("Aoide playlists")).push(lists);
     }
     let mut footer = column![item("Settings".into(), Icon::Settings, Section::Settings)].spacing(4);
     if let Some(Err(status)) = &signed.sync_status {
@@ -176,38 +128,73 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         .into()
 }
 
+/// One sidebar line; the section shown is lit (Playlists also while its
+/// Jellyfin half is).
+fn sidebar_item<'a>(
+    signed: &Signed,
+    label: String,
+    glyph: Icon,
+    section: Section,
+) -> button::Button<'a, Message> {
+    let selected = signed.section == section
+        || (section == Section::Playlists && signed.section == Section::JellyfinPlaylists);
+    button(
+        row![
+            icon(
+                glyph,
+                18.0,
+                if selected {
+                    Tone::Accent
+                } else {
+                    Tone::Secondary
+                }
+            ),
+            crate::ellipsis::ellipsis(label).size(14),
+        ]
+        .spacing(10)
+        .align_y(Center),
+    )
+    .width(Fill)
+    .padding([6, 10])
+    .style(if selected {
+        theme::row_selected
+    } else {
+        theme::row
+    })
+    .on_press(Message::Section(section))
+}
+
+fn section_glyph(section: &Section) -> Icon {
+    match section {
+        Section::Home => Icon::Home,
+        Section::Albums => Icon::Album,
+        Section::Artists => Icon::Artist,
+        Section::Songs => Icon::Song,
+        Section::Genres => Icon::Genre,
+        Section::Playlists | Section::Playlist(_) | Section::JellyfinPlaylists => Icon::Playlist,
+        Section::Search => Icon::Search,
+        Section::Settings => Icon::Settings,
+        Section::Mixes => Icon::Mix,
+        Section::Favourites => Icon::Heart,
+        Section::Replay => Icon::Sparkle,
+        Section::Collections | Section::Collection(_) => Icon::Genre,
+    }
+}
+
+fn sidebar_heading<'a>(s: &'static str) -> container::Container<'a, Message> {
+    container(
+        text(s)
+            .size(12)
+            .font(widgets::SEMIBOLD)
+            .style(|t| text::Style {
+                color: Some(theme::secondary(t)),
+            }),
+    )
+    .padding([0, 10])
+}
+
 fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
-    let mut body = Column::new().width(Fill).height(Fill);
-    if signed.unknown_owner && signed.confirm_erase {
-        body = body.push(banner(
-            "Erase the listening history and playlists on this computer? This can't be undone.",
-            Some((
-                ("Cancel", Message::ConfirmErase(false)),
-                ("Erase", Message::ResolveOwner { keep: false }),
-            )),
-        ));
-    } else if signed.unknown_owner {
-        body = body.push(banner(
-            "This computer has listening history and playlists from before accounts were \
-             recorded. Are they yours?",
-            Some((
-                ("Keep them", Message::ResolveOwner { keep: true }),
-                ("Erase them", Message::ConfirmErase(true)),
-            )),
-        ));
-    }
-    if let Some(notice) = &app.notice {
-        body = body.push(banner(notice, None));
-    }
-    if let Some(update) = crate::updates::banner(app) {
-        body = body.push(update);
-    }
-    if let Some(reason) = app.playback.unavailable() {
-        body = body.push(
-            container(widgets::secondary(format!("No sound output: {reason}")).size(12))
-                .padding([6, 28]),
-        );
-    }
+    let body = banners(app, signed);
     let Some(nav) = &signed.nav else {
         return container(body.push(widgets::loading()))
             .style(theme::page)
@@ -252,6 +239,43 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         .height(Fill)
         .style(theme::page)
         .into()
+}
+
+/// What runs across the top of the content: whose the history is, the
+/// notice, an update, and a missing sound output.
+fn banners<'a>(app: &'a App, signed: &'a Signed) -> Column<'a, Message> {
+    let mut body = Column::new().width(Fill).height(Fill);
+    if signed.unknown_owner && signed.confirm_erase {
+        body = body.push(banner(
+            "Erase the listening history and playlists on this computer? This can't be undone.",
+            Some((
+                ("Cancel", Message::ConfirmErase(false)),
+                ("Erase", Message::ResolveOwner { keep: false }),
+            )),
+        ));
+    } else if signed.unknown_owner {
+        body = body.push(banner(
+            "This computer has listening history and playlists from before accounts were \
+             recorded. Are they yours?",
+            Some((
+                ("Keep them", Message::ResolveOwner { keep: true }),
+                ("Erase them", Message::ConfirmErase(true)),
+            )),
+        ));
+    }
+    if let Some(notice) = &app.notice {
+        body = body.push(banner(notice, None));
+    }
+    if let Some(update) = crate::updates::banner(app) {
+        body = body.push(update);
+    }
+    if let Some(reason) = app.playback.unavailable() {
+        body = body.push(
+            container(widgets::secondary(format!("No sound output: {reason}")).size(12))
+                .padding([6, 28]),
+        );
+    }
+    body
 }
 
 /// The width the page has: the window's, less the sidebar and the panel.

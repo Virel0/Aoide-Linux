@@ -19,6 +19,7 @@ use crate::app::{App, Message, Signed, Transport};
 use crate::artwork::ArtKey;
 use crate::icons::{Icon, Tone, icon};
 use crate::listening::Msg;
+use crate::playback::tracks::TrackMeta;
 use crate::{theme, widgets};
 
 /// About 30 frames a second.
@@ -196,11 +197,33 @@ impl App {
 }
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Element<'a, Message> {
-    let playback = &app.playback;
-    let current = playback.current().map(|(_, q)| &q.meta);
-    let listen = |m: Msg| Message::Listening(m);
+    let current = app.playback.current().map(|(_, q)| &q.meta);
+    let body = column![
+        container(middle(app, full, current)).center_x(Fill),
+        words(current),
+        container(scrubber(app, signed, current)).center_x(Fill),
+        transport(&app.playback),
+        widgets::secondary("Esc to leave").size(11),
+    ]
+    .spacing(26)
+    .align_x(Center)
+    .width(Fill);
 
-    let switch = |label: &'a str, glyph: Icon, which: Show| {
+    container(
+        column![top_bar(full), container(body).center(Fill)]
+            .spacing(10)
+            .padding(24),
+    )
+    .width(Fill)
+    .height(Fill)
+    .style(theme::page)
+    .into()
+}
+
+/// Close, and the switch between the artwork and the visualiser.
+fn top_bar(full: &FullPlayer) -> Element<'_, Message> {
+    let listen = |m: Msg| Message::Listening(m);
+    let switch = |label: &'static str, glyph: Icon, which: Show| {
         let on = full.show == which;
         button(
             row![
@@ -214,7 +237,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
         .style(if on { theme::row_selected } else { theme::row })
         .on_press(listen(Msg::FullShow(which)))
     };
-    let top = row![
+    row![
         button(
             row![icon(Icon::Down, 18.0, Tone::Normal), text("Close").size(13)]
                 .spacing(6)
@@ -228,9 +251,17 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
         switch("Visualiser", Icon::Visualizer, Show::Visualizer),
     ]
     .spacing(6)
-    .align_y(Center);
+    .align_y(Center)
+    .into()
+}
 
-    let middle: Element<'a, Message> = match full.show {
+/// The cover large, or the visualiser's bars in its place.
+fn middle<'a>(
+    app: &'a App,
+    full: &'a FullPlayer,
+    current: Option<&'a TrackMeta>,
+) -> Element<'a, Message> {
+    match full.show {
         Show::Artwork => widgets::art(
             current
                 .and_then(|m| m.artwork.as_ref())
@@ -246,13 +277,16 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
             } else {
                 full.bars.clone()
             },
-            dimmed: !playback.is_playing(),
+            dimmed: !app.playback.is_playing(),
         })
         .width(Length::Fixed(760.0))
         .height(Length::Fixed(420.0))
         .into(),
-    };
+    }
+}
 
+/// The song's title, and its artist and album under it.
+fn words(current: Option<&TrackMeta>) -> Element<'_, Message> {
     let subtitle = current.map_or_else(String::new, |m| {
         if m.album.is_empty() {
             m.artist.clone()
@@ -260,19 +294,23 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
             format!("{} \u{2014} {}", m.artist, m.album)
         }
     });
-    let words = column![
+    column![
         text(current.map_or("Not playing", |m| m.title.as_str()))
             .size(30)
             .font(widgets::BOLD),
         widgets::secondary(subtitle).size(17),
     ]
     .spacing(6)
-    .align_x(Center);
+    .align_x(Center)
+    .into()
+}
 
+/// The seek bar between the time played and the time left.
+fn scrubber<'a>(app: &App, signed: &Signed, current: Option<&TrackMeta>) -> Element<'a, Message> {
     let length = current.and_then(|m| m.duration_ms).unwrap_or(0).max(0) as u64;
     let at = signed
         .scrub
-        .unwrap_or(playback.position_ms())
+        .unwrap_or(app.playback.position_ms())
         .min(length.max(1));
     let seek: Element<'a, Message> = if length > 0 {
         slider(0.0..=length as f32, at as f32, |v| {
@@ -288,15 +326,19 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
             .into()
     };
     let clock = |s: String| widgets::secondary(s).size(12).width(48);
-    let scrubber = row![
+    row![
         clock(widgets::duration(at)),
         seek,
         clock(format!("-{}", widgets::duration(length.saturating_sub(at))))
     ]
     .spacing(10)
     .align_y(Center)
-    .width(Length::Fixed(640.0));
+    .width(Length::Fixed(640.0))
+    .into()
+}
 
+/// Shuffle, Previous, Play or Pause, Next and Repeat.
+fn transport<'a>(playback: &crate::playback::Playback) -> Element<'a, Message> {
     let control = |glyph: Icon, size: f32, on: bool, message: Transport| {
         button(icon(
             glyph,
@@ -308,7 +350,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
         .on_press(Message::Player(message))
     };
     let repeat = playback.repeat();
-    let transport = row![
+    row![
         control(
             Icon::Shuffle,
             20.0,
@@ -339,27 +381,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
         ),
     ]
     .spacing(18)
-    .align_y(Center);
-
-    let body = column![
-        container(middle).center_x(Fill),
-        words,
-        container(scrubber).center_x(Fill),
-        transport,
-        widgets::secondary("Esc to leave").size(11),
-    ]
-    .spacing(26)
-    .align_x(Center)
-    .width(Fill);
-
-    container(
-        column![top, container(body).center(Fill)]
-            .spacing(10)
-            .padding(24),
-    )
-    .width(Fill)
-    .height(Fill)
-    .style(theme::page)
+    .align_y(Center)
     .into()
 }
 
