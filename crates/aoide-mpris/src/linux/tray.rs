@@ -84,6 +84,12 @@ impl Tray {
     /// No watcher on the bus is not an error: the item waits for one, and
     /// [`Tray::is_shown`] says whether a panel has it. Must be awaited inside
     /// a tokio runtime.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::DBus`](crate::Error::DBus) when the bus can't be reached, the
+    /// item can't be served, or its name can't be had. A missing or refusing
+    /// watcher is not an error.
     pub async fn start(bus: &Bus, icon: TrayIcon) -> Result<(Tray, Receiver<TrayCommand>)> {
         let shared: Shared = Arc::new(Mutex::new(Inner {
             state: TrayState::default(),
@@ -160,6 +166,11 @@ impl Tray {
 
     /// Shows a new state. Announces the tooltip and the menu only if they
     /// changed, so it is cheap to call on every player change.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::DBus`](crate::Error::DBus) when a signal can't be sent; the new
+    /// state is kept either way, and menu requests read it.
     pub async fn update(&self, state: TrayState) -> Result<()> {
         let (changes, revision) = {
             let mut inner = lock(&self.shared);

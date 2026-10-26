@@ -46,6 +46,10 @@ pub struct Inhibitor {
 
 impl Inhibitor {
     /// Connects to `bus`. Nothing is inhibited until [`Inhibitor::set`].
+    ///
+    /// # Errors
+    ///
+    /// [`Error::DBus`] when the bus can't be reached.
     pub async fn new(bus: &Bus) -> Result<Inhibitor> {
         Ok(Inhibitor {
             connection: builder(bus)?.build().await?,
@@ -56,6 +60,11 @@ impl Inhibitor {
     /// Inhibits sleep when `playing`, releases it otherwise. Calling it again
     /// with the same value does nothing. Fails with [`Error::NoInhibitor`] if
     /// neither the portal nor the screensaver answers.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NoInhibitor`] as above; [`Error::DBus`] when releasing fails, in
+    /// which case the inhibition is kept for the next call to try again.
     pub async fn set(&mut self, playing: bool) -> Result<()> {
         match (playing, &self.held) {
             (true, None) => self.held = Some(self.inhibit().await?),

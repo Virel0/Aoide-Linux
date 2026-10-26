@@ -15,10 +15,21 @@ pub struct Mpris {
 }
 
 impl Mpris {
+    /// Would connect and serve the MPRIS interfaces; here there is no D-Bus.
+    ///
+    /// # Errors
+    ///
+    /// Always [`Error::Unavailable`].
     pub async fn start(_bus: &Bus) -> Result<(Mpris, Receiver<Command>)> {
         Err(Error::Unavailable)
     }
 
+    /// Would publish the player's state. Never reached here: no [`Mpris`] can be
+    /// made on this platform.
+    ///
+    /// # Errors
+    ///
+    /// None here; on Linux, `Error::DBus` when a signal can't be sent.
     pub async fn update(&self, _state: PlayerState) -> Result<()> {
         match self.never {}
     }
@@ -32,14 +43,27 @@ pub struct Tray {
 }
 
 impl Tray {
+    /// Would serve the tray item; here there is no D-Bus.
+    ///
+    /// # Errors
+    ///
+    /// Always [`Error::Unavailable`].
     pub async fn start(_bus: &Bus, _icon: TrayIcon) -> Result<(Tray, Receiver<TrayCommand>)> {
         Err(Error::Unavailable)
     }
 
+    /// Whether a panel shows the item. Never reached here: no [`Tray`] can be made
+    /// on this platform.
     pub fn is_shown(&self) -> bool {
         match self.never {}
     }
 
+    /// Would show a new tray state. Never reached here: no [`Tray`] can be made on
+    /// this platform.
+    ///
+    /// # Errors
+    ///
+    /// None here; on Linux, `Error::DBus` when a signal can't be sent.
     pub async fn update(&self, _state: TrayState) -> Result<()> {
         match self.never {}
     }
@@ -68,10 +92,22 @@ pub struct Inhibitor {
 }
 
 impl Inhibitor {
+    /// Would connect to the bus for inhibiting sleep; here there is no D-Bus.
+    ///
+    /// # Errors
+    ///
+    /// Always [`Error::Unavailable`].
     pub async fn new(_bus: &Bus) -> Result<Inhibitor> {
         Err(Error::Unavailable)
     }
 
+    /// Would inhibit sleep while `playing`. Never reached here: no [`Inhibitor`]
+    /// can be made on this platform.
+    ///
+    /// # Errors
+    ///
+    /// None here; on Linux, [`Error::NoInhibitor`] when nothing takes the
+    /// inhibition.
     pub async fn set(&mut self, _playing: bool) -> Result<()> {
         match self.never {}
     }
