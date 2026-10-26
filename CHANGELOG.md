@@ -7,7 +7,25 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-26
+
+No change in what the app does; the code underneath is reorganised to the
+project's size limits, and the audio thread no longer has a way to panic.
+
 ### Changed
+- The app's message handling is split by feature (`app/`), and its long
+  screens, widgets, mixes and smart-search code into focused modules: no
+  function over 100 lines, `app.rs` from 1,682 lines to 465.
+- The store's smart rules, records and playlists, and the audio engine,
+  pipeline and output, are split into submodules with the same public API.
+- Five `expect`s on the audio thread are replaced by forms that cannot
+  panic.
+- Every public item of the library crates is documented, with an `# Errors`
+  section on fallible functions, and lints keep it so.
+- CI reports functions over 100 lines and source files over 800 as
+  warnings.
+- The repository is `Virel0/Aoide-Linux`; links, the update check and the
+  LRCLIB user agent name it so (the old spelling still resolves).
 - The AppImage and deb workflow can be run by hand for a given tag.
 - README, security policy, contributing guide, issue and pull request
   templates.
@@ -88,5 +106,6 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Virel0/Aoide-Linux/releases/tag/v0.1.0

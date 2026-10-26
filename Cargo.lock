@@ -137,7 +137,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "aoide-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aoide-audio",
  "aoide-integrations",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "aoide-audio"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cpal",
  "flacenc",
@@ -184,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "aoide-integrations"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "reqwest",
  "rustix 1.1.5",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "aoide-jellyfin"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.23.1",
  "reqwest",
@@ -215,7 +215,7 @@ dependencies = [
 
 [[package]]
 name = "aoide-lyrics"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aoide-jellyfin",
  "futures-util",
@@ -231,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "aoide-mpris"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures-util",
  "serde",
@@ -242,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "aoide-sidecar"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aoide-store",
  "chrono",
@@ -258,7 +258,7 @@ dependencies = [
 
 [[package]]
 name = "aoide-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "rusqlite",

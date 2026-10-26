@@ -72,6 +72,11 @@
   <!-- Newest first. Add one for each tag before tagging it; the date is the
        release's. -->
   <releases>
+    <release version="0.1.1" date="2026-10-26" type="development">
+      <description>
+        <p>No change in what the app does: the code is reorganised and documented, and the audio thread can no longer stop playback on an internal check.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-25" type="development">
       <description>
         <p>The first release, for testing beside the Electron app: browsing, gapless playback, the queue, sync with the Aoide plugin, Infinity and Discover, synced lyrics with translation by your own LibreTranslate server, the equaliser, media keys and the tray.</p>

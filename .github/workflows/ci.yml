@@ -29,6 +29,16 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # The project's size limits, as warnings on the run (never a failure):
+      # functions over 100 lines, and source files over 800.
+      - name: Size report
+        run: |
+          printf 'too-many-lines-threshold = 100\n' > "$RUNNER_TEMP/clippy.toml"
+          CLIPPY_CONF_DIR="$RUNNER_TEMP" cargo clippy --workspace --lib --bins --message-format=short -- \
+            -A clippy::all -W clippy::too_many_lines 2>&1 \
+            | sed -n 's/^\([^:]*\):\([0-9]*\):[0-9]*: warning: this function has too many lines (\([0-9]*\)\/100)/::warning file=\1,line=\2::function of \3 lines (limit 100)/p'
+          git ls-files '*.rs' | grep -v '/tests/' | xargs wc -l \
+            | awk '$2 != "total" && $1 > 800 { print "::warning file=" $2 "::" $1 " lines (limit 800)" }'
       - name: MPRIS, single instance and sleep inhibit, on a private D-Bus
         run: cargo test -p aoide-mpris -- --include-ignored
       - name: The keyring, against GNOME Keyring on a private D-Bus
