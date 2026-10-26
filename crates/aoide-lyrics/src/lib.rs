@@ -76,6 +76,9 @@
 //! `NOTICE.txt`; a package enabling the feature must carry it too). UniDic
 //! (BSD-3-Clause, via `lindera-unidic`) would be the other choice; it is larger.
 
+#![warn(missing_docs)]
+#![warn(clippy::missing_errors_doc)]
+
 mod finder;
 #[cfg(feature = "furigana")]
 mod furigana;

@@ -93,6 +93,11 @@ impl LyricsFinder {
 
     /// The finder with every provider this crate has: LRCLIB, for now the only
     /// one (the crate docs say why).
+    ///
+    /// # Errors
+    ///
+    /// [`ProviderError::Transport`] when the HTTP client can't be built (no
+    /// TLS backend). Nothing is sent either way.
     pub fn with_default_providers() -> Result<Self, ProviderError> {
         Ok(Self::new(vec![Arc::new(Lrclib::new()?)]))
     }
@@ -118,6 +123,12 @@ impl LyricsFinder {
     /// answered had nothing that fits. `Err` only when none answered at all.
     ///
     /// A track without a title or an artist is `Ok(None)` without a request.
+    ///
+    /// # Errors
+    ///
+    /// [`AllFailed`], with each provider's [`ProviderError`] in preference
+    /// order, when every provider failed or timed out. One provider answering,
+    /// even with nothing, makes the result `Ok`.
     pub async fn find(&self, track: &TrackQuery) -> Result<Option<Found>, AllFailed> {
         if !track.is_searchable() || self.providers.is_empty() {
             return Ok(None);
