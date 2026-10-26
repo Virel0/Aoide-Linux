@@ -7,18 +7,18 @@
 
 use aoide_jellyfin::{Item, JellyfinClient, ListQuery};
 use aoide_sidecar::{
-    ImportMatch, ImportResult, ImportedPlaylist, ImportedTrack, JellyfinSearch, LibraryTrack,
-    MatchedBy, SidecarClient, fetch_spotify_playlist, fetch_spotify_playlist_from, match_playlist,
+    ImportResult, ImportedPlaylist, ImportedTrack, JellyfinSearch, LibraryTrack, MatchedBy,
+    SidecarClient, fetch_spotify_playlist, fetch_spotify_playlist_from, match_playlist,
     parse_playlist_csv,
 };
+use iced::Task;
 use iced::futures::{SinkExt, Stream};
-use iced::widget::{Column, button, column, container, row, text, text_input};
-use iced::{Center, Element, Fill, Task};
 
-use super::{Ctx, PageMsg, Route, View};
+use super::{Ctx, PageMsg, Route};
 use crate::app::Message as App;
 use crate::playback::tracks::TrackMeta;
-use crate::{theme, widgets};
+
+mod view;
 
 /// Jellyfin's song search, for the matching rules when there is no sidecar.
 #[derive(Clone)]
@@ -256,36 +256,13 @@ impl State {
                 Task::perform(pick_csv(), move |file| wrap(Message::Csv(file)))
             }
             Message::Csv(None) => Task::none(),
-            Message::Csv(Some(read)) => {
-                let parsed = read
-                    .map_err(|e| format!("That file couldn't be read: {e}"))
-                    .and_then(|(name, text)| {
-                        parse_playlist_csv(&text, &name).map_err(|e| {
-                            let said = e.to_string();
-                            format!("{}{}.", said[..1].to_uppercase(), &said[1..])
-                        })
-                    });
-                Task::done(wrap(Message::Read(parsed)))
-            }
+            Message::Csv(Some(read)) => Task::done(wrap(Message::Read(parse_csv(read)))),
             Message::Read(Err(error)) => {
                 self.step = Step::Start;
                 self.error = Some(error);
                 Task::none()
             }
-            Message::Read(Ok(playlist)) => {
-                if playlist.tracks.is_empty() {
-                    self.step = Step::Start;
-                    self.error = Some("That playlist has no songs in it.".to_owned());
-                    return Task::none();
-                }
-                self.name.clone_from(&playlist.name);
-                self.step = Step::Matching {
-                    done: 0,
-                    total: playlist.tracks.len(),
-                };
-                // The app holds the sidecar client the matching asks first.
-                Task::done(App::ImportMatch(key, Box::new(playlist)))
-            }
+            Message::Read(Ok(playlist)) => self.read(playlist, key),
             Message::Progress(done, total) => {
                 if matches!(self.step, Step::Matching { .. }) {
                     self.step = Step::Matching { done, total };
@@ -300,44 +277,7 @@ impl State {
                 self.name = name;
                 Task::none()
             }
-            Message::Save => {
-                let Step::Matched(found) = &self.step else {
-                    return Task::none();
-                };
-                let ids = found.1.found_ids();
-                let name = self.name.trim().to_owned();
-                if ids.is_empty() || name.is_empty() {
-                    return Task::none();
-                }
-                self.step = Step::Saving;
-                let client = ctx.client.clone();
-                let store = ctx.store.clone();
-                Task::perform(
-                    async move {
-                        let items = client
-                            .items_by_ids(&ids)
-                            .await
-                            .map_err(|e| crate::failure::describe(&e).to_string())?;
-                        let tracks: Vec<TrackMeta> =
-                            items.iter().map(TrackMeta::from_item).collect();
-                        let now = aoide_store::now_millis();
-                        store
-                            .call(move |w| {
-                                let list = w.store.create_playlist(&name, None, None, now)?;
-                                let rows: Vec<_> =
-                                    tracks.iter().map(|t| t.track_ref(now)).collect();
-                                w.store.cache_tracks(&rows)?;
-                                let links: Vec<_> = tracks.iter().map(TrackMeta::link).collect();
-                                w.store.add_tracks(&links, &list.id, now)?;
-                                Ok::<_, aoide_store::StoreError>(list.id)
-                            })
-                            .await
-                            .ok_or_else(|| "the library is closing".to_owned())?
-                            .map_err(|e| e.to_string())
-                    },
-                    move |r| wrap(Message::Saved(r)),
-                )
-            }
+            Message::Save => self.save(ctx),
             Message::Saved(Ok(id)) => {
                 // Back from the new playlist lands on a fresh import.
                 self.step = Step::Start;
@@ -366,179 +306,78 @@ impl State {
         }
     }
 
-    pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
-        let key = view.key;
-        let message = move |m: Message| App::Page(key, PageMsg::Import(m));
-        let mut body = column![
-            widgets::title_bar("Import a playlist", view.can_go_back),
-            widgets::secondary(
-                "Bring a playlist from Spotify or another service. Aoide looks for each song \
-                 in your library and saves the ones it finds as an Aoide playlist."
-            )
-            .size(13),
-        ]
-        .spacing(16);
-        match &self.step {
-            Step::Start => {
-                let ready = !self.link.trim().is_empty();
-                body = body
-                    .push(
-                        row![
-                            text_input("Paste a Spotify playlist link", &self.link)
-                                .on_input(move |s| message(Message::Link(s)))
-                                .on_submit_maybe(ready.then(|| message(Message::ReadLink)))
-                                .padding(8)
-                                .style(theme::field),
-                            button(text("Read"))
-                                .style(theme::filled)
-                                .padding([8, 14])
-                                .on_press_maybe(ready.then(|| message(Message::ReadLink))),
-                        ]
-                        .spacing(10)
-                        .align_y(Center),
-                    )
-                    .push(
-                        row![
-                            widgets::secondary("Or a CSV export (Exportify and similar):").size(13),
-                            button(text("Choose a CSV file…").size(13))
-                                .style(theme::tonal)
-                                .padding([6, 12])
-                                .on_press(message(Message::ChooseCsv)),
-                        ]
-                        .spacing(10)
-                        .align_y(Center),
-                    )
-                    .push(
-                        widgets::secondary(
-                            "A Spotify link gives the first 100 songs; export the playlist to \
-                             CSV for all of it. Only the link's public page is read: no account.",
-                        )
-                        .size(12),
-                    );
-            }
-            Step::Reading => body = body.push(widgets::secondary("Reading the playlist…")),
-            Step::Matching { done, total } => {
-                body = body.push(widgets::secondary(format!(
-                    "Looking for the songs in your library: {done} of {total}…"
-                )));
-            }
-            Step::Saving => body = body.push(widgets::secondary("Saving…")),
-            Step::Matched(found) => body = body.push(self.matched(&found.0, &found.1, view)),
+    /// A playlist read: matched against the library, unless it is empty.
+    fn read(&mut self, playlist: ImportedPlaylist, key: u64) -> Task<App> {
+        if playlist.tracks.is_empty() {
+            self.step = Step::Start;
+            self.error = Some("That playlist has no songs in it.".to_owned());
+            return Task::none();
         }
-        if let Some(error) = &self.error {
-            body = body.push(widgets::plain_failure(error));
-        }
-        if let Some(note) = &self.note {
-            body = body.push(widgets::secondary(note.as_str()).size(13));
-        }
-        widgets::page(body.max_width(860))
+        self.name.clone_from(&playlist.name);
+        self.step = Step::Matching {
+            done: 0,
+            total: playlist.tracks.len(),
+        };
+        // The app holds the sidecar client the matching asks first.
+        Task::done(App::ImportMatch(key, Box::new(playlist)))
     }
 
-    fn matched<'a>(
-        &'a self,
-        playlist: &'a ImportedPlaylist,
-        result: &'a ImportResult,
-        view: &View<'a>,
-    ) -> Element<'a, App> {
-        let key = view.key;
-        let message = move |m: Message| App::Page(key, PageMsg::Import(m));
-        let found = result.found_ids().len();
-        let ready = found > 0 && !self.name.trim().is_empty();
-        let mut column = column![text(summary(result)).size(16)].spacing(14);
-        if playlist.is_truncated {
-            column = column.push(
-                widgets::secondary(
-                    "Spotify only shares the first 100 songs through a link. Export the \
-                     playlist to CSV for all of it.",
-                )
-                .size(13),
-            );
-        }
-        column = column.push(
-            row![
-                text_input("Playlist name", &self.name)
-                    .on_input(move |s| message(Message::Name(s)))
-                    .padding(8)
-                    .style(theme::field),
-                button(text(match found {
-                    1 => "Save 1 song".to_owned(),
-                    n => format!("Save {n} songs"),
-                }))
-                .style(theme::filled)
-                .padding([8, 14])
-                .on_press_maybe(ready.then(|| message(Message::Save))),
-            ]
-            .spacing(10)
-            .align_y(Center),
-        );
-        let missing = result.missing();
-        let mut tools = row![
-            button(text("Start over").size(13))
-                .style(theme::tonal)
-                .padding([6, 12])
-                .on_press(message(Message::StartOver)),
-        ]
-        .spacing(8);
-        if !missing.is_empty() {
-            tools = tools.push(
-                button(text("Copy missing songs").size(13))
-                    .style(theme::tonal)
-                    .padding([6, 12])
-                    .on_press(message(Message::CopyMissing)),
-            );
-        }
-        column = column.push(tools);
-        let rows = |matches: Vec<&'a ImportMatch>, found: bool| {
-            let mut list = Column::new().spacing(4);
-            for m in matches {
-                let mut line = column![text(line(&m.track)).size(14)];
-                if found && let Some(chosen) = &m.found {
-                    let artist = chosen
-                        .artists
-                        .first()
-                        .map(String::as_str)
-                        .unwrap_or_default();
-                    line = line.push(
-                        widgets::secondary(format!(
-                            "In your library: {} \u{2014} {artist}",
-                            chosen.title.as_deref().unwrap_or("this song")
-                        ))
-                        .size(12),
-                    );
-                }
-                list = list.push(container(line).padding([4, 8]));
-            }
-            container(list).padding(10).width(Fill).style(theme::menu)
+    /// Saves the songs found as an Aoide playlist under the name typed.
+    fn save(&mut self, ctx: &Ctx<'_>) -> Task<App> {
+        let Step::Matched(found) = &self.step else {
+            return Task::none();
         };
-        let (have, lack): (Vec<&ImportMatch>, Vec<&ImportMatch>) =
-            result.matches.iter().partition(|m| m.found.is_some());
-        if !lack.is_empty() {
-            column = column
-                .push(
-                    text(format!("Not in your library ({})", lack.len()))
-                        .size(17)
-                        .font(widgets::BOLD),
-                )
-                .push(rows(lack, false));
+        let ids = found.1.found_ids();
+        let name = self.name.trim().to_owned();
+        if ids.is_empty() || name.is_empty() {
+            return Task::none();
         }
-        if !have.is_empty() {
-            column = column
-                .push(
-                    text(format!("Found ({})", have.len()))
-                        .size(17)
-                        .font(widgets::BOLD),
-                )
-                .push(rows(have, true));
-        }
-        column.into()
+        self.step = Step::Saving;
+        let client = ctx.client.clone();
+        let store = ctx.store.clone();
+        let key = ctx.key;
+        Task::perform(
+            async move {
+                let items = client
+                    .items_by_ids(&ids)
+                    .await
+                    .map_err(|e| crate::failure::describe(&e).to_string())?;
+                let tracks: Vec<TrackMeta> = items.iter().map(TrackMeta::from_item).collect();
+                let now = aoide_store::now_millis();
+                store
+                    .call(move |w| {
+                        let list = w.store.create_playlist(&name, None, None, now)?;
+                        let rows: Vec<_> = tracks.iter().map(|t| t.track_ref(now)).collect();
+                        w.store.cache_tracks(&rows)?;
+                        let links: Vec<_> = tracks.iter().map(TrackMeta::link).collect();
+                        w.store.add_tracks(&links, &list.id, now)?;
+                        Ok::<_, aoide_store::StoreError>(list.id)
+                    })
+                    .await
+                    .ok_or_else(|| "the library is closing".to_owned())?
+                    .map_err(|e| e.to_string())
+            },
+            move |r| App::Page(key, PageMsg::Import(Message::Saved(r))),
+        )
     }
+}
+
+/// A picked file's text, read as a playlist export.
+fn parse_csv(read: Result<(String, String), String>) -> Result<ImportedPlaylist, String> {
+    read.map_err(|e| format!("That file couldn't be read: {e}"))
+        .and_then(|(name, text)| {
+            parse_playlist_csv(&text, &name).map_err(|e| {
+                let said = e.to_string();
+                format!("{}{}.", said[..1].to_uppercase(), &said[1..])
+            })
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use aoide_jellyfin::{Credentials, Device, ServerAddress};
-    use aoide_sidecar::MatchedTrack;
+    use aoide_sidecar::{ImportMatch, MatchedTrack};
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
