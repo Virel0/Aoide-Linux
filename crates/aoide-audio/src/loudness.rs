@@ -55,9 +55,13 @@ pub fn linear_gain(db: Option<f64>) -> f32 {
 /// linear fraction of full scale. Anything missing or unreadable is `None`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ReplayGainTags {
+    /// The track's gain, in dB.
     pub track_gain_db: Option<f64>,
+    /// The track's peak, as a fraction of full scale.
     pub track_peak: Option<f64>,
+    /// The album's gain, in dB.
     pub album_gain_db: Option<f64>,
+    /// The album's peak, as a fraction of full scale.
     pub album_peak: Option<f64>,
 }
 

@@ -106,6 +106,7 @@ impl VisualizerTap {
     }
 }
 
+/// How a [`Visualizer`] analyses what is heard.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VisualizerConfig {
     /// FFT length in frames, a power of two: 2048 is 43 ms at 48 kHz, with
@@ -113,7 +114,9 @@ pub struct VisualizerConfig {
     pub fft_size: usize,
     /// How many bands, log-spaced from `min_hz` to `max_hz`.
     pub bands: usize,
+    /// The lowest band's lower edge, in hertz.
     pub min_hz: f32,
+    /// The highest band's upper edge, in hertz.
     pub max_hz: f32,
     /// A band at this level or below shows as 0; 0 dBFS (a full-scale sine
     /// in the band) shows as 1.
@@ -236,6 +239,7 @@ impl Visualizer {
         }
     }
 
+    /// The configuration it was made with.
     pub fn config(&self) -> VisualizerConfig {
         self.config
     }

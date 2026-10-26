@@ -88,6 +88,10 @@ impl OpenStream for CpalOutput {
 /// PipeWire and PulseAudio appear as its `pipewire`, `pulse` and `default`
 /// devices), the default among them marked. A device that will not say its
 /// id or name is left out.
+///
+/// # Errors
+///
+/// [`Error::Output`] when the host cannot list its devices.
 pub fn output_devices() -> Result<Vec<OutputDevice>> {
     let host = cpal::default_host();
     let default = host.default_output_device().and_then(|d| d.id().ok());

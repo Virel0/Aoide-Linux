@@ -40,7 +40,9 @@ use crate::error::{Error, Result};
 /// A device's rate and channel count.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeviceFormat {
+    /// Frames per second, in hertz.
     pub sample_rate: u32,
+    /// Interleaved channels per frame.
     pub channels: usize,
 }
 
@@ -66,7 +68,12 @@ pub enum DeviceChoice {
     FollowDefault,
     /// One device: found by its id, or by its name when the id has changed
     /// (an ALSA card renumbered, say).
-    Device { id: String, name: String },
+    Device {
+        /// The id [`output_devices`] gave it.
+        id: String,
+        /// Its name, the fallback when the id no longer matches.
+        name: String,
+    },
 }
 
 impl From<&OutputDevice> for DeviceChoice {
@@ -82,11 +89,19 @@ impl From<&OutputDevice> for DeviceChoice {
 pub trait OpenStream: Send + 'static {
     /// The default device's own rate and channel count, which the engine is
     /// made for.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when there is no default device or it will not say its format.
     fn default_format(&mut self) -> Result<DeviceFormat>;
 
     /// Opens the default device at `format` and starts it. Its callback calls
     /// `render`; it tells `report` when the stream fails. The stream stops
     /// when the returned value is dropped.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the device is gone or refuses the stream at `format`.
     fn open(
         &mut self,
         format: DeviceFormat,
@@ -96,6 +111,10 @@ pub trait OpenStream: Send + 'static {
 
     /// A chosen device's own rate and channel count. Only the default exists
     /// unless this is implemented.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the device is not found or will not say its format.
     fn device_format(&mut self, device: &DeviceChoice) -> Result<DeviceFormat> {
         match device {
             DeviceChoice::FollowDefault => self.default_format(),
@@ -105,6 +124,11 @@ pub trait OpenStream: Send + 'static {
 
     /// Opens a chosen device, as [`OpenStream::open`] opens the default.
     /// Only the default exists unless this is implemented.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the device is not found, is gone, or refuses the stream at
+    /// `format`.
     fn open_device(
         &mut self,
         device: &DeviceChoice,

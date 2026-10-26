@@ -56,35 +56,49 @@ pub enum DecodeMode {
     Inline,
 }
 
+/// What an engine renders: the device's format, and where decoding happens.
 #[derive(Clone, Copy, Debug)]
 pub struct EngineConfig {
+    /// Frames per second, in hertz; tracks at other rates are resampled to it.
     pub sample_rate: u32,
+    /// Interleaved channels per frame; tracks are mapped to it.
     pub channels: usize,
+    /// Where tracks are decoded.
     pub decode: DecodeMode,
 }
 
 /// What the engine says about what is heard.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EngineEvent {
+    /// A track's first frame has been heard.
     TrackStarted {
+        /// The track's queue entry.
         id: EntryId,
     },
+    /// A track's last frame has been heard, or a blend took it out.
     TrackEnded {
+        /// The track's queue entry.
         id: EntryId,
     },
     /// The heard position in the current track, in milliseconds into the file.
     Position {
+        /// The track's queue entry.
         id: EntryId,
+        /// Milliseconds into the file.
         ms: u64,
     },
+    /// A track could not be opened or decoded; playback moves on.
     Error {
+        /// The track's queue entry.
         id: EntryId,
+        /// What went wrong, for the listener; never a stream's URL.
         message: String,
     },
     /// Nothing more to play.
     Finished,
     /// The output device reported a problem (an underrun, a lost device).
     DeviceError {
+        /// What the device or backend said.
         message: String,
     },
     /// The output stream failed and has been opened again; playback carries
@@ -92,10 +106,14 @@ pub enum EngineEvent {
     DeviceRestored,
 }
 
+/// What the transport is doing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Transport {
+    /// Nothing to play: never loaded, stopped, or the last track ended.
     Stopped,
+    /// Rendering sound.
     Playing,
+    /// Holding a track at a position (or fading out to it).
     Paused,
 }
 

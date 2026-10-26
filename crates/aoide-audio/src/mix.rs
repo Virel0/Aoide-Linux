@@ -16,11 +16,14 @@ use std::f64::consts::FRAC_PI_2;
 /// the file. Measured by the sidecar; the engine plays only this span.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SoundBounds {
+    /// Where the sound starts.
     pub start_ms: u64,
+    /// Where it stops; after `start_ms` in a measured track.
     pub end_ms: u64,
 }
 
 impl SoundBounds {
+    /// Bounds from their two ends.
     pub fn new(start_ms: u64, end_ms: u64) -> Self {
         Self { start_ms, end_ms }
     }
@@ -34,7 +37,10 @@ pub enum MixTransition {
     /// The outgoing track finishes, then the next one starts.
     Cut,
     /// The two overlap for this many seconds with equal-power curves.
-    Blend { seconds: f64 },
+    Blend {
+        /// The overlap, in seconds; the engine plays zero or less as a gapless join.
+        seconds: f64,
+    },
 }
 
 impl MixTransition {
@@ -61,6 +67,7 @@ impl MixTransition {
 pub struct MixTrack {
     /// The album's name, empty when the track has none.
     pub album: String,
+    /// Its position on the album, when tagged.
     pub track_number: Option<i64>,
     /// The file's whole length, in seconds.
     pub duration_seconds: Option<f64>,

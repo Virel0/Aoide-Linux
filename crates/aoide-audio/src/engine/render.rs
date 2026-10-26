@@ -22,6 +22,9 @@ use crate::eq::Equalizer;
 use crate::pipeline::TrackSpec;
 use crate::visualizer::TapRing;
 
+/// The render core: decks, crossfades, the equaliser and compressor, the fades and
+/// the volume, rendered into whatever buffer the caller passes. Driven by its
+/// [`EngineHandle`]; see the module documentation.
 pub struct Engine {
     pub(super) config: EngineConfig,
     pub(super) commands: Receiver<Command>,
@@ -56,6 +59,10 @@ pub struct Engine {
 impl Engine {
     /// An engine, the handle that drives it, and the channel its events come
     /// out on.
+    ///
+    /// # Panics
+    ///
+    /// When `config` has a sample rate or a channel count of zero.
     pub fn new(config: EngineConfig) -> (Engine, EngineHandle, Receiver<EngineEvent>) {
         assert!(
             config.sample_rate > 0 && config.channels > 0,
@@ -106,6 +113,7 @@ impl Engine {
         (engine, handle, events_rx)
     }
 
+    /// The rate, channel count and decode mode it renders at.
     pub fn config(&self) -> EngineConfig {
         self.config
     }
@@ -116,6 +124,7 @@ impl Engine {
         self.latency = frames;
     }
 
+    /// Playing, paused or stopped, as the engine has it now.
     pub fn transport(&self) -> Transport {
         self.transport
     }

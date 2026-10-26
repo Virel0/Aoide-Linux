@@ -32,6 +32,7 @@ pub struct EngineHandle {
 }
 
 impl EngineHandle {
+    /// The rate, channel count and decode mode the engine renders at.
     pub fn config(&self) -> EngineConfig {
         self.config
     }
@@ -48,6 +49,12 @@ impl EngineHandle {
 
     /// Replaces whatever is playing with `spec`, from `start_ms` into the file
     /// (a seek is a load at the new position). Anything chained is dropped.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the engine has been dropped, or (threaded decoding) no
+    /// decode thread can be started. A track that fails to open is not an error here: it
+    /// arrives as an [`EngineEvent::Error`](super::EngineEvent::Error).
     pub fn load(&self, spec: TrackSpec, start_ms: u64, play: bool) -> Result<()> {
         let feed = self.feed(spec.clone(), start_ms)?;
         self.send(Command::Load { feed, spec, play })
@@ -56,6 +63,10 @@ impl EngineHandle {
     /// What follows the current track, and how. `Gapless` and `Cut` join it to
     /// the current track's last frame; `Blend` overlaps the two with
     /// equal-power curves. `None` clears it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::load`].
     pub fn set_next(&self, next: Option<(TrackSpec, MixTransition)>) -> Result<()> {
         let plan = match next {
             None => None,
@@ -72,19 +83,40 @@ impl EngineHandle {
         self.send(Command::SetNext(plan))
     }
 
+    /// Plays what is loaded, fading in from wherever a pause left it. Nothing loaded,
+    /// nothing happens.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the engine has been dropped.
     pub fn play(&self) -> Result<()> {
         self.send(Command::Play)
     }
 
+    /// Pauses after a short fade ([`super::PAUSE_FADE_SECONDS`]); the position holds
+    /// where the sound stopped.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the engine has been dropped.
     pub fn pause(&self) -> Result<()> {
         self.send(Command::Pause)
     }
 
+    /// Drops the current and chained tracks; silence until the next load.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the engine has been dropped.
     pub fn stop(&self) -> Result<()> {
         self.send(Command::Stop)
     }
 
     /// Master volume, 0 to 1, ramped over one block.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the engine has been dropped.
     pub fn set_volume(&self, volume: f32) -> Result<()> {
         self.send(Command::Volume(volume.clamp(0.0, 1.0)))
     }
@@ -94,6 +126,11 @@ impl EngineHandle {
     /// and then the equaliser is not run at all. Refuses a curve of more than
     /// [`crate::eq::MAX_BANDS`] bands or one with a number that is not one;
     /// values out of range are held to it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Settings`] for a curve it refuses, or [`Error::Output`] when the engine
+    /// has been dropped.
     pub fn set_equalizer(&self, curve: Option<&EqCurve>) -> Result<()> {
         let params = match curve {
             Some(curve) => EqParams::from_curve(curve)?,
@@ -108,6 +145,11 @@ impl EngineHandle {
     /// about 15 ms. Off lets the reduction release and is then not run at
     /// all. Refuses a setting that is not a number; values out of range are
     /// held to it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Settings`] for a value that is not a number, or [`Error::Output`] when the
+    /// engine has been dropped.
     pub fn set_compressor(&self, settings: Option<&CompressorSettings>) -> Result<()> {
         let settings = settings.map(CompressorSettings::validated).transpose()?;
         self.send(Command::Compressor(settings))
@@ -132,6 +174,7 @@ impl EngineHandle {
         }
     }
 
+    /// Playing, paused or stopped, as of the last render.
     pub fn transport(&self) -> Transport {
         match self.shared.transport.load(Ordering::Relaxed) {
             1 => Transport::Playing,

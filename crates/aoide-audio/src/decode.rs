@@ -19,6 +19,7 @@ use crate::loudness::{ReplayGainTags, parse_tag_number};
 /// Where a track's bytes come from.
 #[derive(Clone, Debug)]
 pub enum MediaSource {
+    /// A local file.
     File(PathBuf),
     /// Cloning shares one download, so reopening a stream to seek in it does
     /// not fetch it twice.
@@ -26,6 +27,7 @@ pub enum MediaSource {
 }
 
 impl MediaSource {
+    /// A local file at `path`.
     pub fn file(path: impl Into<PathBuf>) -> Self {
         MediaSource::File(path.into())
     }
@@ -39,12 +41,16 @@ impl MediaSource {
 /// One decoded packet: interleaved samples at the file's own rate and channel
 /// count, and the index of its first frame in the file.
 pub struct Decoded<'a> {
+    /// The file's frame index of the first frame here.
     pub first_frame: u64,
+    /// Samples per frame.
     pub channels: usize,
+    /// Interleaved samples, nominally −1 to 1.
     pub samples: &'a [f32],
 }
 
 impl Decoded<'_> {
+    /// Whole frames in the packet.
     pub fn frames(&self) -> usize {
         self.samples.len() / self.channels.max(1)
     }
@@ -68,6 +74,13 @@ pub struct Decoder {
 }
 
 impl Decoder {
+    /// Opens and probes `source`, ready to decode its default audio track.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Open`] when the file or stream cannot be read, and
+    /// [`Error::Unsupported`] when it is not a container or codec this build decodes, or
+    /// it has no audio track or sample rate.
     pub fn open(source: &MediaSource) -> Result<Self> {
         let mut hint = Hint::new();
         let stream: Box<dyn symphonia::core::io::MediaSource> = match source {
@@ -139,6 +152,7 @@ impl Decoder {
         })
     }
 
+    /// The file's own sample rate, in hertz.
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
     }
@@ -163,6 +177,10 @@ impl Decoder {
 
     /// Seeks so the next packet holds `frame` (sample-accurate seek: the
     /// packet may start before it, and the caller discards up to it).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Seek`] when the container cannot seek there.
     pub fn seek(&mut self, frame: u64) -> Result<()> {
         let ts = self.frames_to_ts(frame);
         self.format
@@ -181,6 +199,11 @@ impl Decoder {
 
     /// The next decoded packet, or `None` at the end of the stream. Packets
     /// that fail to decode are skipped, as a player should.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Decode`] when the container fails to read; a packet that fails to decode
+    /// is skipped instead.
     pub fn next_packet(&mut self) -> Result<Option<Decoded<'_>>> {
         loop {
             let packet = match self.format.next_packet() {

@@ -37,17 +37,29 @@ type Started = (EngineHandle, Receiver<EngineEvent>, EngineConfig);
 impl Output {
     /// Opens the default output device at its own rate and channel count,
     /// starts an engine on it, and returns the handle and event channel.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::start_with`].
     pub fn start_default() -> Result<(Output, EngineHandle, Receiver<EngineEvent>)> {
         Self::start(CpalOutput, DecodeMode::Threaded)
     }
 
     /// The same on a chosen device (the default if it cannot be opened), at
     /// that device's own rate and channel count.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::start_with`].
     pub fn start_on(device: DeviceChoice) -> Result<(Output, EngineHandle, Receiver<EngineEvent>)> {
         Self::start_with(CpalOutput, DecodeMode::Threaded, device)
     }
 
     /// The default device on any [`OpenStream`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::start_with`].
     pub fn start(
         backend: impl OpenStream,
         decode: DecodeMode,
@@ -56,6 +68,11 @@ impl Output {
     }
 
     /// A chosen device on any [`OpenStream`].
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the output thread cannot be started or stops, or whatever
+    /// opening fails with when neither the chosen device nor the default will open.
     pub fn start_with(
         backend: impl OpenStream,
         decode: DecodeMode,
@@ -100,6 +117,8 @@ impl Output {
         }
     }
 
+    /// The engine's rate, channel count and decode mode: the device's format when the
+    /// output started.
     pub fn config(&self) -> EngineConfig {
         self.config
     }
@@ -109,6 +128,10 @@ impl Output {
     /// cannot be opened (gone, or unable to play the engine's rate and
     /// channel count) gives way to the default, with an
     /// [`EngineEvent::DeviceError`] saying so.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Output`] when the output thread has stopped.
     pub fn set_device(&mut self, device: DeviceChoice) -> Result<()> {
         self.choice = device.clone();
         self.signals
