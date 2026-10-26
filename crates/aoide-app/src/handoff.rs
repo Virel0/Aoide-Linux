@@ -16,28 +16,23 @@
 //! recently than anything here. A tile plays at once; picking up keeps the
 //! other device's earlier tracks and starts at its track and place.
 
-use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use aoide_jellyfin::{Item, JellyfinClient, MixSeed};
-use aoide_sidecar::resumable_queues;
 use aoide_store::{
-    Calendar, PlaySource, QueueSnapshot, RESUME_GRID_LIMIT, RecentContext, RecentContextKind,
-    RecentContexts, ResumableQueue, ResumeTile, StationSeed, resume_tiles,
+    QueueSnapshot, RecentContext, RecentContextKind, RecentContexts, ResumableQueue, ResumeTile,
 };
 use iced::{Element, Task};
 
 use crate::actions::{Collection, PlayRequest};
 use crate::app::{App, Message};
-use crate::artwork::ArtKey;
 use crate::config::Paths;
 use crate::playback::Enqueue;
-use crate::playback::tracks::TrackMeta;
 use crate::screens::{PageMsg, home};
-use crate::store_worker::StoreHandle;
 
-/// How many tracks a station resumed from the grid starts with.
-pub const STATION_LENGTH: u32 = 100;
+mod resume;
+
+pub use resume::{Card, Resumed, ordered};
+use resume::{load_cards, resume};
 
 /// What handoff and the grid keep while signed in.
 #[derive(Debug, Default)]
@@ -95,13 +90,6 @@ pub fn recents_file(paths: &Paths) -> PathBuf {
     paths.store_file.with_file_name("recent-contexts.json")
 }
 
-/// A tile of the grid, with the cover to draw.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Card {
-    pub tile: ResumeTile,
-    pub art: Option<ArtKey>,
-}
-
 #[derive(Debug, Clone)]
 pub enum Msg {
     /// The broadcast's debounce may have passed: write the row if so.
@@ -119,20 +107,6 @@ pub enum Msg {
     PlayFrom(Box<(PlayRequest, RecentContext)>),
     Resumed(Box<Resumed>),
     ResumeFailed(String),
-}
-
-/// A tile's tracks, found.
-#[derive(Debug, Clone)]
-pub struct Resumed {
-    pub tracks: Vec<TrackMeta>,
-    pub start: usize,
-    pub source: PlaySource,
-    /// Where in the start track to begin (a pick-up).
-    pub seek_ms: Option<u64>,
-    /// The queue this picks up.
-    pub picked_up: Option<PickedUp>,
-    /// The context to move to the front again.
-    pub context: Option<RecentContext>,
 }
 
 /// Turns every play this page starts from its own list (Play, Shuffle, a row)
@@ -185,224 +159,6 @@ pub fn collection_context(collection: &Collection, title: &str) -> Option<Recent
     }
 }
 
-/// The station to play for a station context: the seed's own Instant Mix
-/// when it says what it was, else the kind-blind one.
-pub fn station_seed(context: &RecentContext) -> Option<MixSeed> {
-    match context.seed? {
-        StationSeed::Album => Some(MixSeed::Album(context.id.clone())),
-        StationSeed::Artist => Some(MixSeed::Artist(context.id.clone())),
-    }
-}
-
-/// The other device's queue in its order, as far as this server still has
-/// it, starting at its track. `None` when nothing in it can play here.
-pub fn plan_pick_up(queue: &ResumableQueue, found: &[Item]) -> Option<Resumed> {
-    let by_id: HashMap<&str, &Item> = found.iter().map(|i| (i.id.as_str(), i)).collect();
-    let pick = queue.pick_up(|id| by_id.contains_key(id))?;
-    let tracks: Vec<TrackMeta> = pick
-        .track_ids
-        .iter()
-        .filter_map(|id| {
-            by_id
-                .get(id.as_str())
-                .map(|item| TrackMeta::from_item(item))
-        })
-        .collect();
-    let seek = u64::try_from(pick.elapsed_ms).unwrap_or(0);
-    Some(Resumed {
-        tracks,
-        start: pick.start_index,
-        source: PlaySource::Unknown,
-        seek_ms: (seek > 0).then_some(seek),
-        picked_up: Some(PickedUp::of(queue)),
-        context: None,
-    })
-}
-
-/// Each tile's cover, from the items its artwork ids name.
-pub fn cards(tiles: Vec<ResumeTile>, items: &[Item]) -> Vec<Card> {
-    let art: HashMap<&str, ArtKey> = items
-        .iter()
-        .filter_map(|item| {
-            let (id, tag) = item.artwork_source()?;
-            Some((item.id.as_str(), ArtKey::new(id, tag)))
-        })
-        .collect();
-    tiles
-        .into_iter()
-        .map(|tile| Card {
-            art: tile.artwork_item_id().and_then(|id| art.get(id).cloned()),
-            tile,
-        })
-        .collect()
-}
-
-/// The grid's tiles: the newest queue another device put down, then this
-/// device's contexts, with each tile's cover.
-pub async fn load_cards(
-    client: JellyfinClient,
-    sidecar: Option<aoide_sidecar::SidecarClient>,
-    store: std::sync::Arc<aoide_store::Store>,
-    contexts: Vec<RecentContext>,
-    picked_up: Option<PickedUp>,
-    now: aoide_store::Millis,
-) -> Vec<Card> {
-    let queues = resumable_queues(sidecar.as_ref(), &store, now)
-        .await
-        .unwrap_or_default();
-    let newest = queues
-        .first()
-        .filter(|queue| picked_up.as_ref() != Some(&PickedUp::of(queue)));
-    let tiles = resume_tiles(&contexts, newest, RESUME_GRID_LIMIT);
-    let ids: Vec<String> = tiles
-        .iter()
-        .filter_map(|t| t.artwork_item_id().map(str::to_owned))
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    let items = if ids.is_empty() {
-        Vec::new()
-    } else {
-        client.items_by_ids(&ids).await.unwrap_or_default()
-    };
-    cards(tiles, &items)
-}
-
-/// A tile's tracks, from wherever its kind keeps them.
-pub async fn resume(
-    client: JellyfinClient,
-    store: StoreHandle,
-    tile: ResumeTile,
-) -> Result<Resumed, String> {
-    let describe = |e: aoide_jellyfin::Error| crate::failure::describe(&e).to_string();
-    let context = match tile {
-        ResumeTile::Handoff(queue) => {
-            let found = client
-                .items_by_ids(&queue.track_ids)
-                .await
-                .map_err(describe)?;
-            return plan_pick_up(&queue, &found).ok_or_else(|| {
-                format!(
-                    "None of what {} was playing is on this server.",
-                    queue.device_name
-                )
-            });
-        }
-        ResumeTile::Context(context) => context,
-    };
-    let (items, source) = match context.kind {
-        RecentContextKind::Album => {
-            let mut tracks: Vec<TrackMeta> = client
-                .album_tracks(&context.id)
-                .await
-                .map_err(describe)?
-                .iter()
-                .map(TrackMeta::from_item)
-                .collect();
-            crate::screens::album::album_order(&mut tracks);
-            return Ok(Resumed {
-                tracks,
-                start: 0,
-                source: PlaySource::Album,
-                seek_ms: None,
-                picked_up: None,
-                context: Some(context),
-            });
-        }
-        RecentContextKind::JellyfinPlaylist => (
-            client.playlist_items(&context.id).await.map_err(describe)?,
-            PlaySource::Playlist,
-        ),
-        RecentContextKind::LocalPlaylist => {
-            let id = context.id.clone();
-            let found = store
-                .call(move |w| local_playlist_ids(&w.store, &id))
-                .await
-                .ok_or_else(|| "the library is closing".to_owned())?;
-            let Some((ids, smart)) = found? else {
-                return Err(format!(
-                    "\u{201c}{}\u{201d} has been deleted.",
-                    context.name
-                ));
-            };
-            let items = ordered(client.items_by_ids(&ids).await.map_err(describe)?, &ids);
-            let source = if smart {
-                PlaySource::Smart
-            } else {
-                PlaySource::Playlist
-            };
-            (items, source)
-        }
-        RecentContextKind::Station => {
-            let items = match station_seed(&context) {
-                Some(seed) => client.instant_mix_from(&seed, STATION_LENGTH).await,
-                None => client.instant_mix(&context.id, STATION_LENGTH).await,
-            }
-            .map_err(describe)?;
-            let ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
-            let hidden = store
-                .call(move |w| w.store.not_interested(&ids).unwrap_or_default())
-                .await
-                .unwrap_or_default();
-            (
-                items
-                    .into_iter()
-                    .filter(|i| !hidden.contains(&i.id))
-                    .collect(),
-                PlaySource::Unknown,
-            )
-        }
-        RecentContextKind::Mix => {
-            return Err(
-                "A mix is made again from the Mixes screen, which this build doesn't have yet."
-                    .to_owned(),
-            );
-        }
-    };
-    Ok(Resumed {
-        tracks: items.iter().map(TrackMeta::from_item).collect(),
-        start: 0,
-        source,
-        seek_ms: None,
-        picked_up: None,
-        context: Some(context),
-    })
-}
-
-/// An Aoide playlist's track ids in play order, smart ones evaluated now, and
-/// whether it is smart. `None` when it has been deleted.
-pub fn local_playlist_ids(
-    store: &aoide_store::Store,
-    id: &str,
-) -> Result<Option<(Vec<String>, bool)>, String> {
-    let Some(playlist) = store.playlist(id).map_err(|e| e.to_string())? else {
-        return Ok(None);
-    };
-    if playlist.deleted {
-        return Ok(None);
-    }
-    if playlist.is_smart {
-        let ids = store
-            .resolve_smart(&playlist, aoide_store::now_millis(), Calendar::Local)
-            .map_err(|e| e.to_string())?;
-        return Ok(Some((ids, true)));
-    }
-    let ids = store
-        .items(id)
-        .map_err(|e| e.to_string())?
-        .iter()
-        .filter(|item| !item.is_unresolved())
-        .map(|item| item.linked_jellyfin_id().to_owned())
-        .collect();
-    Ok(Some((ids, false)))
-}
-
-/// `items` in the order of `ids`, each as often as it is named.
-pub fn ordered(items: Vec<Item>, ids: &[String]) -> Vec<Item> {
-    let by_id: HashMap<String, Item> = items.into_iter().map(|i| (i.id.clone(), i)).collect();
-    ids.iter().filter_map(|id| by_id.get(id).cloned()).collect()
-}
-
 impl App {
     /// Notes the queue as it stands into the broadcast, and looks again once
     /// the debounce has had time to pass. Called on every player change.
@@ -445,20 +201,7 @@ impl App {
                     |written| Message::Handoff(Msg::Flushed(written)),
                 )
             }
-            Msg::Flushed(written) => {
-                // A row was written: push it now, unless a sync (which pushes
-                // it anyway) or another push is running.
-                let Some(engine) = signed.sync.clone().filter(|_| written) else {
-                    return Task::none();
-                };
-                if signed.handoff.publishing || signed.throttle.is_running() {
-                    return Task::none();
-                }
-                signed.handoff.publishing = true;
-                Task::perform(async move { engine.publish_queue().await }, |_| {
-                    Message::Handoff(Msg::Published)
-                })
-            }
+            Msg::Flushed(written) => self.publish_queue(written),
             Msg::Published => {
                 signed.handoff.publishing = false;
                 if std::mem::take(&mut signed.handoff.sync_wanted) {
@@ -466,18 +209,7 @@ impl App {
                 }
                 Task::none()
             }
-            Msg::LoadResume(key) => {
-                let contexts = signed.handoff.contexts().to_vec();
-                let picked_up = signed.handoff.picked_up.clone();
-                let client = signed.connection.client.clone();
-                let sidecar = signed.sidecar.clone();
-                let shared = store.shared();
-                let now = aoide_store::now_millis();
-                Task::perform(
-                    load_cards(client, sidecar, shared, contexts, picked_up, now),
-                    move |cards| Message::Page(key, PageMsg::Home(home::Message::Resume(cards))),
-                )
-            }
+            Msg::LoadResume(key) => self.load_resume(key),
             Msg::Resume(tile) => {
                 let client = signed.connection.client.clone();
                 Task::perform(resume(client, store, tile), |result| match result {
@@ -485,35 +217,7 @@ impl App {
                     Err(error) => Message::Handoff(Msg::ResumeFailed(error)),
                 })
             }
-            Msg::Resumed(found) => {
-                let Resumed {
-                    tracks,
-                    start,
-                    source,
-                    seek_ms,
-                    picked_up,
-                    context,
-                } = *found;
-                if tracks.is_empty() {
-                    self.notice = Some("There's nothing there to play now.".to_owned());
-                    return Task::none();
-                }
-                signed.handoff.seek_on_start =
-                    seek_ms.and_then(|ms| tracks.get(start).map(|t| (t.id.clone(), ms)));
-                if picked_up.is_some() {
-                    signed.handoff.picked_up = picked_up;
-                }
-                // A pick-up changes the grid too: its tile goes.
-                let refresh = if context.is_some() {
-                    self.remembered(context)
-                } else {
-                    self.refresh_home()
-                };
-                Task::batch([
-                    self.play(PlayRequest::from(&tracks, start, source)),
-                    refresh,
-                ])
-            }
+            Msg::Resumed(found) => self.resumed(*found),
             Msg::ResumeFailed(error) => {
                 self.notice = Some(error);
                 Task::none()
@@ -530,6 +234,76 @@ impl App {
                 Task::batch([self.play(request), remembered])
             }
         }
+    }
+
+    /// A row was written: push it now, unless a sync (which pushes it
+    /// anyway) or another push is running.
+    fn publish_queue(&mut self, written: bool) -> Task<Message> {
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let Some(engine) = signed.sync.clone().filter(|_| written) else {
+            return Task::none();
+        };
+        if signed.handoff.publishing || signed.throttle.is_running() {
+            return Task::none();
+        }
+        signed.handoff.publishing = true;
+        Task::perform(async move { engine.publish_queue().await }, |_| {
+            Message::Handoff(Msg::Published)
+        })
+    }
+
+    /// The grid for the Home page with this key.
+    fn load_resume(&mut self, key: u64) -> Task<Message> {
+        let shared = self.store.shared();
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let contexts = signed.handoff.contexts().to_vec();
+        let picked_up = signed.handoff.picked_up.clone();
+        let client = signed.connection.client.clone();
+        let sidecar = signed.sidecar.clone();
+        let now = aoide_store::now_millis();
+        Task::perform(
+            load_cards(client, sidecar, shared, contexts, picked_up, now),
+            move |cards| Message::Page(key, PageMsg::Home(home::Message::Resume(cards))),
+        )
+    }
+
+    /// A tile's tracks found: played, a pick-up seeking to where the other
+    /// device was.
+    fn resumed(&mut self, found: Resumed) -> Task<Message> {
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let Resumed {
+            tracks,
+            start,
+            source,
+            seek_ms,
+            picked_up,
+            context,
+        } = found;
+        if tracks.is_empty() {
+            self.notice = Some("There's nothing there to play now.".to_owned());
+            return Task::none();
+        }
+        signed.handoff.seek_on_start =
+            seek_ms.and_then(|ms| tracks.get(start).map(|t| (t.id.clone(), ms)));
+        if picked_up.is_some() {
+            signed.handoff.picked_up = picked_up;
+        }
+        // A pick-up changes the grid too: its tile goes.
+        let refresh = if context.is_some() {
+            self.remembered(context)
+        } else {
+            self.refresh_home()
+        };
+        Task::batch([
+            self.play(PlayRequest::from(&tracks, start, source)),
+            refresh,
+        ])
     }
 
     /// Moves `context` to the front of this server's recents, stamped now.
@@ -612,7 +386,14 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+    use aoide_jellyfin::{Item, MixSeed};
+    use aoide_store::{PlaySource, StationSeed};
+
+    use super::resume::{cards, plan_pick_up, station_seed};
     use super::*;
+    use crate::artwork::ArtKey;
+    use crate::playback::tracks::TrackMeta;
+    use crate::store_worker::StoreHandle;
     use aoide_store::QueueFreshness;
 
     fn item(id: &str, album: &str) -> Item {

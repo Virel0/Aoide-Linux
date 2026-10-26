@@ -19,13 +19,15 @@ use std::time::Duration;
 use aoide_mpris::{Bus, Pixmap, TrayCommand, TrayIcon, TrayState};
 use iced::futures::{Stream, StreamExt};
 use iced::widget::column;
-use iced::{Element, Subscription, Task, window};
+use iced::{Element, Subscription, Task};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use crate::app::{App, Message as AppMessage, Transport};
 use crate::integration::NowPlaying;
+
+mod window;
 
 /// The icon name the packaged desktop entry installs.
 pub const ICON_NAME: &str = "io.github.Virel0.Aoide.Linux";
@@ -63,32 +65,6 @@ impl TraySettings {
     /// panel takes the icon the window is shown once the tray says so.
     pub fn start_hidden(&self) -> bool {
         self.show && self.start_minimised
-    }
-}
-
-/// What closing or minimising the window does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowAction {
-    /// What it would do without a tray: quit on close, stay minimised.
-    Default,
-    HideToTray,
-}
-
-/// Closing the window: hide it only to a tray that is on screen.
-pub fn on_close(settings: &TraySettings, shown: bool) -> WindowAction {
-    if settings.show && settings.close_to_tray && shown {
-        WindowAction::HideToTray
-    } else {
-        WindowAction::Default
-    }
-}
-
-/// Minimising the window, the same way.
-pub fn on_minimise(settings: &TraySettings, shown: bool) -> WindowAction {
-    if settings.show && settings.minimise_to_tray && shown {
-        WindowAction::HideToTray
-    } else {
-        WindowAction::Default
     }
 }
 
@@ -356,11 +332,6 @@ fn stream_events(source: &Source) -> impl Stream<Item = Message> + use<> {
     .boxed()
 }
 
-/// The first (only) window, for the hide and show calls.
-fn with_window(task: fn(window::Id) -> Task<AppMessage>) -> Task<AppMessage> {
-    window::oldest().then(move |id| id.map_or_else(Task::none, task))
-}
-
 impl App {
     pub(crate) fn tray_message(&mut self, message: Message) -> Task<AppMessage> {
         let settings = &mut self.config.system.tray;
@@ -409,40 +380,8 @@ impl App {
                 self.system.tray.report(generation, status);
                 self.unstrand()
             }
-            Message::Command(command) => match command {
-                TrayCommand::OpenWindow => self.show_window(),
-                TrayCommand::ToggleWindow => {
-                    if self.system.tray.visible {
-                        self.hide_window()
-                    } else {
-                        self.show_window()
-                    }
-                }
-                TrayCommand::Stop => self.desktop(crate::integration::Command::Stop),
-                TrayCommand::Quit => self.quit(),
-                other => {
-                    transport_for(other).map_or_else(Task::none, |control| self.transport(control))
-                }
-            },
-            Message::Minimised(minimised) => {
-                if minimised == Some(true)
-                    && on_minimise(&self.config.system.tray, self.system.tray.status.is_shown())
-                        == WindowAction::HideToTray
-                {
-                    self.hide_window()
-                } else {
-                    Task::none()
-                }
-            }
-        }
-    }
-
-    /// A hidden window with no tray on screen to bring it back: show it.
-    fn unstrand(&mut self) -> Task<AppMessage> {
-        if self.system.tray.visible || self.system.tray.status.is_shown() {
-            Task::none()
-        } else {
-            self.show_window()
+            Message::Command(command) => self.tray_command(command),
+            Message::Minimised(minimised) => self.minimised(minimised),
         }
     }
 
@@ -450,42 +389,6 @@ impl App {
         self.system
             .tray
             .update(tray_state(&self.desktop.now_playing()));
-    }
-
-    /// The window's close button.
-    pub(crate) fn close_requested(&mut self) -> Task<AppMessage> {
-        match on_close(&self.config.system.tray, self.system.tray.status.is_shown()) {
-            WindowAction::HideToTray => self.hide_window(),
-            WindowAction::Default => self.quit(),
-        }
-    }
-
-    /// Focus left the window: if minimise-to-tray applies, ask whether it
-    /// was minimised.
-    pub(crate) fn window_unfocused(&mut self) -> Task<AppMessage> {
-        if on_minimise(&self.config.system.tray, self.system.tray.status.is_shown())
-            == WindowAction::Default
-        {
-            return Task::none();
-        }
-        window::oldest().then(|id| match id {
-            Some(id) => window::is_minimized(id).map(|m| AppMessage::Tray(Message::Minimised(m))),
-            None => Task::none(),
-        })
-    }
-
-    pub(crate) fn show_window(&mut self) -> Task<AppMessage> {
-        self.system.tray.visible = true;
-        with_window(|id| {
-            window::set_mode(id, window::Mode::Windowed)
-                .chain(window::minimize(id, false))
-                .chain(window::gain_focus(id))
-        })
-    }
-
-    pub(crate) fn hide_window(&mut self) -> Task<AppMessage> {
-        self.system.tray.visible = false;
-        with_window(|id| window::set_mode(id, window::Mode::Hidden))
     }
 }
 
@@ -531,6 +434,7 @@ pub fn settings_section<'a>(
 
 #[cfg(test)]
 mod tests {
+    use super::window::{WindowAction, on_close, on_minimise};
     use super::*;
     use aoide_audio::RepeatMode;
     use aoide_mpris::PlaybackStatus;
