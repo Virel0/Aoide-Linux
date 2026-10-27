@@ -6,7 +6,14 @@ name: Release (Arch package)
 on:
   push:
     tags: ['v*']
+  # Run by hand with a tag, it builds that tag's source with this
+  # workflow's packaging (for a tag whose own run failed) and attaches it.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and attach to, e.g. v1.2.3'
+        required: false
+        type: string
 
 # makepkg runs every crate's build script with a read-only token; only the
 # release job, which builds nothing, may write.
@@ -35,7 +42,7 @@ jobs:
 
       - name: Build the package
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
           version="${TAG#v}"
@@ -64,7 +71,7 @@ jobs:
 
   release:
     needs: package
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || inputs.tag != ''
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -99,3 +106,4 @@ jobs:
             out/aoide-linux.files.tar.gz
             out/SHA256SUMS-arch
             out/*.sig
+          tag_name: ${{ inputs.tag || github.ref_name }}

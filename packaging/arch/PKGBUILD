@@ -32,26 +32,28 @@ optdepends=('org.freedesktop.secrets: keeps the sign-in between launches (GNOME 
             'noto-fonts-cjk: shows Japanese, Chinese and Korean titles and lyrics (and furigana)')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# GitHub names the tarball's folder after the repository, not the package.
+_srcdir="Aoide-Linux-$pkgver"
 sha256sums=('SKIP')
 
 _bin=aoide-linux
 _appid=io.github.Virel0.Aoide.Linux
 
 prepare() {
-    cd "$pkgname-$pkgver"
+    cd "$_srcdir"
     export RUSTUP_TOOLCHAIN=stable
     cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
 }
 
 build() {
-    cd "$pkgname-$pkgver"
+    cd "$_srcdir"
     export RUSTUP_TOOLCHAIN=stable
     export CARGO_TARGET_DIR=target
     cargo build --locked --release -p aoide-app
 }
 
 package() {
-    cd "$pkgname-$pkgver"
+    cd "$_srcdir"
     install -Dm755 target/release/aoide "$pkgdir/usr/bin/$_bin"
     install -Dm644 "packaging/arch/$_appid.desktop" \
         "$pkgdir/usr/share/applications/$_appid.desktop"
