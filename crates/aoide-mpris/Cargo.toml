@@ -18,7 +18,7 @@ tokio = { version = "1.54.1", default-features = false, features = ["sync"] }
 # The tray listens for the panel's watcher coming and going on a task of its own.
 futures-util = { version = "0.3.34", default-features = false }
 tokio = { version = "1.54.1", default-features = false, features = ["sync", "time", "rt"] }
-zbus = { version = "5.19", default-features = false, features = ["tokio"] }
+zbus = { version = "6.0", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time"] }
