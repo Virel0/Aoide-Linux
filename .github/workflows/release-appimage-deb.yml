@@ -43,9 +43,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
-        with:
-          toolchain: stable
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update && rustup default stable
 
       - name: Version
         id: version
@@ -119,7 +118,9 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-          sparse-checkout: packaging/sign.sh
+          sparse-checkout: |
+            packaging/sign.sh
+            packaging/attach-release.sh
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -134,7 +135,8 @@ jobs:
         run: packaging/sign.sh out/*.AppImage out/*.deb out/SHA256SUMS-appimage-deb
 
       - name: Attach to the release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          files: out/*
-          tag_name: ${{ inputs.tag || github.ref_name }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: packaging/attach-release.sh "$TAG" out/*

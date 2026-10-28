@@ -17,10 +17,9 @@ jobs:
           persist-credentials: false
       - name: System libraries
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config dbus
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
-        with:
-          toolchain: stable
-          components: clippy, rustfmt
+      # rustup comes with the runner; no third-party action needed.
+      - name: Rust
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt --no-self-update && rustup default stable
       - name: Desktop entry and AppStream data
         run: |
           sudo apt-get install -y appstream desktop-file-utils
