@@ -55,3 +55,17 @@ jobs:
         run: |
           sudo apt-get install -y gnome-keyring
           dbus-run-session -- sh -c 'printf ci | gnome-keyring-daemon --unlock --components=secrets > /dev/null && cargo test -p aoide-app -- --ignored keyring'
+
+  # Known vulnerabilities in the locked dependencies, from the RustSec
+  # advisory database. Fails on a vulnerability; unmaintained and unsound
+  # notices are shown as warnings.
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked --version 0.22.2
+          cargo audit
