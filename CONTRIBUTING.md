@@ -28,6 +28,9 @@ copy).
 Run them before you push:
 
 ```sh
+# No aws-lc-rs: this must fail ("did not match any packages")
+cargo tree --workspace -i aws-lc-rs --target all
+
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
@@ -44,6 +47,9 @@ appstreamcli validate --no-net packaging/flatpak/io.github.Virel0.Aoide.Linux.me
 ```
 
 Clippy warnings fail the build, and `unsafe` code is forbidden in every crate.
+CI also reports functions over 100 lines and source files over 800 as
+warnings, and Dependabot (`.github/dependabot.yml`) opens weekly grouped
+updates for the crates and the pinned actions.
 
 ## Making a change
 
