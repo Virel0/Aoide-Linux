@@ -312,8 +312,8 @@ fn read_replay_gain(format: &mut dyn FormatReader, track_id: u32) -> ReplayGainT
 }
 
 /// The name of a codec a music library can hold that this build has no
-/// decoder for. symphonia has no Opus decoder; the server sends a file as it
-/// is unless a format is asked for, so an Opus file can reach here.
+/// decoder for. symphonia has no Opus decoder; the app asks Melete for an Opus
+/// file as FLAC, so one only reaches here from a local file.
 fn missing_codec(codec: AudioCodecId) -> Option<&'static str> {
     (codec == CODEC_ID_OPUS).then_some("Opus")
 }

@@ -27,6 +27,8 @@ sign-in, and playlists, likes and history come back from Melete.
 - Covers are fetched with your sign-in, and kept a day.
 - A playlist cover chosen as an album, on this computer or the iPhone, is
   drawn as that album's cover.
+- A song in a format this player can't decode (Opus, WavPack, Monkey's Audio)
+  is streamed as FLAC instead, so it plays.
 - Radio and Infinity's albums mode start from what `/aoide/next` picks after
   the seed song, in place of Jellyfin's Instant Mix and similar albums.
 

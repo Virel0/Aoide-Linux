@@ -8,6 +8,7 @@
 
 pub mod infinity;
 pub mod lyrics;
+pub mod playable;
 pub mod queue;
 pub mod recorder;
 pub mod sleep_timer;

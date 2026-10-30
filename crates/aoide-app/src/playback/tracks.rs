@@ -239,14 +239,19 @@ pub struct Streams {
 
 impl Streams {
     /// The player's source for one track: its link asked for each time its
-    /// download starts. A failure is said without the link, which carries a
-    /// token.
+    /// download starts, in FLAC for a file the player can't decode
+    /// ([`playable_stream`](super::playable::playable_stream)). A failure is
+    /// said without the link, which carries a token.
     pub fn source(&self, track_id: &str, format: StreamFormat) -> MediaSource {
         let (streams, id) = (self.clone(), track_id.to_owned());
         MediaSource::http_resolved(Arc::new(move || {
             streams
                 .runtime
-                .block_on(streams.client.play(&id, format))
+                .block_on(super::playable::playable_stream(
+                    &streams.client,
+                    &id,
+                    format,
+                ))
                 .map(|stream| stream.url.to_string())
                 .map_err(|error| error.to_string())
         }))
