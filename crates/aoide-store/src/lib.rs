@@ -49,8 +49,7 @@ pub use account::AccountClaim;
 pub use activity::Activity;
 pub use built_in::BuiltInPlaylist;
 pub use covers::{
-    BlobDirectory, CoverError, CoverRepair, MAX_IMAGE_BYTES, NamedJellyfinPlaylist, PlaylistCover,
-    is_coverless, is_image_hash, plan_cover_repairs, sniff_image_mime,
+    BlobDirectory, CoverError, MAX_IMAGE_BYTES, PlaylistCover, is_image_hash, sniff_image_mime,
 };
 pub use error::{Result, StoreError};
 pub use field_stamps::{FieldStamps, METADATA_COLUMNS};

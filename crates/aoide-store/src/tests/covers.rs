@@ -1,11 +1,9 @@
-//! Covers: the order a cover is chosen in, a picture from a file, and the repair by
-//! name (desktop `cover-repair.test.ts`).
+//! Covers: the order a cover is chosen in, and a picture from a file.
 
 use super::{links, pending, store};
 use crate::{
-    BlobDirectory, CoverError, CoverRepair, MAX_IMAGE_BYTES, NamedJellyfinPlaylist, Playlist,
-    PlaylistCover, Store, StoreError, TrackRef, is_image_hash, new_id, now_millis,
-    plan_cover_repairs, sniff_image_mime,
+    BlobDirectory, CoverError, MAX_IMAGE_BYTES, Playlist, PlaylistCover, Store, StoreError,
+    TrackRef, is_image_hash, new_id, now_millis, sniff_image_mime,
 };
 
 const PNG: &[u8] = &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
@@ -30,7 +28,7 @@ fn cover(store: &Store, id: &str) -> PlaylistCover {
 // MARK: - Which picture
 
 #[test]
-fn a_chosen_picture_beats_a_chosen_item_beats_the_source_beats_the_first_track() {
+fn a_chosen_picture_beats_a_chosen_album_beats_the_first_track() {
     let store = store();
     let now = now_millis();
     let list = store.create_playlist("Covered", None, None, now).unwrap();
@@ -54,13 +52,14 @@ fn a_chosen_picture_beats_a_chosen_item_beats_the_source_beats_the_first_track()
     store.record(row, false, now).unwrap();
     assert_eq!(
         cover(&store, &list.id),
-        PlaylistCover::JellyfinItem("jf-playlist".into())
+        PlaylistCover::FirstTrack("album-1".into()),
+        "the Jellyfin playlist it came from is no cover"
     );
 
     store.set_artwork(Some("album-9"), &list.id, now).unwrap();
     assert_eq!(
         cover(&store, &list.id),
-        PlaylistCover::JellyfinItem("album-9".into())
+        PlaylistCover::Album("album-9".into())
     );
 
     let blobs = blobs();
@@ -230,84 +229,5 @@ fn the_same_picture_twice_is_one_file() {
     assert_eq!(std::fs::read_dir(blobs.root()).unwrap().count(), 1);
     assert!(blobs.remove(&first).unwrap());
     assert!(!blobs.remove(&first).unwrap());
-    std::fs::remove_dir_all(blobs.root()).unwrap();
-}
-
-// MARK: - Repair by name
-
-fn named(id: &str, name: &str) -> NamedJellyfinPlaylist {
-    NamedJellyfinPlaylist {
-        id: id.into(),
-        name: name.into(),
-    }
-}
-
-#[test]
-fn a_coverless_playlist_borrows_the_one_jellyfin_playlist_with_its_name() {
-    let store = store();
-    let now = now_millis();
-    let driving = store.create_playlist("Driving", None, None, now).unwrap();
-    let repairs = store
-        .repair_covers(&[named("jf-1", " Driving "), named("jf-2", "Other")], now)
-        .unwrap();
-    assert_eq!(
-        repairs,
-        [CoverRepair {
-            playlist_id: driving.id.clone(),
-            artwork_item_id: "jf-1".into()
-        }]
-    );
-    let row = store.playlist(&driving.id).unwrap().unwrap();
-    assert_eq!(row.artwork_item_id.as_deref(), Some("jf-1"));
-    assert_eq!(
-        row.source_jellyfin_id, None,
-        "a name never proves where a playlist came from"
-    );
-    // Repaired once: the next run finds nothing to do.
-    assert!(
-        store
-            .repair_covers(&[named("jf-1", "Driving")], now)
-            .unwrap()
-            .is_empty()
-    );
-}
-
-#[test]
-fn no_match_two_matches_and_a_different_case_are_all_skipped() {
-    let store = store();
-    let now = now_millis();
-    store.create_playlist("Driving", None, None, now).unwrap();
-    store.create_playlist("Focus", None, None, now).unwrap();
-    store.create_playlist("Late", None, None, now).unwrap();
-    let jellyfin = [
-        named("jf-1", "Focus"),
-        named("jf-2", "Focus"),
-        named("jf-3", "driving"),
-    ];
-    assert!(plan_cover_repairs(&store.playlists().unwrap(), &jellyfin).is_empty());
-}
-
-#[test]
-fn a_playlist_with_any_cover_at_all_is_left_alone() {
-    let store = store();
-    let now = now_millis();
-    let chosen = store.create_playlist("Chosen", None, None, now).unwrap();
-    store.set_artwork(Some("album-1"), &chosen.id, now).unwrap();
-    let imported = store.create_playlist("Imported", None, None, now).unwrap();
-    let mut row = store.playlist(&imported.id).unwrap().unwrap();
-    row.source_jellyfin_id = Some("jf-src".into());
-    store.record(row, false, now).unwrap();
-    let blobs = blobs();
-    let pictured = store.create_playlist("Pictured", None, None, now).unwrap();
-    store
-        .set_cover_image(&pictured.id, PNG, &blobs, now)
-        .unwrap();
-
-    let jellyfin = [
-        named("jf-1", "Chosen"),
-        named("jf-2", "Imported"),
-        named("jf-3", "Pictured"),
-    ];
-    assert!(store.repair_covers(&jellyfin, now).unwrap().is_empty());
     std::fs::remove_dir_all(blobs.root()).unwrap();
 }

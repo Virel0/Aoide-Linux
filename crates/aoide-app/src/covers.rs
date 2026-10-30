@@ -45,14 +45,13 @@ pub struct Resolved {
     pub bytes: Vec<(ArtKey, Vec<u8>)>,
 }
 
-/// The album cover each first-track cover stands for, by playlist. A cover
-/// naming a Jellyfin item (from before Melete) has nothing to draw: Melete's
-/// import clears those, and an app uploads a picture again.
+/// The album cover each chosen-album or first-track cover stands for, by
+/// playlist.
 pub fn album_covers(covers: &HashMap<String, PlaylistCover>) -> Vec<(String, ArtKey)> {
     let mut wanted: Vec<(String, ArtKey)> = covers
         .iter()
         .filter_map(|(playlist, cover)| match cover {
-            PlaylistCover::FirstTrack(album) => Some((
+            PlaylistCover::Album(album) | PlaylistCover::FirstTrack(album) => Some((
                 playlist.clone(),
                 ArtKey::new(album, aoide_melete::COVER_TAG),
             )),
@@ -331,9 +330,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn first_track_covers_are_their_albums_and_jellyfin_items_draw_nothing() {
+    fn chosen_albums_and_first_tracks_are_drawn_as_their_albums() {
         let covers = HashMap::from([
-            ("p1".to_owned(), PlaylistCover::JellyfinItem("jp1".into())),
+            ("p1".to_owned(), PlaylistCover::Album("al9".into())),
             ("p2".to_owned(), PlaylistCover::FirstTrack("al1".into())),
             (
                 "p3".to_owned(),
@@ -346,7 +345,10 @@ mod tests {
         ]);
         assert_eq!(
             album_covers(&covers),
-            [("p2".to_owned(), ArtKey::new("al1", aoide_melete::COVER_TAG))]
+            [
+                ("p1".to_owned(), ArtKey::new("al9", aoide_melete::COVER_TAG)),
+                ("p2".to_owned(), ArtKey::new("al1", aoide_melete::COVER_TAG)),
+            ]
         );
     }
 

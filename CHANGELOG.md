@@ -25,6 +25,8 @@ sign-in, and playlists, likes and history come back from Melete.
   queue starts at once.
 - Favourites are your liked songs, with their albums and artists.
 - Covers are fetched with your sign-in, and kept a day.
+- A playlist cover chosen as an album, on this computer or the iPhone, is
+  drawn as that album's cover.
 - Radio and Infinity's albums mode start from what `/aoide/next` picks after
   the seed song, in place of Jellyfin's Instant Mix and similar albums.
 
