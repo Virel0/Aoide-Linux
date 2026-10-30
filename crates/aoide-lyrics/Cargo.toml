@@ -16,9 +16,9 @@ workspace = true
 furigana = ["dep:lindera"]
 
 [dependencies]
-# Lyrics, LyricLine and LyricWord are aoide-jellyfin's: one shape for the panel
+# Lyrics, LyricLine and LyricWord are aoide-melete's: one shape for the panel
 # whether the server or the internet supplied them.
-aoide-jellyfin = { path = "../aoide-jellyfin" }
+aoide-melete = { path = "../aoide-melete" }
 # Only `join_all`, to ask every provider at once. reqwest already brings it in.
 futures-util = { version = "0.3.34", default-features = false, features = ["alloc"] }
 # The workspace's TLS line: rustls on ring, no aws-lc-rs, no OpenSSL.

@@ -18,8 +18,6 @@ pub mod genre;
 pub mod genres;
 pub mod home;
 pub mod import;
-pub mod jellyfin_playlist;
-pub mod jellyfin_playlists;
 pub mod login;
 pub mod mixes;
 pub mod playlist;
@@ -34,7 +32,7 @@ pub mod sync_status;
 use std::collections::HashMap;
 use std::future::Future;
 
-use aoide_jellyfin::JellyfinClient;
+use aoide_melete::MeleteClient;
 use iced::{Element, Task};
 
 use crate::actions::Menu;
@@ -59,7 +57,6 @@ pub enum Section {
     Mixes,
     Favourites,
     Replay,
-    JellyfinPlaylists,
     /// A new saved filter.
     Collections,
     /// One saved filter, by id.
@@ -94,7 +91,6 @@ impl Section {
             Section::Mixes => "Mixes",
             Section::Favourites => "Favourites",
             Section::Replay => "Replay",
-            Section::JellyfinPlaylists => "Jellyfin playlists",
             Section::Collections => "New collection",
             Section::Collection(_) => "Collection",
         }
@@ -111,7 +107,6 @@ pub enum Route {
     Equalizer,
     Discover,
     SyncStatus,
-    JellyfinPlaylist { id: String, name: String },
     Share { id: String, name: String },
     Import,
 }
@@ -130,9 +125,7 @@ pub struct PlaylistSummary {
 
 /// What a screen's update and open can reach.
 pub struct Ctx<'a> {
-    pub client: &'a JellyfinClient,
-    /// The music library to stay inside, when the server has one.
-    pub library: Option<&'a str>,
+    pub client: &'a MeleteClient,
     pub store: &'a StoreHandle,
     pub key: u64,
 }
@@ -141,7 +134,7 @@ pub struct Ctx<'a> {
 pub struct View<'a> {
     pub key: u64,
     pub artwork: &'a Artwork,
-    /// The Jellyfin id of what is playing, to mark its row.
+    /// The id of what is playing, to mark its row.
     pub playing: Option<&'a str>,
     pub menu: Option<&'a Menu>,
     pub playlists: &'a [PlaylistSummary],
@@ -158,11 +151,6 @@ impl<'a> View<'a> {
     /// again and so runs its requests again.
     pub fn failure(&self, failure: &'a Failure) -> Element<'a, Message> {
         crate::widgets::failure(failure, Some(Message::Retry(self.key)), self.details)
-    }
-
-    /// An action that failed: its words and details, nothing to retry.
-    pub fn problem(&self, failure: &'a Failure) -> Element<'a, Message> {
-        crate::widgets::failure(failure, None, self.details)
     }
 }
 
@@ -194,11 +182,11 @@ impl<T> Load<T> {
 /// than showing an error on whichever screen happened to ask.
 pub fn fetch<T: Send + 'static>(
     key: u64,
-    request: impl Future<Output = Result<T, aoide_jellyfin::Error>> + Send + 'static,
+    request: impl Future<Output = Result<T, aoide_melete::Error>> + Send + 'static,
     wrap: impl Fn(Result<T, Failure>) -> PageMsg + Send + 'static,
 ) -> Task<Message> {
     Task::perform(request, move |result| match result {
-        Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
+        Err(aoide_melete::Error::Unauthorized) => Message::TokenRejected,
         result => Message::Page(key, wrap(result.map_err(|e| failure::describe(&e)))),
     })
 }
@@ -224,8 +212,6 @@ pub enum Page {
     Favourites(favourites::State),
     Replay(replay::State),
     SyncStatus(sync_status::State),
-    JellyfinPlaylists(jellyfin_playlists::State),
-    JellyfinPlaylist(jellyfin_playlist::State),
     Share(share::State),
     Import(import::State),
     Collections(collections::State),
@@ -251,8 +237,6 @@ pub enum PageMsg {
     Favourites(favourites::Message),
     Replay(replay::Message),
     SyncStatus(sync_status::Message),
-    JellyfinPlaylists(jellyfin_playlists::Message),
-    JellyfinPlaylist(jellyfin_playlist::Message),
     Share(share::Message),
     Import(import::Message),
     Collections(collections::Message),
@@ -274,9 +258,6 @@ impl Page {
             Section::Mixes => wrap(mixes::open(), Page::Mixes),
             Section::Favourites => wrap(favourites::open(ctx), Page::Favourites),
             Section::Replay => wrap(replay::open(ctx), Page::Replay),
-            Section::JellyfinPlaylists => {
-                wrap(jellyfin_playlists::open(ctx), Page::JellyfinPlaylists)
-            }
             Section::Collections => wrap(collections::open(ctx, None), Page::Collections),
             Section::Collection(id) => wrap(collections::open(ctx, Some(id)), Page::Collections),
         }
@@ -293,10 +274,6 @@ impl Page {
             Route::SyncStatus => wrap(sync_status::open(ctx), Page::SyncStatus),
             Route::Share { id, name } => wrap(share::open(ctx, id, name), Page::Share),
             Route::Import => wrap(import::open(ctx), Page::Import),
-            Route::JellyfinPlaylist { id, name } => wrap(
-                jellyfin_playlist::open(ctx, id, name),
-                Page::JellyfinPlaylist,
-            ),
         }
     }
 
@@ -319,8 +296,6 @@ impl Page {
             (Page::Favourites(state), PageMsg::Favourites(m)) => state.update(m),
             (Page::Replay(state), PageMsg::Replay(m)) => state.update(m, ctx),
             (Page::SyncStatus(state), PageMsg::SyncStatus(m)) => state.update(m, ctx),
-            (Page::JellyfinPlaylists(state), PageMsg::JellyfinPlaylists(m)) => state.update(m, ctx),
-            (Page::JellyfinPlaylist(state), PageMsg::JellyfinPlaylist(m)) => state.update(m, ctx),
             (Page::Share(state), PageMsg::Share(m)) => state.update(m, ctx),
             (Page::Import(state), PageMsg::Import(m)) => state.update(m, ctx),
             (Page::Collections(state), PageMsg::Collections(m)) => state.update(m, ctx),
@@ -350,8 +325,6 @@ impl Page {
             Page::Favourites(state) => state.view(view),
             Page::Replay(state) => state.view(view),
             Page::SyncStatus(state) => state.view(view),
-            Page::JellyfinPlaylists(state) => state.view(view),
-            Page::JellyfinPlaylist(state) => state.view(view),
             Page::Share(state) => state.view(view),
             Page::Import(state) => state.view(view),
             Page::Collections(state) => state.view(view),
@@ -377,12 +350,9 @@ impl Page {
             Page::Discover(state) => state.artwork(),
             Page::Favourites(state) => state.artwork(),
             Page::Replay(state) => state.artwork(),
-            Page::SyncStatus(_) | Page::JellyfinPlaylists(_) | Page::Share(_) | Page::Import(_) => {
-                Vec::new()
-            }
+            Page::SyncStatus(_) | Page::Share(_) | Page::Import(_) => Vec::new(),
             Page::Playlists(state) => state.artwork(),
             Page::Collections(state) => state.artwork(),
-            Page::JellyfinPlaylist(state) => state.artwork(),
             Page::Mixes(state) => state.artwork(),
             Page::Equalizer(_) => Vec::new(),
         }

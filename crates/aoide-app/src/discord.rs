@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime};
 use aoide_integrations::discord::{
     DisplayType, Endpoint, NowPlaying as Playing, Presence, PresenceOptions, PresenceStatus, Track,
 };
-use aoide_jellyfin::{JellyfinClient, Url};
+use aoide_melete::Url;
 use iced::futures::{Stream, StreamExt};
 use iced::widget::{column, pick_list, row, text};
 use iced::{Center, Element, Fill, Subscription, Task};
@@ -21,9 +21,6 @@ use tokio::sync::watch;
 
 use crate::app::{App, Message as AppMessage};
 use crate::integration::NowPlaying;
-
-/// The cover's width when it is sent: Discord draws the large image small.
-const COVER_WIDTH: u32 = 512;
 
 /// A development build can talk to a stand-in socket instead of looking for
 /// Discord (`AOIDE_DEV_DISCORD_SOCKET=/path/to/socket`).
@@ -34,7 +31,6 @@ pub enum Message {
     Enabled(bool),
     Display(Display),
     ShowWhenPaused(bool),
-    ShowCover(bool),
     StateIcon(bool),
     Links(bool),
     Status(PresenceStatus),
@@ -143,13 +139,6 @@ pub fn playing(
     })
 }
 
-/// The cover's address on the server: no token is in it (Jellyfin serves
-/// images without one).
-fn cover_url(client: &JellyfinClient, artwork: Option<&(String, String)>) -> Option<String> {
-    let (item, tag) = artwork?;
-    Some(client.artwork_url(item, Some(tag), COVER_WIDTH).to_string())
-}
-
 /// The presence's status as it changes.
 #[derive(Clone)]
 struct StatusSource(watch::Receiver<PresenceStatus>);
@@ -185,7 +174,6 @@ impl App {
             Message::Enabled(on) => options.enabled = on,
             Message::Display(display) => options.display = display.0,
             Message::ShowWhenPaused(on) => options.show_when_paused = on,
-            Message::ShowCover(on) => options.show_cover = on,
             Message::StateIcon(on) => options.show_state_icon = on,
             Message::Links(on) => options.show_links = on,
             Message::Status(status) => {
@@ -210,18 +198,9 @@ impl App {
             return;
         };
         let now = self.desktop.now_playing();
-        let cover = options
-            .show_cover
-            .then(|| {
-                let client = &self.session.as_ref()?.connection.client;
-                let artwork = self
-                    .playback
-                    .current()
-                    .and_then(|(_, q)| q.meta.artwork.as_ref());
-                cover_url(client, artwork)
-            })
-            .flatten();
-        presence.set_now_playing(playing(&now, cover, options.show_links, SystemTime::now()));
+        // No cover: Melete's covers need a signed-in user, so Discord couldn't
+        // fetch one, and its address would name the server.
+        presence.set_now_playing(playing(&now, None, options.show_links, SystemTime::now()));
     }
 }
 
@@ -251,7 +230,6 @@ pub fn settings_section<'a>(
                 options.show_when_paused,
                 Message::ShowWhenPaused,
             ))
-            .push(switch("Show cover", options.show_cover, Message::ShowCover))
             .push(switch(
                 "Playing and paused badge",
                 options.show_state_icon,
@@ -360,24 +338,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(sent["assets"]["large_image"], public);
-    }
-
-    #[test]
-    fn the_cover_address_carries_no_token() {
-        let client = JellyfinClient::new(
-            aoide_jellyfin::ServerAddress::parse("https://music.example.net").unwrap(),
-            aoide_jellyfin::Device::new("Test", "device"),
-        )
-        .unwrap()
-        .with_credentials(aoide_jellyfin::Credentials {
-            user_id: "u".into(),
-            access_token: "secret-token".into(),
-            username: "tester".into(),
-        });
-        let url = cover_url(&client, Some(&("a1".into(), "tag1".into()))).unwrap();
-        assert!(url.starts_with("https://music.example.net/Items/a1/Images/Primary?"));
-        assert!(!url.contains("secret-token"), "{url}");
-        assert_eq!(cover_url(&client, None), None);
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 ## How it was checked
 
-<!-- Tests added or run, and where you tried it: a stand-in server, a real Jellyfin, which distribution and desktop. -->
+<!-- Tests added or run, and where you tried it: a stand-in server, a real Melete, which distribution and desktop. -->
 
 ## Checklist
 

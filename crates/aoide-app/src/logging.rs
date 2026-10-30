@@ -112,7 +112,7 @@ mod tests {
         assert!(allowed("aoide::tray", Level::Info, LevelFilter::Info));
         assert!(!allowed("aoide::tray", Level::Debug, LevelFilter::Info));
         assert!(allowed(
-            "aoide_jellyfin::client",
+            "aoide_melete::client",
             Level::Debug,
             LevelFilter::Debug
         ));

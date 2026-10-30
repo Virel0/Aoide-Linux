@@ -35,16 +35,16 @@ impl App {
         }
         self.artwork.want(wanted);
         let client = signed.connection.client.clone();
+        let authorization = client.authorization();
         let dir = self.artwork.dir().map(ToOwned::to_owned);
         Task::batch(self.artwork.next_batch().into_iter().map(|key| {
-            let url = client
-                .artwork_url(&key.item, Some(&key.tag), artwork::WIDTH)
-                .to_string();
+            let url = client.cover_url(&key.item).to_string();
             let dir = dir.clone();
             let done = key.clone();
-            Task::perform(artwork::fetch(url, dir, key), move |bytes| {
-                Message::Artwork(done.clone(), bytes)
-            })
+            Task::perform(
+                artwork::fetch(url, authorization.clone(), dir, key),
+                move |bytes| Message::Artwork(done.clone(), bytes),
+            )
         }))
     }
 }

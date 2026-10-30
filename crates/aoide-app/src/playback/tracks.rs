@@ -1,13 +1,16 @@
-//! From a Jellyfin item to something the player can play.
+//! From a Melete track to something the player can play.
 //!
-//! The stream URL comes from aoide-jellyfin (the token as `ApiKey`); where the
-//! sidecar has measured a track, its sound bounds (Skip silence) and loudness
-//! gain (Level volume) go with it. An unmeasured track plays plainly.
+//! The stream link is asked of Melete (`MeleteClient::play`) only when the
+//! player starts downloading the track, so queueing a long list asks for
+//! nothing up front; where Melete has measured a track, its sound bounds (Skip
+//! silence) and loudness gain (Level volume) go with it. An unmeasured track
+//! plays plainly.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use aoide_audio::{MediaSource, MixTrack, PlayerTrack, SoundBounds, loudness};
-use aoide_jellyfin::{Item, JellyfinClient, StreamQuality, Url};
+use aoide_melete::{Item, MeleteClient, StreamFormat};
 use aoide_sidecar::{AudioAnalysis, AudioAnalysisResponse, Measurement, SoundBoundsResponse};
 use aoide_store::{ContentKey, Millis, TrackLink, TrackRef};
 
@@ -63,11 +66,11 @@ impl TrackMeta {
             duration_ms: item
                 .duration()
                 .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX)),
-            track_number: item.index_number,
-            disc_number: item.parent_index_number,
-            year: item.production_year,
+            track_number: item.track_number,
+            disc_number: item.disc_number,
+            year: item.year,
             genres: item.genres.clone(),
-            favourite: item.user_data.as_ref().is_some_and(|u| u.is_favorite),
+            favourite: item.liked,
         }
     }
 
@@ -215,25 +218,50 @@ pub fn applied(
     (sound, gain_db)
 }
 
-/// One playable track and the URL it streams from (kept for tests: the
+/// One playable track and the format it streams in (kept for tests: the
 /// player's source does not give it back).
 #[derive(Debug, Clone)]
 pub struct BuiltTrack {
     pub meta: TrackMeta,
     #[allow(dead_code)]
-    pub url: Url,
+    pub format: StreamFormat,
     pub track: PlayerTrack,
+}
+
+/// Where the player's downloads ask Melete for a stream link: the client, and
+/// the runtime its connections live on (the downloads run on threads of their
+/// own).
+#[derive(Debug, Clone)]
+pub struct Streams {
+    pub client: MeleteClient,
+    pub runtime: tokio::runtime::Handle,
+}
+
+impl Streams {
+    /// The player's source for one track: its link asked for each time its
+    /// download starts. A failure is said without the link, which carries a
+    /// token.
+    pub fn source(&self, track_id: &str, format: StreamFormat) -> MediaSource {
+        let (streams, id) = (self.clone(), track_id.to_owned());
+        MediaSource::http_resolved(Arc::new(move || {
+            streams
+                .runtime
+                .block_on(streams.client.play(&id, format))
+                .map(|stream| stream.url.to_string())
+                .map_err(|error| error.to_string())
+        }))
+    }
 }
 
 /// Builds the player's track for `meta`: the stream, and the measurements the
 /// settings ask for.
 pub fn build(
-    client: &JellyfinClient,
+    streams: &Streams,
     meta: &TrackMeta,
     measures: &Measures,
     settings: &Settings,
-) -> Result<BuiltTrack, aoide_jellyfin::Error> {
-    let url = client.stream_url(&meta.id, StreamQuality::Lossless)?;
+    format: StreamFormat,
+) -> BuiltTrack {
     let analysis = measures.analysis(&meta.id);
     let (sound, gain_db) = applied(&meta.id, measures, settings);
     let mix = MixTrack {
@@ -244,17 +272,17 @@ pub fn build(
         bpm: analysis.and_then(|a| a.bpm),
         bpm_stability: analysis.and_then(|a| a.bpm_stability),
     };
-    Ok(BuiltTrack {
+    BuiltTrack {
         meta: meta.clone(),
         track: PlayerTrack {
             // Made unique when the track is queued.
             key: meta.id.clone(),
-            source: MediaSource::http(url.as_str()),
+            source: streams.source(&meta.id, format),
             mix,
             gain_db,
         },
-        url,
-    })
+        format,
+    }
 }
 
 /// The engine's view of a built track, as the player hands it over.
@@ -268,33 +296,46 @@ pub fn spec(id: aoide_audio::EntryId, built: &BuiltTrack) -> aoide_audio::TrackS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aoide_jellyfin::{Credentials, Device, ServerAddress};
+    use aoide_melete::{Credentials, Device, ServerAddress};
 
-    fn client() -> JellyfinClient {
-        JellyfinClient::new(
+    fn client() -> Streams {
+        let client = MeleteClient::new(
             ServerAddress::parse("https://music.example.net").unwrap(),
             Device::new("Test", "device-1"),
         )
         .unwrap()
         .with_credentials(Credentials {
-            user_id: "user1".into(),
+            user_id: "1".into(),
             access_token: "secret-token".into(),
             username: "alice".into(),
-        })
-    }
-
-    fn item(json: &str) -> Item {
-        serde_json::from_str(json).unwrap()
+        });
+        // A runtime of the test's own, never entered: the sources here are
+        // never opened.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        Streams {
+            client,
+            runtime: runtime.handle().clone(),
+        }
     }
 
     fn meta() -> TrackMeta {
-        TrackMeta::from_item(&item(
-            r#"{"Id":"t1","Name":"Harbour Lights","Type":"Audio","Album":"Low Tide",
-                "AlbumId":"a1","AlbumArtist":"The Quiet Engines",
-                "Artists":["The Quiet Engines","Mara Vey"],"RunTimeTicks":2435000000,
-                "IndexNumber":3,"ParentIndexNumber":1,"Genres":["Ambient"],
-                "AlbumPrimaryImageTag":"tag1","UserData":{"IsFavorite":true}}"#,
-        ))
+        TrackMeta::from_item(&Item {
+            id: "t1".into(),
+            name: "Harbour Lights".into(),
+            album: Some("Low Tide".into()),
+            album_id: Some("a1".into()),
+            album_artist: Some("The Quiet Engines".into()),
+            artists: vec!["The Quiet Engines".into(), "Mara Vey".into()],
+            duration: Some(std::time::Duration::from_millis(243_500)),
+            track_number: Some(3),
+            disc_number: Some(1),
+            genres: vec!["Ambient".into()],
+            has_cover: true,
+            liked: true,
+            ..Item::default()
+        })
     }
 
     fn analysis(lufs: f64, peak: f64) -> AudioAnalysis {
@@ -314,42 +355,21 @@ mod tests {
         assert_eq!(meta.artist, "The Quiet Engines, Mara Vey");
         assert_eq!(meta.history_artist(), "The Quiet Engines");
         assert_eq!(meta.duration_ms, Some(243_500));
-        assert_eq!(meta.artwork, Some(("a1".into(), "tag1".into())));
+        assert_eq!(
+            meta.artwork,
+            Some(("a1".into(), aoide_melete::COVER_TAG.into()))
+        );
         assert!(meta.favourite);
         assert_eq!(meta.track_ref(5).genre_list(), ["Ambient"]);
     }
 
-    #[test]
-    fn the_stream_url_carries_the_token_as_apikey() {
-        let built = build(
-            &client(),
-            &meta(),
-            &Measures::default(),
-            &Settings::default(),
-        )
-        .unwrap();
-        let pairs: Vec<(String, String)> = built
-            .url
-            .query_pairs()
-            .map(|(k, v)| (k.into_owned(), v.into_owned()))
-            .collect();
-        assert_eq!(built.url.path(), "/Audio/t1/universal");
-        assert!(
-            pairs.contains(&("ApiKey".into(), "secret-token".into())),
-            "{pairs:?}"
-        );
-        assert!(!pairs.iter().any(|(k, _)| k == "api_key"));
+    fn plain(streams: &Streams, measures: &Measures, settings: &Settings) -> BuiltTrack {
+        build(streams, &meta(), measures, settings, StreamFormat::Original)
     }
 
     #[test]
     fn an_unmeasured_track_plays_plainly() {
-        let built = build(
-            &client(),
-            &meta(),
-            &Measures::default(),
-            &Settings::default(),
-        )
-        .unwrap();
+        let built = plain(&client(), &Measures::default(), &Settings::default());
         assert_eq!(built.track.mix.sound, None);
         assert_eq!(built.track.gain_db, None);
         assert_eq!(built.track.mix.album, "Low Tide");
@@ -368,7 +388,7 @@ mod tests {
             Some(SoundBounds::new(1_200, 240_000)),
             Some(analysis(-12.0, -1.0)),
         );
-        let built = build(&client(), &meta(), &measures, &Settings::default()).unwrap();
+        let built = plain(&client(), &measures, &Settings::default());
         let spec = spec(aoide_audio::EntryId(7), &built);
         assert_eq!(spec.bounds, Some(SoundBounds::new(1_200, 240_000)));
         assert_eq!(spec.gain_db, Some(-6.0));
@@ -389,7 +409,7 @@ mod tests {
             level_volume: false,
             ..Settings::default()
         };
-        let built = build(&client(), &meta(), &measures, &settings).unwrap();
+        let built = plain(&client(), &measures, &settings);
         assert_eq!(built.track.mix.sound, None);
         assert_eq!(built.track.gain_db, None);
     }
@@ -398,7 +418,7 @@ mod tests {
     fn a_quiet_track_is_not_turned_up() {
         let mut measures = Measures::default();
         measures.insert("t1", None, Some(analysis(-23.0, -6.0)));
-        let built = build(&client(), &meta(), &measures, &Settings::default()).unwrap();
+        let built = plain(&client(), &measures, &Settings::default());
         // Measured and left alone: 0 dB, which also keeps the file's own
         // ReplayGain from turning it up.
         assert_eq!(built.track.gain_db, Some(0.0));

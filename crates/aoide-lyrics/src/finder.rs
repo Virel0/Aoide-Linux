@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use aoide_jellyfin::Lyrics;
+use aoide_melete::Lyrics;
 use futures_util::future::join_all;
 
 use crate::lrclib::Lrclib;
@@ -47,9 +47,9 @@ fn describe(failures: &[(&'static str, ProviderError)]) -> String {
         .join("; ")
 }
 
-/// Internet lyrics, for when the Jellyfin server has none.
+/// Internet lyrics, for when the Melete server has none.
 ///
-/// The app asks [`JellyfinClient::lyrics`](aoide_jellyfin::JellyfinClient::lyrics)
+/// The app asks [`MeleteClient::lyrics`](aoide_melete::MeleteClient::lyrics)
 /// first and comes here only on `Ok(None)`. Turning internet lyrics off is the
 /// app's switch: with it off, don't build a finder or don't call it. Nothing in
 /// this crate makes a request on its own; building a finder sends nothing.

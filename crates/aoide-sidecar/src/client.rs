@@ -1,4 +1,5 @@
-//! The sidecar over HTTP: same origin and same token as Jellyfin.
+//! Aoide's routes on Melete (`/aoide/*`) over HTTP: the same server and token as
+//! the rest of the app.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -25,8 +26,8 @@ const DETAIL_LIMIT: usize = 400;
 
 /// A connection to one user's sidecar.
 ///
-/// Paths are joined onto the server URL segment by segment, so a Jellyfin behind a
-/// reverse-proxy subpath (`https://host/jellyfin`) keeps its prefix. Bodies are read
+/// Paths are joined onto the server URL segment by segment, so a Melete behind a
+/// reverse-proxy subpath (`https://host/melete`) keeps its prefix. Bodies are read
 /// with a plain JSON decoder: op payloads are opaque client JSON the server stores
 /// verbatim, and a key spelled `Notes` must arrive as `Notes`.
 ///
@@ -60,8 +61,8 @@ impl std::fmt::Debug for SidecarClient {
 }
 
 impl SidecarClient {
-    /// `base_url` is the Jellyfin server address the user signed in to; `token` is the
-    /// Jellyfin access token. There is no separate login.
+    /// `base_url` is the Melete server address the user signed in to; `token` is the
+    /// session token sign-in gave. There is no separate login.
     ///
     /// # Errors
     ///
@@ -79,16 +80,13 @@ impl SidecarClient {
             )));
         }
 
-        let authorization = HeaderValue::from_str(&format!("MediaBrowser Token=\"{token}\""))
-            .map_err(|_| {
-                SidecarError::InvalidUrl(
-                    "the token contains characters a header cannot carry".to_owned(),
-                )
-            })?;
+        let authorization = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| {
+            SidecarError::InvalidUrl(
+                "the token contains characters a header cannot carry".to_owned(),
+            )
+        })?;
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, authorization.clone());
-        // Jellyfin 10.8 and earlier read this one instead.
-        headers.insert("X-Emby-Authorization", authorization);
+        headers.insert(AUTHORIZATION, authorization);
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
         // ring, never aws-lc: see the manifest. Installing is first-wins and harmless
@@ -257,7 +255,7 @@ impl SidecarClient {
             .collect())
     }
 
-    /// `POST /aoide/shares`: invites another Jellyfin user to a playlist this user
+    /// `POST /aoide/shares`: invites another Melete user to a playlist this user
     /// owns. Their edits and this user's then both travel through the ordinary pull.
     ///
     /// # Errors
@@ -486,7 +484,11 @@ fn check(status: u16, body: &[u8], path: &str) -> Result<(), SidecarError> {
             path: path.to_owned(),
         }),
         _ => {
-            let text = String::from_utf8_lossy(body);
+            // Melete's errors are `{"error": "…"}`; anything else is shown as sent.
+            let text = serde_json::from_slice::<serde_json::Value>(body)
+                .ok()
+                .and_then(|value| value.get("error")?.as_str().map(str::to_owned))
+                .unwrap_or_else(|| String::from_utf8_lossy(body).into_owned());
             let trimmed = text.trim();
             let detail: String = trimmed.chars().take(DETAIL_LIMIT).collect();
             Err(SidecarError::Status {
@@ -514,10 +516,10 @@ fn network(path: &str, error: &reqwest::Error) -> SidecarError {
 }
 
 /// Redirects are followed only within the server's own origin (scheme, host
-/// and port), at most ten: the token rides in `X-Emby-Authorization` (a default header),
-/// which reqwest doesn't strip when a redirect leaves for another host or
-/// drops to plain HTTP, as it does `Authorization`. A redirect elsewhere is
-/// returned as the redirect response, an error to the caller.
+/// and port), at most ten. The token is a default header, which reqwest keeps
+/// on a redirect from https to plain http on the same host; staying within the
+/// origin covers that. A redirect elsewhere is returned as the redirect
+/// response, an error to the caller.
 fn same_origin_redirects() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
         let same = attempt

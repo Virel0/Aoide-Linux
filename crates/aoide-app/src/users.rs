@@ -1,88 +1,38 @@
-//! The server's users, for choosing whom to share a playlist with.
-//!
-//! aoide-jellyfin has no call for this, so the two reads are made here with
-//! the client's own address, device header and token: `GET /Users` (the whole
-//! list, which Jellyfin gives administrators) and, when that is refused,
-//! `GET /Users/Public` (those shown on the sign-in screen), which is enough to
-//! turn a typed username into the id the sidecar needs.
+//! The server's users, for choosing whom to share a playlist with: Melete
+//! lists every user's name to anyone signed in.
 
-use std::sync::LazyLock;
-use std::time::Duration;
-
-use aoide_jellyfin::JellyfinClient;
-use serde::Deserialize;
+use aoide_melete::{MeleteClient, UserName};
 
 /// One user, as a share names them.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct ServerUser {
-    pub id: String,
-    pub name: String,
-}
+pub type ServerUser = UserName;
 
 /// What asking for the users found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Users {
     /// The whole list: pick from it.
     Listed(Vec<ServerUser>),
-    /// Listing refused; these are the ones the sign-in screen shows, which a
-    /// typed name is looked up among.
+    /// The list couldn't be had: a typed name or id is all there is.
     Typed(Vec<ServerUser>),
 }
 
-static HTTP: LazyLock<Option<reqwest::Client>> = LazyLock::new(|| {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-    reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(20))
-        .build()
-        .ok()
-});
-
-async fn get(client: &JellyfinClient, segments: &[&str]) -> Result<Vec<ServerUser>, u16> {
-    let http = HTTP.as_ref().ok_or(0u16)?;
-    let mut url = client.address().as_url().clone();
-    if let Ok(mut path) = url.path_segments_mut() {
-        path.pop_if_empty().extend(segments);
-    }
-    let token = client.credentials().map(|c| c.access_token.as_str());
-    let response = http
-        .get(url)
-        .header("Authorization", client.device().authorization_header(token))
-        .send()
-        .await
-        .map_err(|_| 0u16)?;
-    let status = response.status().as_u16();
-    if !response.status().is_success() {
-        return Err(status);
-    }
-    response.json().await.map_err(|_| status)
-}
-
-/// Everyone but `me`: the whole list where the server allows it, else the
-/// sign-in screen's users to look a typed name up among.
-pub async fn users(client: JellyfinClient, me: String) -> Users {
-    let others = |list: Vec<ServerUser>| -> Vec<ServerUser> {
-        list.into_iter().filter(|u| !same_id(&u.id, &me)).collect()
-    };
-    match get(&client, &["Users"]).await {
-        Ok(list) => Users::Listed(others(list)),
-        Err(_) => Users::Typed(others(
-            get(&client, &["Users", "Public"]).await.unwrap_or_default(),
-        )),
+/// Everyone but `me`, or, when the list can't be had, nobody to pick from
+/// (an id can still be typed).
+pub async fn users(client: MeleteClient, me: String) -> Users {
+    match client.user_directory().await {
+        Ok(list) => Users::Listed(list.into_iter().filter(|u| !same_id(&u.id, &me)).collect()),
+        Err(_) => Users::Typed(Vec::new()),
     }
 }
 
-/// Jellyfin spells a user id with or without hyphens, in either case.
+/// Melete's user ids are numbers, written as text.
 pub fn same_id(a: &str, b: &str) -> bool {
-    let plain = |s: &str| s.replace('-', "").to_lowercase();
-    plain(a) == plain(b)
+    a.trim() == b.trim()
 }
 
-/// Whether `text` is a user id itself: 32 hex digits, hyphens allowed.
+/// Whether `text` is a user id itself: digits only.
 pub fn looks_like_id(text: &str) -> bool {
-    let plain = text.trim().replace('-', "");
-    plain.len() == 32 && plain.chars().all(|c| c.is_ascii_hexdigit())
+    let text = text.trim();
+    !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// The id a typed username (or pasted id) stands for: an exact name, ignoring
@@ -95,7 +45,7 @@ pub fn resolve_typed(typed: &str, known: &[ServerUser]) -> Option<String> {
     if let Some(user) = known.iter().find(|u| u.name.eq_ignore_ascii_case(typed)) {
         return Some(user.id.clone());
     }
-    looks_like_id(typed).then(|| typed.replace('-', "").to_lowercase())
+    looks_like_id(typed).then(|| typed.to_owned())
 }
 
 /// A user's name where it is known, else their id.
@@ -109,8 +59,8 @@ pub fn name_of<'a>(id: &'a str, known: &'a [ServerUser]) -> &'a str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aoide_jellyfin::{Credentials, Device, ServerAddress};
-    use wiremock::matchers::{header_regex, method, path};
+    use aoide_melete::{Credentials, Device, ServerAddress};
+    use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn user(id: &str, name: &str) -> ServerUser {
@@ -122,72 +72,51 @@ mod tests {
 
     #[test]
     fn a_typed_name_or_pasted_id_becomes_an_id() {
-        let known = [user("0f8e5a2b9c4d4e1fa3b2c1d0e9f8a7b6", "Robin")];
-        assert_eq!(
-            resolve_typed(" robin ", &known).as_deref(),
-            Some("0f8e5a2b9c4d4e1fa3b2c1d0e9f8a7b6")
-        );
-        assert_eq!(
-            resolve_typed("1A2B3C4D-5E6F-4708-9A0B-1C2D3E4F5A6B", &[]).as_deref(),
-            Some("1a2b3c4d5e6f47089a0b1c2d3e4f5a6b")
-        );
+        let known = [user("7", "Robin")];
+        assert_eq!(resolve_typed(" robin ", &known).as_deref(), Some("7"));
+        assert_eq!(resolve_typed(" 12 ", &[]).as_deref(), Some("12"));
         assert_eq!(resolve_typed("sam", &known), None);
         assert_eq!(resolve_typed("  ", &known), None);
-        assert_eq!(
-            name_of("0F8E5A2B-9C4D-4E1F-A3B2-C1D0E9F8A7B6", &known),
-            "Robin"
-        );
-        assert_eq!(name_of("other", &known), "other");
+        assert_eq!(name_of("7", &known), "Robin");
+        assert_eq!(name_of("8", &known), "8");
     }
 
-    fn client(server: &MockServer) -> JellyfinClient {
-        JellyfinClient::new(
+    fn client(server: &MockServer) -> MeleteClient {
+        MeleteClient::new(
             ServerAddress::parse(&server.uri()).unwrap(),
             Device::new("Test", "device-1"),
         )
         .unwrap()
         .with_credentials(Credentials {
-            user_id: "me".into(),
+            user_id: "1".into(),
             access_token: "tok".into(),
             username: "alice".into(),
         })
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn an_administrator_picks_from_everyone_else() {
+    async fn everyone_else_is_listed_to_pick_from() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/Users"))
-            .and(header_regex("Authorization", r#"Token="tok""#))
+            .and(path("/api/v1/users/directory"))
+            .and(header("authorization", "Bearer tok"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"Id": "me", "Name": "alice"}, {"Id": "u2", "Name": "robin"}
+                {"id": 1, "username": "alice"}, {"id": 2, "username": "robin"}
             ])))
             .mount(&server)
             .await;
         assert_eq!(
-            users(client(&server), "me".into()).await,
-            Users::Listed(vec![user("u2", "robin")])
+            users(client(&server), "1".into()).await,
+            Users::Listed(vec![user("2", "robin")])
         );
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn anyone_else_types_a_name_looked_up_among_the_public_users() {
+    async fn without_the_list_an_id_can_still_be_typed() {
         let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/Users"))
-            .respond_with(ResponseTemplate::new(403))
-            .mount(&server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/Users/Public"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"Id": "u2", "Name": "robin"}
-            ])))
-            .mount(&server)
-            .await;
         assert_eq!(
-            users(client(&server), "me".into()).await,
-            Users::Typed(vec![user("u2", "robin")])
+            users(client(&server), "1".into()).await,
+            Users::Typed(Vec::new())
         );
     }
 }

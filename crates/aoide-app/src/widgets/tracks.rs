@@ -276,13 +276,13 @@ mod tests {
     #[test]
     fn an_album_list_names_the_artist_only_where_it_differs() {
         let track = |artist: &str| {
-            let mut meta = TrackMeta::from_item(
-                &serde_json::from_value(serde_json::json!({
-                    "Id": "t1", "Name": "Harbour Lights", "Type": "Audio",
-                    "Album": "Low Tide Radio", "AlbumArtist": "The Quiet Engines",
-                }))
-                .unwrap(),
-            );
+            let mut meta = TrackMeta::from_item(&aoide_melete::Item {
+                id: "t1".into(),
+                name: "Harbour Lights".into(),
+                album: Some("Low Tide Radio".into()),
+                album_artist: Some("The Quiet Engines".into()),
+                ..aoide_melete::Item::default()
+            });
             meta.artist = artist.into();
             meta
         };

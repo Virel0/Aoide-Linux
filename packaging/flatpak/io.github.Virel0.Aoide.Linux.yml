@@ -46,7 +46,7 @@ finish-args:
   # PulseAudio socket, which on a PipeWire desktop is pipewire-pulse. Nothing
   # here speaks PipeWire's own protocol, so its socket stays closed.
   - --socket=pulseaudio
-  # The Jellyfin server, the sidecar, lyrics, the update check.
+  # The Melete server, lyrics, the update check.
   - --share=network
   # Media keys and the shell's media controls (aoide-mpris MPRIS_BUS_NAME).
   # The name a second launch calls Raise on (APP_BUS_NAME) is the app id,

@@ -1,4 +1,4 @@
-//! LRC and plain-text lyrics, parsed into aoide-jellyfin's [`Lyrics`].
+//! LRC and plain-text lyrics, parsed into aoide-melete's [`Lyrics`].
 //!
 //! LRC as found in the wild:
 //!
@@ -15,7 +15,7 @@
 
 use std::time::Duration;
 
-use aoide_jellyfin::{LyricLine, LyricWord, Lyrics};
+use aoide_melete::{LyricLine, LyricWord, Lyrics};
 
 /// LRC (synced, with or without word timings) or, failing any timestamp, plain
 /// text. Timed lines come out in time order; lines without a time in a synced
@@ -179,7 +179,7 @@ fn flush(
 }
 
 /// Word ends: the next word's start, else the line's trailing time, else the
-/// next line's start, capped at [`LyricWord::MAX_SWEEP`] as aoide-jellyfin caps
+/// next line's start, capped at [`LyricWord::MAX_SWEEP`] as every source caps
 /// them, so both sources sweep alike.
 fn finish_words(
     words: &[(String, Duration)],

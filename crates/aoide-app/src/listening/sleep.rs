@@ -98,8 +98,7 @@ impl App {
         if let Err(error) = self.playback.pause() {
             self.notice = Some(error);
         }
-        let report = self.report_pause_state();
-        Task::batch([self.sleep_set(None), report])
+        self.sleep_set(None)
     }
 
     /// Sets or clears the timer; the player's settings follow it.

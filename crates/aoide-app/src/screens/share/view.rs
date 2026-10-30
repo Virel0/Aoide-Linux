@@ -126,8 +126,8 @@ impl State {
                 let ready = !self.typed.trim().is_empty() && !self.busy;
                 column![
                     widgets::secondary(
-                        "This server doesn't list its users for your account, so type their \
-                         Jellyfin username, or paste their user ID."
+                        "The server's users couldn't be listed, so type their username, or \
+                         their user ID."
                     )
                     .size(13),
                     row![

@@ -20,7 +20,7 @@ pub enum AccountClaim {
 const ACCOUNT_KEY: &str = "account";
 
 impl Store {
-    /// The Jellyfin user whose library this store holds, if claimed.
+    /// The account (a user on a server) whose library this store holds, if claimed.
     ///
     /// # Errors
     ///

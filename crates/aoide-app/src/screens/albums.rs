@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use aoide_jellyfin::{Item, ListQuery, Page as ItemPage, Sort, SortOrder};
+use aoide_melete::{Item, ListQuery, Page as ItemPage, Sort};
 use iced::widget::{column, pick_list, row, sensor, space};
 use iced::{Center, Element, Fill, Task};
 
@@ -32,12 +32,12 @@ impl AlbumSort {
         AlbumSort::ReleaseDate,
     ];
 
-    pub fn query(self) -> (Sort, SortOrder) {
+    pub fn query(self) -> Sort {
         match self {
-            AlbumSort::Title => (Sort::Name, SortOrder::Ascending),
-            AlbumSort::Artist => (Sort::Artist, SortOrder::Ascending),
-            AlbumSort::RecentlyAdded => (Sort::DateAdded, SortOrder::Descending),
-            AlbumSort::ReleaseDate => (Sort::ReleaseDate, SortOrder::Descending),
+            AlbumSort::Title => Sort::Name,
+            AlbumSort::Artist => Sort::Artist,
+            AlbumSort::RecentlyAdded => Sort::Recent,
+            AlbumSort::ReleaseDate => Sort::Year,
         }
     }
 }
@@ -90,11 +90,8 @@ impl State {
             return Task::none();
         }
         self.loading = true;
-        let (sort, order) = self.sort.query();
         let query = ListQuery {
-            parent_id: ctx.library.map(str::to_owned),
-            sort,
-            order,
+            sort: self.sort.query(),
             start_index: self.tiles.len() as u32,
             limit: Some(PAGE),
             ..ListQuery::default()
@@ -115,7 +112,7 @@ impl State {
                 self.loading = false;
                 match result {
                     Ok(page) => {
-                        self.total = Some(page.total_record_count);
+                        self.total = Some(page.total);
                         self.tiles.extend(page.items.iter().map(Tile::album));
                         // A server that says there are more but sends none would
                         // otherwise be asked forever.

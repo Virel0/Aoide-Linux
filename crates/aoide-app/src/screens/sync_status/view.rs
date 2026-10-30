@@ -1,5 +1,4 @@
-//! The sync panel as drawn: the overview's lines, Sync Now, Retry and
-//! Repair Covers.
+//! The sync panel as drawn: the overview's lines, Sync Now and Retry.
 
 use aoide_sidecar::SyncOverview;
 use iced::widget::{Column, Row, button, column, container, row, text};
@@ -19,7 +18,7 @@ impl State {
             Load::Failed(error) => return widgets::page(body.push(view.failure(error))),
             Load::Ready(None) => {
                 return widgets::page(body.push(widgets::empty(
-                    "This server has no Aoide sidecar; playlists and history stay on this computer.",
+                    "This server doesn't sync Aoide's playlists and history, so they stay on this computer.",
                 )));
             }
             Load::Ready(Some(snapshot)) => snapshot,
@@ -33,14 +32,7 @@ impl State {
                     .width(Fill)
                     .style(theme::menu),
             )
-            .push(actions(overview, key))
-            .push(
-                widgets::secondary(
-                    "Repair covers gives each playlist that has no picture the cover of the \
-                     one Jellyfin playlist with exactly its name, and leaves the rest alone.",
-                )
-                .size(12),
-            );
+            .push(actions(overview, key));
         if let Some(note) = &self.note {
             body = body.push(widgets::secondary(note.as_str()).size(13));
         }
@@ -66,8 +58,7 @@ fn line_list<'a>(lines: Vec<Line>) -> Column<'a, AppMessage> {
     list
 }
 
-/// Sync Now (Syncing… while it runs), Retry when some can be, and Repair
-/// Covers.
+/// Sync Now (Syncing… while it runs), and Retry when some can be.
 fn actions<'a>(overview: &SyncOverview, key: u64) -> Row<'a, AppMessage> {
     let running = overview.running;
     let mut actions = row![
@@ -89,10 +80,5 @@ fn actions<'a>(overview: &SyncOverview, key: u64) -> Row<'a, AppMessage> {
             .on_press_maybe((!running).then_some(AppMessage::SyncPanel(Msg::Retry(key)))),
         );
     }
-    actions.push(
-        button(text("Repair covers"))
-            .style(theme::tonal)
-            .padding([8, 16])
-            .on_press(AppMessage::Covers(crate::covers::Msg::Repair { key })),
-    )
+    actions
 }

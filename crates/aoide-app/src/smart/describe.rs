@@ -1,19 +1,24 @@
 //! Search by description: a phrase, through the model, to filters, and the
-//! filters to an ordinary Jellyfin query, so the songs are always the
-//! server's.
+//! filters to an ordinary Melete query, so the songs are always the server's.
+//! The orders Melete can't sort songs by (newest, most or last played,
+//! random) are put on a pool of what matches, here.
 
 use std::sync::Arc;
 
 use aoide_integrations::openrouter::OpenRouter;
 use aoide_integrations::openrouter::smart_search::{MusicQuery, Ordering};
-use aoide_jellyfin::{ItemKind, JellyfinClient, ListQuery, NameId, Sort, SortOrder};
+use aoide_melete::{Item, MeleteClient, Sort};
 
 use super::read_key;
 use crate::credentials::CredentialStore;
 use crate::playback::tracks::TrackMeta;
+use crate::song_filter::SongFilter;
+use crate::store_worker::StoreHandle;
 
 /// How many songs a description finds at most.
-pub const DESCRIBED_SONGS: u32 = 100;
+pub const DESCRIBED_SONGS: usize = 100;
+/// How many matching songs are read to put in an order of the app's own.
+const ORDER_POOL: usize = 500;
 
 /// Most years a range is spelled out as, where the server lists none.
 const MAX_YEARS: i32 = 150;
@@ -32,7 +37,7 @@ pub struct Described {
 /// Why a description could not be searched.
 #[derive(Debug)]
 pub enum Failure {
-    Server(aoide_jellyfin::Error),
+    Server(aoide_melete::Error),
     Other(String),
 }
 
@@ -53,7 +58,7 @@ pub fn understood(query: &MusicQuery) -> String {
         (None, None) => {}
     }
     if query.favorites_only {
-        parts.push("favourites".to_owned());
+        parts.push("liked".to_owned());
     }
     let order = match query.ordering {
         Ordering::ByName => None,
@@ -68,8 +73,8 @@ pub fn understood(query: &MusicQuery) -> String {
 
 /// The years of the library inside the query's range: the server's own list
 /// where it gave one, else the range spelled out. `None` for no year filter;
-/// an empty list means no year of the library is in range, and must not be
-/// sent (Jellyfin reads no years as every year).
+/// an empty list means no year of the library is in range (no years would
+/// read as every year).
 pub fn years_in_range(
     query: &MusicQuery,
     library_years: &[i32],
@@ -96,49 +101,73 @@ pub fn years_in_range(
     Some(years)
 }
 
-/// The Jellyfin query for a model's filters: songs in the library, the
-/// named genres by id, the years, favourites, the term, the order. `None`
-/// when the years rule every song out.
-pub fn song_query(
+/// The filter for a model's filters: the named genres as the library spells
+/// them, the years, likes, the term. `None` when the years rule every song
+/// out.
+pub fn song_filter(
     query: &MusicQuery,
-    genres: &[NameId],
+    library_genres: &[String],
     library_years: &[i32],
-    library: Option<&str>,
     this_year: i32,
-) -> Option<ListQuery> {
+) -> Option<SongFilter> {
     let years = match years_in_range(query, library_years, this_year) {
         Some(years) if years.is_empty() => return None,
         Some(years) => years,
         None => Vec::new(),
     };
-    let genre_ids = query
+    let genres = query
         .genres
         .iter()
         .filter_map(|name| {
-            genres
+            library_genres
                 .iter()
-                .find(|g| g.name.eq_ignore_ascii_case(name))
-                .map(|g| g.id.clone())
+                .find(|g| g.eq_ignore_ascii_case(name))
+                .cloned()
         })
         .collect();
-    let (sort, order) = match query.ordering {
-        Ordering::ByName => (Sort::Name, SortOrder::Ascending),
-        Ordering::MostPlayed => (Sort::PlayCount, SortOrder::Descending),
-        Ordering::NewestFirst => (Sort::ReleaseDate, SortOrder::Descending),
-        Ordering::Random => (Sort::Random, SortOrder::Ascending),
-        Ordering::RecentlyPlayed => (Sort::DatePlayed, SortOrder::Descending),
-    };
-    Some(ListQuery {
-        parent_id: library.map(str::to_owned),
-        search_term: query.search_term.clone(),
-        genre_ids,
+    Some(SongFilter {
+        term: query.search_term.clone(),
+        genres,
         years,
-        favorites_only: query.favorites_only,
-        sort,
-        order,
-        limit: Some(DESCRIBED_SONGS),
-        ..ListQuery::default()
+        liked_only: query.favorites_only,
+        sort: match query.ordering {
+            Ordering::ByName => Sort::Name,
+            _ => Sort::Default,
+        },
     })
+}
+
+/// The songs in the order asked for, at most [`DESCRIBED_SONGS`]: by name as
+/// Melete sent them, else newest, most or last played (this device's
+/// history), or shuffled.
+async fn ordered(songs: Vec<Item>, ordering: Ordering, store: &StoreHandle) -> Vec<Item> {
+    let mut songs = match ordering {
+        Ordering::ByName => songs,
+        Ordering::Random => crate::screens::home::pick(songs, DESCRIBED_SONGS),
+        Ordering::NewestFirst => {
+            let mut songs = songs;
+            songs.sort_by_key(|song| std::cmp::Reverse(song.year));
+            songs
+        }
+        Ordering::MostPlayed | Ordering::RecentlyPlayed => {
+            let ids: Vec<String> = songs.iter().map(|song| song.id.clone()).collect();
+            let stats = store
+                .call(move |w| w.store.stats_for(&ids).unwrap_or_default())
+                .await
+                .unwrap_or_default();
+            let mut songs = songs;
+            songs.sort_by_key(|song| {
+                let stat = stats.get(&song.id);
+                std::cmp::Reverse(match ordering {
+                    Ordering::MostPlayed => stat.map_or(0, |s| s.play_count),
+                    _ => stat.and_then(|s| s.last_played_at).unwrap_or(0),
+                })
+            });
+            songs
+        }
+    };
+    songs.truncate(DESCRIBED_SONGS);
+    songs
 }
 
 fn this_year() -> i32 {
@@ -149,23 +178,21 @@ fn this_year() -> i32 {
     1970 + i32::try_from(days * 4 / 1461).unwrap_or(0)
 }
 
-/// A phrase, through the model, to Jellyfin's songs.
+/// A phrase, through the model, to Melete's songs.
 pub async fn search_by_description(
     openrouter: OpenRouter,
     keyring: Arc<dyn CredentialStore>,
     model: String,
-    client: JellyfinClient,
-    library: Option<String>,
+    client: MeleteClient,
+    store: StoreHandle,
     phrase: String,
 ) -> Result<Described, Failure> {
     let key = read_key(keyring).await.map_err(Failure::Other)?;
-    let filters = client
-        .query_filters(library.as_deref(), &[ItemKind::Audio])
+    let filters = crate::song_filter::library_filters(&client)
         .await
         .map_err(Failure::Server)?;
-    let names: Vec<String> = filters.genres.iter().map(|g| g.name.clone()).collect();
     let outcome = openrouter
-        .translate_search(&key, &model, &phrase, &names)
+        .translate_search(&key, &model, &phrase, &filters.genres)
         .await;
     let Some(query) = outcome.query.filter(|q| !q.is_empty()) else {
         return Ok(Described {
@@ -177,23 +204,25 @@ pub async fn search_by_description(
         });
     };
     let words = understood(&query);
-    let Some(list) = song_query(
-        &query,
-        &filters.genres,
-        &filters.years,
-        library.as_deref(),
-        this_year(),
-    ) else {
+    let Some(filter) = song_filter(&query, &filters.genres, &filters.years, this_year()) else {
         return Ok(Described {
             understood: Some(words),
             songs: Vec::new(),
             note: Some("Nothing in your library is from those years.".to_owned()),
         });
     };
-    let page = client.songs(&list).await.map_err(Failure::Server)?;
+    let pool = match query.ordering {
+        Ordering::ByName => DESCRIBED_SONGS,
+        _ => ORDER_POOL,
+    };
+    let songs = filter
+        .songs(&client, Some(pool))
+        .await
+        .map_err(Failure::Server)?;
+    let songs = ordered(songs, query.ordering, &store).await;
     Ok(Described {
         understood: Some(words),
-        songs: page.items.iter().map(TrackMeta::from_item).collect(),
+        songs: songs.iter().map(TrackMeta::from_item).collect(),
         note: None,
     })
 }
@@ -209,14 +238,8 @@ mod tests {
         MusicQuery::default()
     }
 
-    fn genres() -> Vec<NameId> {
-        ["Folk", "Indie", "Ambient"]
-            .iter()
-            .map(|g| NameId {
-                id: format!("g-{g}"),
-                name: (*g).to_owned(),
-            })
-            .collect()
+    fn genres() -> Vec<String> {
+        ["Folk", "Indie", "Ambient"].map(String::from).to_vec()
     }
 
     #[test]
@@ -231,7 +254,7 @@ mod tests {
         };
         assert_eq!(
             understood(&q),
-            "“harbour” · Folk, Indie · 2010–2019 · favourites · newest first"
+            "“harbour” · Folk, Indie · 2010–2019 · liked · newest first"
         );
         let one_year = MusicQuery {
             from_year: Some(1999),
@@ -286,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn the_jellyfin_query_carries_every_filter() {
+    fn the_filter_carries_every_filter() {
         let q = MusicQuery {
             genres: vec!["folk".into(), "Jazz".into()],
             from_year: Some(2018),
@@ -295,66 +318,57 @@ mod tests {
             ordering: Ordering::MostPlayed,
             search_term: Some("lights".into()),
         };
-        let list = song_query(&q, &genres(), &[2019, 2015], Some("lib1"), 2026).unwrap();
-        assert_eq!(list.genre_ids, ["g-Folk"]);
-        assert_eq!(list.years, [2019]);
-        assert!(list.favorites_only);
-        assert_eq!(list.search_term.as_deref(), Some("lights"));
-        assert_eq!(list.parent_id.as_deref(), Some("lib1"));
+        let filter = song_filter(&q, &genres(), &[2019, 2015], 2026).unwrap();
         assert_eq!(
-            (list.sort, list.order),
-            (Sort::PlayCount, SortOrder::Descending)
+            filter.genres,
+            ["Folk"],
+            "as the library spells it; Jazz it hasn't"
         );
-        assert_eq!(list.limit, Some(DESCRIBED_SONGS));
+        assert_eq!(filter.years, [2019]);
+        assert!(filter.liked_only);
+        assert_eq!(filter.term.as_deref(), Some("lights"));
+        assert_eq!(filter.sort, Sort::Default);
+        let by_name = MusicQuery {
+            ordering: Ordering::ByName,
+            ..q.clone()
+        };
+        assert_eq!(
+            song_filter(&by_name, &genres(), &[2019], 2026)
+                .unwrap()
+                .sort,
+            Sort::Name
+        );
         let out_of_range = MusicQuery {
             from_year: Some(1950),
             to_year: Some(1959),
             ..q
         };
-        assert_eq!(
-            song_query(&out_of_range, &genres(), &[2019], None, 2026),
-            None
-        );
+        assert_eq!(song_filter(&out_of_range, &genres(), &[2019], 2026), None);
     }
 
-    #[test]
-    fn orderings_sort_the_way_the_phone_does() {
-        let sorted = |ordering| {
-            let list = song_query(
-                &MusicQuery {
-                    ordering,
-                    ..query()
-                },
-                &[],
-                &[],
-                None,
-                2026,
-            )
-            .unwrap();
-            (list.sort, list.order)
+    #[tokio::test(flavor = "multi_thread")]
+    async fn orders_melete_cant_sort_by_are_put_here() {
+        let song = |id: &str, year: i32| Item {
+            id: id.into(),
+            year: Some(year),
+            ..Item::default()
         };
-        assert_eq!(sorted(Ordering::ByName), (Sort::Name, SortOrder::Ascending));
-        assert_eq!(
-            sorted(Ordering::NewestFirst),
-            (Sort::ReleaseDate, SortOrder::Descending)
-        );
-        assert_eq!(
-            sorted(Ordering::Random),
-            (Sort::Random, SortOrder::Ascending)
-        );
-        assert_eq!(
-            sorted(Ordering::RecentlyPlayed),
-            (Sort::DatePlayed, SortOrder::Descending)
-        );
+        let store = StoreHandle::in_memory("desk").unwrap();
+        let songs = vec![song("1", 2001), song("2", 2020), song("3", 2010)];
+        let newest = ordered(songs.clone(), Ordering::NewestFirst, &store).await;
+        let ids: Vec<&str> = newest.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["2", "3", "1"]);
+        let random = ordered(songs, Ordering::Random, &store).await;
+        assert_eq!(random.len(), 3);
     }
 
-    fn jellyfin(server: &wiremock::MockServer) -> JellyfinClient {
-        JellyfinClient::new(
-            aoide_jellyfin::ServerAddress::parse(&server.uri()).unwrap(),
-            aoide_jellyfin::Device::new("Test", "device-1"),
+    fn melete(server: &wiremock::MockServer) -> MeleteClient {
+        MeleteClient::new(
+            aoide_melete::ServerAddress::parse(&server.uri()).unwrap(),
+            aoide_melete::Device::new("Test", "device-1"),
         )
         .unwrap()
-        .with_credentials(aoide_jellyfin::Credentials {
+        .with_credentials(aoide_melete::Credentials {
             user_id: "u1".into(),
             access_token: "tok".into(),
             username: "tester".into(),
@@ -362,35 +376,39 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_description_becomes_a_jellyfin_query_and_only_words_leave() {
+    async fn a_description_becomes_a_melete_query_and_only_words_leave() {
+        use crate::test_json::{page, track};
         use wiremock::matchers::{header, method, path, query_param};
         use wiremock::{Mock, MockServer, ResponseTemplate};
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/Items/Filters2"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "Genres": [{"Id": "g-folk", "Name": "Folk"}, {"Id": "g-indie", "Name": "Indie"}],
-                "Tags": []
-            })))
+            .and(path("/api/v1/music/genres"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"name": "Folk", "tracks": 3, "albums": 1}, {"name": "Indie", "tracks": 1, "albums": 1}
+            ])))
             .mount(&server)
             .await;
+        let album = |id: i64, year: i32| {
+            serde_json::json!({"id": id, "title": "A", "artist_id": 1, "artist": "B",
+                "year": year, "tracks": 1, "duration_seconds": 1.0, "cover": null})
+        };
         Mock::given(method("GET"))
-            .and(path("/Items/Filters"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({"Years": [2015, 2019, 2022]})),
-            )
+            .and(path("/api/v1/music/albums"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![
+                album(1, 2015),
+                album(2, 2019),
+                album(3, 2022),
+            ])))
             .mount(&server)
             .await;
+        let mut lights = track(1, "Harbour Lights");
+        lights["year"] = serde_json::json!(2019);
+        let mut late = track(2, "Later");
+        late["year"] = serde_json::json!(2022);
         Mock::given(method("GET"))
-            .and(path("/Items"))
-            .and(query_param("genreIds", "g-folk"))
-            .and(query_param("years", "2015,2019"))
-            .and(query_param("includeItemTypes", "Audio"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "Items": [{"Id": "t1", "Name": "Harbour Lights", "Type": "Audio"}],
-                "TotalRecordCount": 1
-            })))
+            .and(path("/api/v1/music/tracks"))
+            .and(query_param("genre", "Folk"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![lights, late])))
             .expect(1)
             .mount(&server)
             .await;
@@ -412,8 +430,8 @@ mod tests {
             openrouter,
             keyring,
             DEFAULT_MODEL.into(),
-            jellyfin(&server),
-            Some("lib1".into()),
+            melete(&server),
+            StoreHandle::in_memory("desk").unwrap(),
             "calm folk from the twenty tens".into(),
         )
         .await
@@ -434,7 +452,6 @@ mod tests {
         assert!(body.contains("calm folk from the twenty tens"));
         assert!(body.contains("Folk, Indie"));
         assert!(!body.contains("Harbour Lights"));
-        assert!(!body.contains("lib1"));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -445,8 +462,8 @@ mod tests {
             openrouter,
             Arc::new(MemoryStore::default()),
             DEFAULT_MODEL.into(),
-            jellyfin(&server),
-            None,
+            melete(&server),
+            StoreHandle::in_memory("desk").unwrap(),
             "calm folk from the twenty tens".into(),
         )
         .await;

@@ -1,7 +1,6 @@
 //! A collection's page as drawn: Songs or Albums, the filter's chips, Only
-//! Favourites, the name and Save (or Delete), and what the filter finds.
+//! Songs You Like, the name and Save (or Delete), and what the filter finds.
 
-use aoide_jellyfin::QueryFilters;
 use aoide_store::PlaySource;
 use iced::widget::{Column, Row, button, column, row, text, text_input};
 use iced::{Center, Element};
@@ -9,6 +8,7 @@ use iced::{Center, Element};
 use super::{Kind, Message, State};
 use crate::app::Message as AppMessage;
 use crate::screens::{Load, PageMsg, View};
+use crate::song_filter::LibraryFilters;
 use crate::{theme, widgets};
 
 impl State {
@@ -47,9 +47,11 @@ impl State {
             Load::Ready(filters) => body = self.filter_groups(body, filters, key),
         }
         body = body.push(
-            widgets::switch("Only favourites", self.filter.favourites_only, move |on| {
-                message(Message::Favourites(on))
-            })
+            widgets::switch(
+                "Only songs you like",
+                self.filter.favourites_only,
+                move |on| message(Message::Favourites(on)),
+            )
             .width(iced::Length::Fixed(260.0)),
         );
         body = body.push(self.save_row(key));
@@ -63,11 +65,11 @@ impl State {
         widgets::page(body)
     }
 
-    /// The genres, years and tags the library has, each a chip to pick.
+    /// The genres and years the library has, each a chip to pick.
     fn filter_groups<'a>(
         &'a self,
         mut body: Column<'a, AppMessage>,
-        filters: &'a QueryFilters,
+        filters: &'a LibraryFilters,
         key: u64,
     ) -> Column<'a, AppMessage> {
         let group = |label: &'a str, chips: Vec<Element<'a, AppMessage>>| {
@@ -83,12 +85,12 @@ impl State {
                 filters
                     .genres
                     .iter()
-                    .map(|g| {
+                    .map(|genre| {
                         chip(
                             key,
-                            g.name.clone(),
-                            self.filter.genre_ids.contains(&g.id),
-                            Message::Genre(g.id.clone(), g.name.clone()),
+                            genre.clone(),
+                            self.filter.genre_ids.contains(genre),
+                            Message::Genre(genre.clone(), genre.clone()),
                         )
                     })
                     .collect(),
@@ -106,23 +108,6 @@ impl State {
                             y.to_string(),
                             self.filter.years.contains(y),
                             Message::Year(*y),
-                        )
-                    })
-                    .collect(),
-            ));
-        }
-        if !filters.tags.is_empty() {
-            body = body.push(group(
-                "Tags",
-                filters
-                    .tags
-                    .iter()
-                    .map(|t| {
-                        chip(
-                            key,
-                            t.clone(),
-                            self.filter.tags.contains(t),
-                            Message::Tag(t.clone()),
                         )
                     })
                     .collect(),

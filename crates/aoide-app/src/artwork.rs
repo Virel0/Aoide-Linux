@@ -1,8 +1,9 @@
-//! Album covers: fetched over HTTP, kept on disk in the cache directory and in
-//! memory (bounded), and handed to iced as image handles.
+//! Album covers: fetched over HTTP with the session's token, kept on disk in
+//! the cache directory and in memory (bounded), and handed to iced as image
+//! handles.
 //!
-//! A cover's URL carries its image tag, which changes when the image does, so
-//! a cached file never goes stale: a new cover is a new key.
+//! Melete gives covers no version and says clients may keep one a day, so a
+//! file on disk older than that is fetched again.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -15,11 +16,10 @@ use iced::widget::image;
 pub const MEMORY_CAPACITY: usize = 600;
 /// How many downloads run at once.
 pub const CONCURRENT: usize = 6;
-/// Every cover is asked for at this width, so one file serves every size it
-/// is drawn at (a 56 px row and a 220 px header, on a HiDPI screen).
-pub const WIDTH: u32 = 480;
 /// The largest body accepted as a cover.
 const MAX_BYTES: usize = 8 * 1024 * 1024;
+/// How long a cover on disk is used before it is fetched again.
+const KEEP_FOR: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// One cover: the item that owns it and its tag.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -45,7 +45,7 @@ impl ArtKey {
                 .take(64)
                 .collect()
         };
-        format!("{}-{}-{WIDTH}.img", clean(&self.item), clean(&self.tag))
+        format!("{}-{}.img", clean(&self.item), clean(&self.tag))
     }
 }
 
@@ -162,11 +162,28 @@ static HTTP: LazyLock<Option<reqwest::Client>> = LazyLock::new(|| {
         .ok()
 });
 
-/// Reads a cover from disk, or downloads it and writes it there.
-pub async fn fetch(url: String, dir: Option<PathBuf>, key: ArtKey) -> Option<Vec<u8>> {
+/// A cover on disk younger than [`KEEP_FOR`].
+fn fresh(path: &Path) -> Option<Vec<u8>> {
+    let age = std::fs::metadata(path)
+        .ok()?
+        .modified()
+        .ok()?
+        .elapsed()
+        .ok()?;
+    (age < KEEP_FOR).then(|| std::fs::read(path).ok()).flatten()
+}
+
+/// Reads a cover from disk, or downloads it (sending `authorization`) and
+/// writes it there.
+pub async fn fetch(
+    url: String,
+    authorization: Option<String>,
+    dir: Option<PathBuf>,
+    key: ArtKey,
+) -> Option<Vec<u8>> {
     let path = dir.as_ref().map(|dir| dir.join(key.file_name()));
     if let Some(path) = path.clone() {
-        let cached = tokio::task::spawn_blocking(move || std::fs::read(path).ok())
+        let cached = tokio::task::spawn_blocking(move || fresh(&path))
             .await
             .ok()
             .flatten();
@@ -175,7 +192,11 @@ pub async fn fetch(url: String, dir: Option<PathBuf>, key: ArtKey) -> Option<Vec
         }
     }
     let client = HTTP.as_ref()?;
-    let response = client.get(&url).send().await.ok()?;
+    let mut request = client.get(&url);
+    if let Some(authorization) = authorization {
+        request = request.header(reqwest::header::AUTHORIZATION, authorization);
+    }
+    let response = request.send().await.ok()?;
     if !response.status().is_success() {
         return None;
     }
@@ -272,10 +293,11 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_cover_is_downloaded_once_then_read_from_disk() {
+    async fn a_cover_is_downloaded_once_with_the_token_then_read_from_disk() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/Items/a1/Images/Primary"))
+            .and(path("/api/v1/music/albums/a1/cover"))
+            .and(wiremock::matchers::header("authorization", "Bearer tok"))
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("content-type", "image/jpeg")
@@ -285,12 +307,35 @@ mod tests {
             .mount(&server)
             .await;
         let dir = tempfile::tempdir().unwrap();
-        let url = format!("{}/Items/a1/Images/Primary?tag=t", server.uri());
-        let key = ArtKey::new("a1", "t");
-        let first = fetch(url.clone(), Some(dir.path().to_owned()), key.clone()).await;
+        let url = format!("{}/api/v1/music/albums/a1/cover", server.uri());
+        let key = ArtKey::new("a1", "cover");
+        let token = Some("Bearer tok".to_owned());
+        let first = fetch(
+            url.clone(),
+            token.clone(),
+            Some(dir.path().to_owned()),
+            key.clone(),
+        )
+        .await;
         assert_eq!(first.as_deref(), Some(&[0xff, 0xd8, 0xff][..]));
-        let second = fetch(url, Some(dir.path().to_owned()), key).await;
+        let second = fetch(url, token, Some(dir.path().to_owned()), key).await;
         assert_eq!(second, first);
+    }
+
+    #[test]
+    fn a_cover_older_than_a_day_is_fetched_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cover.img");
+        std::fs::write(&path, [1, 2, 3]).unwrap();
+        assert_eq!(fresh(&path), Some(vec![1, 2, 3]));
+        let old = std::time::SystemTime::now() - KEEP_FOR - Duration::from_secs(60);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        assert_eq!(fresh(&path), None);
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -304,7 +349,7 @@ mod tests {
             )
             .mount(&server)
             .await;
-        let url = format!("{}/Items/a1/Images/Primary", server.uri());
-        assert_eq!(fetch(url, None, ArtKey::new("a1", "t")).await, None);
+        let url = format!("{}/api/v1/music/albums/a1/cover", server.uri());
+        assert_eq!(fetch(url, None, None, ArtKey::new("a1", "t")).await, None);
     }
 }

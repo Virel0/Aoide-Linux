@@ -1,6 +1,6 @@
 //! A genre: its albums.
 
-use aoide_jellyfin::{Item, ListQuery, Sort};
+use aoide_melete::{Item, ListQuery, Sort};
 use iced::widget::column;
 use iced::{Element, Task};
 
@@ -25,8 +25,7 @@ pub enum Message {
 pub fn open(ctx: &Ctx<'_>, id: &str, name: &str) -> (State, Task<App>) {
     let client = ctx.client.clone();
     let query = ListQuery {
-        parent_id: ctx.library.map(str::to_owned),
-        genre_ids: vec![id.to_owned()],
+        genre: Some(id.to_owned()),
         sort: Sort::Artist,
         ..ListQuery::default()
     };
@@ -60,7 +59,7 @@ impl State {
         let body = column![
             widgets::title_bar(&self.name, view.can_go_back),
             crate::radio::start_button(crate::radio::Station::new(
-                aoide_jellyfin::MixSeed::Genre(self.id.clone()),
+                crate::radio::MixSeed::Genre(self.id.clone()),
                 self.name.clone(),
             )),
         ]

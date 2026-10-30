@@ -13,8 +13,10 @@
 //! holding hundreds of played tracks holds no downloads. Opening again starts
 //! afresh and fetches from wherever the new reader asks.
 //!
-//! The URL carries its own authentication as a query parameter, so it is never
-//! written into an error message or a log line.
+//! The URL carries its own authentication, so it is never written into an
+//! error message or a log line. It can be given up front, or asked for by the
+//! download each time it starts (a server that hands out a link per play),
+//! so nothing is asked for a track until it is opened.
 
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
@@ -39,8 +41,19 @@ const MAX_STREAM_BYTES: u64 = 4 << 30;
 /// stops when the last reader closes. Cloning shares all of this.
 #[derive(Clone)]
 pub struct HttpSource {
-    url: Arc<str>,
+    url: Target,
     live: Arc<Mutex<Weak<Lease>>>,
+}
+
+/// Asks for a stream's URL: the URL, or why there is none (without the URL).
+/// Called on the download's own thread, so it may block.
+pub type ResolveUrl = Arc<dyn Fn() -> Result<String, String> + Send + Sync>;
+
+/// Where a source's URL comes from.
+#[derive(Clone)]
+enum Target {
+    Fixed(Arc<str>),
+    Resolved(ResolveUrl),
 }
 
 /// What the open readers hold. The download thread holds the shared state
@@ -59,7 +72,7 @@ impl std::fmt::Debug for HttpSource {
 }
 
 struct Shared {
-    url: String,
+    url: Target,
     state: Mutex<State>,
     changed: Condvar,
 }
@@ -140,7 +153,17 @@ impl HttpSource {
     pub fn new(url: impl Into<String>) -> Self {
         let url: String = url.into();
         Self {
-            url: url.into(),
+            url: Target::Fixed(url.into()),
+            live: Arc::new(Mutex::new(Weak::new())),
+        }
+    }
+
+    /// A remote file whose URL `resolve` gives when a download starts: once per
+    /// download, so a link that runs out is asked for afresh the next time the
+    /// track is opened. Its error fails the open as a server's would.
+    pub fn resolved(resolve: ResolveUrl) -> Self {
+        Self {
+            url: Target::Resolved(resolve),
             live: Arc::new(Mutex::new(Weak::new())),
         }
     }
@@ -170,7 +193,7 @@ impl HttpSource {
                 None => {
                     let lease = Arc::new(Lease {
                         shared: Arc::new(Shared {
-                            url: self.url.to_string(),
+                            url: self.url.clone(),
                             state: Mutex::new(State::default()),
                             changed: Condvar::new(),
                         }),
@@ -362,6 +385,13 @@ fn describe(error: reqwest::Error) -> String {
 
 fn download(shared: Arc<Shared>, readers: Weak<Lease>) {
     install_crypto();
+    let url = match &shared.url {
+        Target::Fixed(url) => url.to_string(),
+        Target::Resolved(resolve) => match resolve() {
+            Ok(url) => url,
+            Err(message) => return fail(&shared, message),
+        },
+    };
     let client = match reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .timeout(None)
@@ -376,7 +406,7 @@ fn download(shared: Arc<Shared>, readers: Weak<Lease>) {
         if abandoned(&readers) {
             return;
         }
-        match run(&shared, &readers, &client, from) {
+        match run(&shared, &readers, &client, &url, from) {
             Ok(Next::Restart(at)) => from = at,
             Ok(Next::ReachedEnd) => {
                 let state = shared.lock();
@@ -418,9 +448,10 @@ fn run(
     shared: &Arc<Shared>,
     readers: &Weak<Lease>,
     client: &reqwest::blocking::Client,
+    url: &str,
     from: u64,
 ) -> Result<Next, String> {
-    let mut request = client.get(&shared.url);
+    let mut request = client.get(url);
     if from > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={from}-"));
     }

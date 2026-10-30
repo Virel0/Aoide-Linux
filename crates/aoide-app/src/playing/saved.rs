@@ -1,7 +1,7 @@
 //! The saved queue: read back at launch and held, and written through the
 //! handoff broadcast as it changes.
 
-use aoide_jellyfin::{Item, JellyfinClient};
+use aoide_melete::{Item, MeleteClient};
 use iced::Task;
 
 use super::{Destination, Pending};
@@ -21,8 +21,8 @@ pub struct Saved {
 /// that track rather than its old index.
 pub async fn read_saved(
     store: crate::store_worker::StoreHandle,
-    client: JellyfinClient,
-) -> Result<Option<Saved>, aoide_jellyfin::Error> {
+    client: MeleteClient,
+) -> Result<Option<Saved>, aoide_melete::Error> {
     let saved = store
         .call(|w| w.store.local_queue().ok().flatten())
         .await
@@ -66,7 +66,7 @@ impl App {
         let client = signed.connection.client.clone();
         let generation = signed.play_generation;
         Task::perform(read_saved(store, client), move |result| match result {
-            Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
+            Err(aoide_melete::Error::Unauthorized) => Message::TokenRejected,
             Ok(Some(saved)) => Message::Restore(Box::new(Pending {
                 tracks: saved.items.iter().map(TrackMeta::from_item).collect(),
                 how: Destination::Restore {

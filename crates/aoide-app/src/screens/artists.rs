@@ -1,6 +1,6 @@
 //! Artists: everyone credited with an album, a page at a time.
 
-use aoide_jellyfin::{Item, ListQuery, Page as ItemPage};
+use aoide_melete::{Item, ListQuery, Page as ItemPage};
 use iced::widget::{column, sensor};
 use iced::{Element, Task};
 
@@ -44,17 +44,14 @@ impl State {
         }
         self.loading = true;
         let query = ListQuery {
-            parent_id: ctx.library.map(str::to_owned),
             start_index: self.tiles.len() as u32,
             limit: Some(PAGE),
             ..ListQuery::default()
         };
         let client = ctx.client.clone();
-        fetch(
-            ctx.key,
-            async move { client.album_artists(&query).await },
-            |r| PageMsg::Artists(Message::Loaded(r)),
-        )
+        fetch(ctx.key, async move { client.artists(&query).await }, |r| {
+            PageMsg::Artists(Message::Loaded(r))
+        })
     }
 
     pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {
@@ -63,7 +60,7 @@ impl State {
                 self.loading = false;
                 match result {
                     Ok(page) => {
-                        self.total = Some(page.total_record_count);
+                        self.total = Some(page.total);
                         self.tiles.extend(page.items.iter().map(Tile::artist));
                         if page.items.is_empty() {
                             self.total = Some(self.tiles.len() as u32);

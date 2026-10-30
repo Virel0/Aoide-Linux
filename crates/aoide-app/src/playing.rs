@@ -1,6 +1,6 @@
-//! Playback wired to everything around it: the sidecar's measurements before
-//! tracks are queued, the Jellyfin reports, the store's play events, the
-//! saved queue, and Infinity.
+//! Playback wired to everything around it: Melete's measurements before
+//! tracks are queued, the store's play events, the saved queue, and
+//! Infinity.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -19,7 +19,10 @@ mod report;
 mod saved;
 mod top_up;
 
-pub use report::{leave_server, report_on_quit};
+pub use report::leave_server;
+
+/// How often the saved queue follows the playhead while a track plays.
+const SAVE_QUEUE_EVERY_MS: u64 = 10_000;
 
 /// How long queueing waits for the sidecar's measurements before playing
 /// without them.
@@ -180,19 +183,20 @@ impl App {
         if replaces && pending.generation != signed.play_generation {
             return Task::none();
         }
+        let streams = signed.connection.streams();
+        let format = crate::sound::stream_format(&self.config.sound.transcode);
         let built: Vec<_> = pending
             .tracks
             .iter()
-            .filter_map(|meta| {
+            .map(|meta| {
                 tracks::build(
-                    &signed.connection.client,
+                    &streams,
                     meta,
                     &signed.measures,
                     &self.config.settings,
+                    format,
                 )
-                .ok()
             })
-            .map(|built| crate::sound::transcoded(built, &self.config.sound.transcode))
             .collect();
         let result = match pending.how {
             Destination::Play {
@@ -284,13 +288,11 @@ impl App {
             }
             EngineEvent::Position { id, ms } => self.position(*id, *ms, now),
             EngineEvent::Finished => {
-                let report = self.session.as_mut().and_then(|s| s.reporter.stopped());
-                let reported = self.send_reports(report.into_iter().collect());
                 let at = aoide_store::now_millis();
                 self.store.send(move |w| {
                     let _ = w.recorder.stopped(&w.store, at);
                 });
-                Task::batch([reported, self.save_queue()])
+                self.save_queue()
             }
             EngineEvent::Error { id, message } => {
                 let title = self.playback.queued(*id).map_or_else(
@@ -305,18 +307,15 @@ impl App {
         Task::batch([task, self.sleep_on_event(&event)])
     }
 
-    /// A track started: reported, its play event opened (unless listening
-    /// privately), and what follows a new track.
+    /// A track started: its play event opened (unless listening privately),
+    /// and what follows a new track.
     fn track_started(&mut self, entry: aoide_audio::EntryId, now: u64) -> Task<Message> {
         let Some(queued) = self.playback.queued(entry).cloned() else {
             return Task::none();
         };
-        let reports = self
-            .session
-            .as_mut()
-            .map(|s| s.reporter.started(entry, &queued.meta.id, now))
-            .unwrap_or_default();
-        let reported = self.send_reports(reports);
+        if let Some(signed) = self.session.as_mut() {
+            signed.queue_saved_at = now;
+        }
         let row = queued.meta.track_ref(aoide_store::now_millis());
         let source = queued.source;
         let at = aoide_store::now_millis();
@@ -330,7 +329,6 @@ impl App {
             });
         }
         Task::batch([
-            reported,
             self.check_infinity(),
             self.save_queue(),
             self.track_changed(),
@@ -338,37 +336,37 @@ impl App {
     }
 
     /// Four times a second: the play event's progress, the lit lyric line,
-    /// and every ten seconds a report.
+    /// and every ten seconds the saved queue's place.
     fn position(&mut self, entry: aoide_audio::EntryId, ms: u64, now: u64) -> Task<Message> {
         self.store.send(move |w| w.recorder.progress(entry, ms));
-        let report = self
-            .session
-            .as_mut()
-            .and_then(|s| s.reporter.position(entry, ms, now));
         let lyrics = self.follow_lyrics();
-        let Some(report) = report else {
+        let due = self.session.as_mut().is_some_and(|signed| {
+            let due = now.saturating_sub(signed.queue_saved_at) >= SAVE_QUEUE_EVERY_MS;
+            if due {
+                signed.queue_saved_at = now;
+            }
+            due
+        });
+        if !due {
             return lyrics;
-        };
-        // Every ten seconds, with the report: the store skips a save that
-        // moved less than its own threshold.
-        Task::batch([lyrics, self.send_reports(vec![report]), self.save_queue()])
+        }
+        // The store skips a save that moved less than its own threshold.
+        Task::batch([lyrics, self.save_queue()])
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use aoide_jellyfin::JellyfinClient;
+    use aoide_melete::MeleteClient;
 
-    use super::report::send_report;
     use super::saved::read_saved;
     use super::*;
-    use crate::playback::report::Report;
-    use aoide_jellyfin::{Credentials, Device, ServerAddress};
-    use wiremock::matchers::{body_partial_json, method, path, query_param};
+    use aoide_melete::{Credentials, Device, ServerAddress};
+    use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    fn client(server: &MockServer) -> JellyfinClient {
-        JellyfinClient::new(
+    fn client(server: &MockServer) -> MeleteClient {
+        MeleteClient::new(
             ServerAddress::parse(&server.uri()).unwrap(),
             Device::new("Test", "device-1"),
         )
@@ -455,84 +453,31 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn reports_go_to_the_session_endpoints() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/Sessions/Playing"))
-            .and(body_partial_json(serde_json::json!({"ItemId": "t1"})))
-            .respond_with(ResponseTemplate::new(204))
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path("/Sessions/Playing/Progress"))
-            .and(body_partial_json(
-                serde_json::json!({"IsPaused": true, "PositionTicks": 100_000_000}),
-            ))
-            .respond_with(ResponseTemplate::new(204))
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(path("/Sessions/Playing/Stopped"))
-            .respond_with(ResponseTemplate::new(204))
-            .expect(1)
-            .mount(&server)
-            .await;
-        let client = client(&server);
-        send_report(
-            client.clone(),
-            Report::Started {
-                item: "t1".into(),
-                position_ms: 0,
-            },
-        )
-        .await
-        .unwrap();
-        send_report(
-            client.clone(),
-            Report::Progress {
-                item: "t1".into(),
-                position_ms: 10_000,
-                paused: true,
-            },
-        )
-        .await
-        .unwrap();
-        leave_server(
-            client,
-            Some(Report::Stopped {
-                item: "t1".into(),
-                position_ms: 12_000,
-            }),
-        )
-        .await;
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
     async fn the_saved_queue_follows_its_track_when_others_have_gone() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/Items"))
-            .and(query_param("ids", "a,b,c"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                // "a" was deleted from the server since the queue was saved.
-                "Items": [{"Id": "b", "Name": "B", "Type": "Audio"}, {"Id": "c", "Name": "C", "Type": "Audio"}],
-                "TotalRecordCount": 2
-            })))
+            .and(path("/api/v1/music/tracks"))
+            .and(query_param("id", "1,2,3"))
+            // 1 was deleted from the server since the queue was saved.
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(crate::test_json::page(vec![
+                    crate::test_json::track(2, "B"),
+                    crate::test_json::track(3, "C"),
+                ])),
+            )
             .mount(&server)
             .await;
         let store = crate::store_worker::StoreHandle::in_memory("device-1").unwrap();
         store
             .call(|w| {
-                let ids: Vec<String> = ["a", "b", "c"].map(String::from).to_vec();
+                let ids: Vec<String> = ["1", "2", "3"].map(String::from).to_vec();
                 w.store.save_queue("Desk", &ids, 2, 42_000, 1).unwrap();
             })
             .await
             .unwrap();
         let saved = read_saved(store, client(&server)).await.unwrap().unwrap();
         assert_eq!(saved.items.len(), 2);
-        assert_eq!(saved.items[saved.position].id, "c");
+        assert_eq!(saved.items[saved.position].id, "3");
         assert_eq!(saved.elapsed_ms, 42_000);
     }
 

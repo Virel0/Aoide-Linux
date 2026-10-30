@@ -1,12 +1,13 @@
 //! Home: the resume grid (the last few things played from, led by another
 //! device's queue when it is newer), then shelves of albums — recently added,
-//! recently played, most played, recently released, a random handful — and
-//! some genres to wander into. A shelf with nothing on it is left out.
+//! recently played and most played (Melete's Home view, from this listener's
+//! history on every device), recently released, a random handful — and some
+//! genres to wander into. A shelf with nothing on it is left out.
 
 use std::collections::hash_map::RandomState;
 use std::hash::BuildHasher;
 
-use aoide_jellyfin::{Item, ListQuery, Page, Sort, SortOrder};
+use aoide_melete::{Home, Item, ListQuery, Page, Sort};
 use iced::widget::{button, column, row, scrollable, text};
 use iced::{Element, Fill, Task};
 
@@ -21,6 +22,8 @@ use crate::{theme, widgets};
 const SHELF: usize = 18;
 /// Genres on the genre shelf.
 const GENRES: usize = 12;
+/// Albums the random shelf is picked from.
+const RANDOM_POOL: u32 = 500;
 
 #[derive(Debug)]
 pub struct State {
@@ -39,9 +42,7 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Added(Result<Vec<Item>, Failure>),
-    Played(Result<Vec<Item>, Failure>),
-    Most(Result<Vec<Item>, Failure>),
+    Home(Result<Home, Failure>),
     Released(Result<Vec<Item>, Failure>),
     Random(Result<Vec<Item>, Failure>),
     Genres(Result<Vec<Item>, Failure>),
@@ -51,65 +52,38 @@ pub enum Message {
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
     let key = ctx.key;
-    let library = ctx.library.map(str::to_owned);
     let wrap = |m: fn(Result<Vec<Item>, Failure>) -> self::Message| move |r| PageMsg::Home(m(r));
-    let albums = |sort: Sort, order: SortOrder| ListQuery {
-        parent_id: library.clone(),
+    let albums = |sort: Sort, limit: u32| ListQuery {
         sort,
-        order,
-        limit: Some(SHELF as u32),
+        limit: Some(limit),
         ..ListQuery::default()
     };
     let items = |page: Page<Item>| page.items;
-    let released = albums(Sort::ReleaseDate, SortOrder::Descending);
-    let random = albums(Sort::Random, SortOrder::Ascending);
-    let genres = ListQuery {
-        parent_id: library.clone(),
-        ..ListQuery::default()
-    };
-    let (a, b, c, d, e, f) = (
-        ctx.client.clone(),
-        ctx.client.clone(),
+    let released = albums(Sort::Year, SHELF as u32);
+    let random = albums(Sort::Default, RANDOM_POOL);
+    let (a, b, c, d) = (
         ctx.client.clone(),
         ctx.client.clone(),
         ctx.client.clone(),
         ctx.client.clone(),
     );
-    let (la, lb, lc) = (library.clone(), library.clone(), library);
     let tasks = Task::batch([
         Task::done(App::Handoff(crate::handoff::Msg::LoadResume(key))),
         Task::done(App::Discover(super::discover::Msg::Home(key))),
+        fetch(key, async move { a.home().await }, |r| {
+            PageMsg::Home(Message::Home(r))
+        }),
         fetch(
             key,
-            async move { a.recently_added(la.as_deref(), SHELF as u32).await },
-            wrap(Message::Added),
-        ),
-        // Tracks, a few times a shelf's worth: several often share an album.
-        fetch(
-            key,
-            async move { b.recently_played(lb.as_deref(), 120).await },
-            wrap(Message::Played),
-        ),
-        fetch(
-            key,
-            async move { c.most_played(lc.as_deref(), 120).await },
-            wrap(Message::Most),
-        ),
-        fetch(
-            key,
-            async move { d.albums(&released).await.map(items) },
+            async move { b.albums(&released).await.map(items) },
             wrap(Message::Released),
         ),
         fetch(
             key,
-            async move { e.albums(&random).await.map(items) },
+            async move { c.albums(&random).await.map(items) },
             wrap(Message::Random),
         ),
-        fetch(
-            key,
-            async move { f.genres(&genres).await.map(items) },
-            wrap(Message::Genres),
-        ),
+        fetch(key, async move { d.genres().await }, wrap(Message::Genres)),
     ]);
     (
         State {
@@ -131,7 +105,7 @@ fn album_tiles(result: Result<Vec<Item>, Failure>) -> Load<Vec<Tile>> {
 }
 
 /// A few of `items`, in a different order each time Home opens.
-fn pick<T>(mut items: Vec<T>, count: usize) -> Vec<T> {
+pub(crate) fn pick<T>(mut items: Vec<T>, count: usize) -> Vec<T> {
     let random = RandomState::new();
     // Fisher-Yates, as far as is needed.
     for i in 0..items.len().min(count) {
@@ -145,17 +119,22 @@ fn pick<T>(mut items: Vec<T>, count: usize) -> Vec<T> {
 impl State {
     pub fn update(&mut self, message: Message) -> Task<App> {
         match message {
-            Message::Added(result) => self.added = album_tiles(result),
-            Message::Played(result) => {
-                self.played =
-                    Load::from(result.map(|items| library::albums_of_tracks(&items, SHELF)));
+            Message::Home(Ok(home)) => {
+                let albums = |items: Vec<Item>| items.iter().take(SHELF).map(Tile::album).collect();
+                self.added = Load::Ready(albums(home.recently_added));
+                self.played = Load::Ready(albums(home.recently_played));
+                let tracks: Vec<Item> = home.most_played.into_iter().map(|(t, _)| t).collect();
+                self.most = Load::Ready(library::albums_of_tracks(&tracks, SHELF));
             }
-            Message::Most(result) => {
-                self.most =
-                    Load::from(result.map(|items| library::albums_of_tracks(&items, SHELF)));
+            Message::Home(Err(error)) => {
+                self.added = Load::Failed(error.clone());
+                self.played = Load::Failed(error.clone());
+                self.most = Load::Failed(error);
             }
             Message::Released(result) => self.released = album_tiles(result),
-            Message::Random(result) => self.random = album_tiles(result),
+            Message::Random(result) => {
+                self.random = album_tiles(result.map(|items| pick(items, SHELF)));
+            }
             Message::Genres(result) => {
                 self.genres = Load::from(result.map(|items| {
                     let genres = items.into_iter().map(|g| (g.id, g.name)).collect();

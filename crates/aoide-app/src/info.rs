@@ -1,10 +1,8 @@
-//! Get Info: everything the server knows about one song's file
+//! Get Info: what Melete knows about one song and its file
 //! (`item_details`), in a sheet over the window, opened from any song's
 //! actions. Every line the server could not say is left out.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use aoide_jellyfin::ItemDetails;
+use aoide_melete::ItemDetails;
 use iced::widget::{
     Column, button, center, column, container, mouse_area, opaque, row, scrollable, text,
 };
@@ -31,35 +29,6 @@ pub enum Msg {
     Close,
 }
 
-const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
-/// A day as "14 Mar 2026", in UTC (the server's dates are).
-pub fn date(time: SystemTime) -> String {
-    let secs = time.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
-    // Days to a civil date (Howard Hinnant's algorithm).
-    let z = secs.div_euclid(86_400) + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = yoe + era * 400 + i64::from(month <= 2);
-    format!("{day} {} {year}", MONTHS[(month - 1) as usize])
-}
-
-/// "31.8 MB", "640 KB".
-pub fn size(bytes: u64) -> String {
-    if bytes >= 1_000_000 {
-        format!("{:.1} MB", bytes as f64 / 1_000_000.0)
-    } else {
-        format!("{} KB", bytes.div_ceil(1_000))
-    }
-}
-
 /// The sheet's lines: label and value, in the order they read best.
 pub fn lines(details: &ItemDetails) -> Vec<(&'static str, String)> {
     let item = &details.item;
@@ -78,12 +47,12 @@ pub fn lines(details: &ItemDetails) -> Vec<(&'static str, String)> {
     add("Album", item.album.clone());
     add(
         "Track",
-        item.index_number.map(|n| match item.parent_index_number {
+        item.track_number.map(|n| match item.disc_number {
             Some(disc) => format!("{n} (disc {disc})"),
             None => n.to_string(),
         }),
     );
-    add("Year", item.production_year.map(|y| y.to_string()));
+    add("Year", item.year.map(|y| y.to_string()));
     add(
         "Genre",
         (!item.genres.is_empty()).then(|| item.genres.join(", ")),
@@ -95,14 +64,7 @@ pub fn lines(details: &ItemDetails) -> Vec<(&'static str, String)> {
     );
     add(
         "Format",
-        match (&details.container, &details.codec) {
-            (Some(container), Some(codec)) if container != codec => {
-                Some(format!("{} ({})", codec.to_uppercase(), container))
-            }
-            (_, Some(codec)) => Some(codec.to_uppercase()),
-            (Some(container), None) => Some(container.to_uppercase()),
-            (None, None) => None,
-        },
+        details.codec.as_ref().map(|codec| codec.to_uppercase()),
     );
     add(
         "Bit rate",
@@ -124,24 +86,13 @@ pub fn lines(details: &ItemDetails) -> Vec<(&'static str, String)> {
     add("Bit depth", details.bit_depth.map(|d| format!("{d}-bit")));
     add(
         "Channels",
-        match (details.channels, &details.channel_layout) {
-            (Some(n), Some(layout)) => Some(format!("{n} ({layout})")),
-            (Some(n), None) => Some(n.to_string()),
-            (None, Some(layout)) => Some(layout.clone()),
-            (None, None) => None,
-        },
-    );
-    add("Size", details.size.map(size));
-    add("Date added", details.date_added.map(date));
-    add(
-        "Plays",
-        Some(match details.play_count {
-            1 => "1 (counted when it starts)".to_owned(),
-            n => format!("{n} (counted when they start)"),
+        details.channels.map(|n| match n {
+            1 => "1 (mono)".to_owned(),
+            2 => "2 (stereo)".to_owned(),
+            n => n.to_string(),
         }),
     );
-    add("Last played", details.last_played.map(date));
-    add("File", details.path.clone());
+    add("ISRC", item.isrc.clone());
     lines
 }
 
@@ -165,7 +116,7 @@ impl App {
                         (id, result)
                     },
                     |(id, result)| match result {
-                        Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
+                        Err(aoide_melete::Error::Unauthorized) => Message::TokenRejected,
                         result => Message::Info(Msg::Loaded(
                             id,
                             result
@@ -241,39 +192,25 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn dates_and_sizes_read_plainly() {
-        // 2026-03-14T09:30:00Z
-        assert_eq!(
-            date(UNIX_EPOCH + Duration::from_secs(1_773_480_600)),
-            "14 Mar 2026"
-        );
-        assert_eq!(date(UNIX_EPOCH), "1 Jan 1970");
-        assert_eq!(size(31_754_112), "31.8 MB");
-        assert_eq!(size(640_001), "641 KB");
-    }
-
-    #[test]
     fn the_sheet_says_what_the_server_knows_and_leaves_out_the_rest() {
-        let item = serde_json::from_value(serde_json::json!({
-            "Id": "t1", "Name": "Lantern", "Type": "Audio", "Artists": ["Mara Vey"],
-            "Album": "Saltwater", "IndexNumber": 5, "ParentIndexNumber": 1,
-            "RunTimeTicks": 2_000_000_000_i64, "ProductionYear": 2022
-        }))
-        .unwrap();
+        let item = aoide_melete::Item {
+            id: "1".into(),
+            name: "Lantern".into(),
+            artists: vec!["Mara Vey".into()],
+            album: Some("Saltwater".into()),
+            track_number: Some(5),
+            disc_number: Some(1),
+            duration: Some(Duration::from_secs(200)),
+            year: Some(2022),
+            ..aoide_melete::Item::default()
+        };
         let details = ItemDetails {
             item,
-            path: Some("/srv/music/Saltwater/05 Lantern.flac".into()),
-            container: Some("flac".into()),
             codec: Some("flac".into()),
             bitrate: Some(1_043_201),
             sample_rate: Some(44_100),
             bit_depth: Some(24),
             channels: Some(2),
-            channel_layout: Some("stereo".into()),
-            size: Some(31_754_112),
-            date_added: None,
-            play_count: 3,
-            last_played: None,
         };
         let lines = lines(&details);
         let find = |label: &str| {
@@ -288,7 +225,6 @@ mod tests {
         assert_eq!(find("Channels"), Some("2 (stereo)"));
         assert_eq!(find("Track"), Some("5 (disc 1)"));
         assert_eq!(find("Length"), Some("3:20"));
-        assert_eq!(find("Date added"), None, "unknown is left out");
-        assert_eq!(find("Plays"), Some("3 (counted when they start)"));
+        assert_eq!(find("ISRC"), None, "unknown is left out");
     }
 }

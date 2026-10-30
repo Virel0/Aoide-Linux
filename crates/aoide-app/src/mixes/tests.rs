@@ -2,7 +2,6 @@ use super::*;
 use aoide_integrations::openrouter::smart_rules::{
     RuleField, RuleOperator, RuleSort, RuleValue, SmartRule, SortDirection,
 };
-use aoide_jellyfin::{NameId, Sort};
 
 use super::rules::library_matches;
 
@@ -96,7 +95,7 @@ fn library_fields_are_checked_on_the_track() {
         )),
         Some(true)
     );
-    // Liked is the store's (Aoide's own like), not the Jellyfin favourite.
+    // Liked is the store's own like, as the sync log has it.
     assert_eq!(
         check(rule(
             RuleField::Liked,
@@ -173,16 +172,6 @@ fn rules(match_: Match, rules: Vec<SmartRule>) -> SmartRules {
     }
 }
 
-fn ids() -> Vec<NameId> {
-    library()
-        .into_iter()
-        .map(|name| NameId {
-            id: format!("g-{name}"),
-            name,
-        })
-        .collect()
-}
-
 #[test]
 fn the_prefilter_narrows_only_safely() {
     let all = rules(
@@ -198,13 +187,11 @@ fn the_prefilter_narrows_only_safely() {
         ],
     );
     let genres = vec!["Hard Rock".to_owned(), "Rock".to_owned()];
-    let q = candidate_query(&all, &genres, &ids(), &[2023, 2019, 2015], Some("lib1"));
-    assert_eq!(q.genre_ids, ["g-Hard Rock", "g-Rock"]);
-    assert_eq!(q.years, [2023, 2019]);
-    // Liked is Aoide's like, which Jellyfin's favourites can't narrow.
-    assert!(!q.favorites_only);
-    assert_eq!(q.sort, Sort::Random);
-    assert_eq!(q.parent_id.as_deref(), Some("lib1"));
+    let f = candidate_filter(&all, &genres, &[2023, 2019, 2015]);
+    assert_eq!(f.genres, ["Hard Rock", "Rock"]);
+    assert_eq!(f.years, [2023, 2019]);
+    // Liked is the store's to answer, from the sync log's likes.
+    assert!(!f.liked_only);
     // "Any" of a genre and a year: a genre filter would drop the year's
     // tracks, so nothing narrows.
     let any = rules(
@@ -214,20 +201,15 @@ fn the_prefilter_narrows_only_safely() {
             rule(RuleField::Year, RuleOperator::Is, RuleValue::Number(2019)),
         ],
     );
-    let q = candidate_query(&any, &genres, &ids(), &[2019], None);
-    assert!(q.genre_ids.is_empty() && q.years.is_empty() && !q.favorites_only);
-    // "Any" of genres alone: the genre ids are already "any of".
+    let f = candidate_filter(&any, &genres, &[2019]);
+    assert!(f.genres.is_empty() && f.years.is_empty() && !f.liked_only);
+    // "Any" of genres alone: the genres are already "any of".
     let genres_only = rules(
         Match::Any,
         vec![rule(RuleField::Genre, RuleOperator::Is, text("rock"))],
     );
-    assert_eq!(
-        candidate_query(&genres_only, &genres, &ids(), &[], None)
-            .genre_ids
-            .len(),
-        2
-    );
-    // A year rule no library year passes sends no years (not "every year").
+    assert_eq!(candidate_filter(&genres_only, &genres, &[]).genres.len(), 2);
+    // A year rule no library year passes keeps no years (not "every year").
     let none = rules(
         Match::All,
         vec![rule(
@@ -236,11 +218,7 @@ fn the_prefilter_narrows_only_safely() {
             RuleValue::Number(1900),
         )],
     );
-    assert!(
-        candidate_query(&none, &[], &ids(), &[2019], None)
-            .years
-            .is_empty()
-    );
+    assert!(candidate_filter(&none, &[], &[2019]).years.is_empty());
 }
 
 #[test]
@@ -377,7 +355,7 @@ fn a_mix_is_kept_only_with_rules_that_say_something() {
 }
 
 #[tokio::test]
-async fn liked_is_aoides_own_like_not_the_jellyfin_favourite() {
+async fn liked_is_read_from_the_stores_own_likes() {
     let liked = rules(
         Match::All,
         vec![rule(
@@ -415,64 +393,74 @@ async fn liked_is_aoides_own_like_not_the_jellyfin_favourite() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_mood_becomes_a_mix_with_the_names_first_and_the_hidden_left_out() {
     use crate::credentials::MemoryStore;
+    use crate::test_json::{page, track as json_track};
     use serde_json::json;
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
     let server = MockServer::start().await;
     let get = |p: &str| Mock::given(method("GET")).and(path(p.to_owned()));
-    let items = |items: serde_json::Value| {
-        let n = items.as_array().map_or(0, Vec::len);
-        ResponseTemplate::new(200).set_body_json(json!({"Items": items, "TotalRecordCount": n}))
+    let ok = |body: serde_json::Value| ResponseTemplate::new(200).set_body_json(body);
+    let song = |id: i64, genre: &str, album: &str| {
+        let mut song = json_track(id, &format!("Song {id}"));
+        song["genres"] = json!([genre]);
+        song["album"] = json!(album);
+        song["album_artist"] = json!("Someone");
+        song["year"] = json!(2019);
+        song
     };
-    let song = |id: &str, genre: &str, album: &str| {
-        json!({"Id": id, "Name": format!("Song {id}"), "Type": "Audio", "Genres": [genre],
-               "Album": album, "AlbumArtist": "Someone", "ProductionYear": 2019})
+    let album = |id: i64, title: &str| {
+        json!({"id": id, "title": title, "artist_id": 7, "artist": "Mara Vey", "year": 2019,
+               "tracks": 2, "duration_seconds": 400.0, "cover": null})
     };
-    get("/Items/Filters2")
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "Genres": [{"Id": "g-folk", "Name": "Folk"}, {"Id": "g-rock", "Name": "Rock"}]
-        })))
-        .mount(&server)
-        .await;
-    get("/Items/Filters")
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Years": [2019]})))
-        .mount(&server)
-        .await;
-    // The name: an album artist with one album of two songs.
-    get("/Artists/AlbumArtists")
-        .and(query_param("searchTerm", "Mara Vey"))
-        .respond_with(items(
-            json!([{"Id": "ar-mv", "Name": "Mara Vey", "Type": "MusicArtist"}]),
-        ))
-        .mount(&server)
-        .await;
-    get("/Items")
-        .and(query_param("albumArtistIds", "ar-mv"))
-        .respond_with(items(
-            json!([{"Id": "al-mv", "Name": "Saltwater", "Type": "MusicAlbum"}]),
-        ))
-        .mount(&server)
-        .await;
-    get("/Items")
-        .and(query_param("parentId", "al-mv"))
-        .respond_with(items(json!([
-            song("mv1", "Folk", "Saltwater"),
-            song("mv2", "Folk", "Saltwater")
+    get("/api/v1/music/genres")
+        .respond_with(ok(json!([
+            {"name": "Folk", "tracks": 3, "albums": 1}, {"name": "Rock", "tracks": 1, "albums": 1}
         ])))
         .mount(&server)
         .await;
-    get("/Items")
-        .and(query_param("searchTerm", "Mara Vey"))
-        .respond_with(items(json!([])))
+    // The name: an artist with one album of two songs, and no songs or
+    // albums by that name.
+    get("/api/v1/music/albums")
+        .and(query_param("q", "Mara Vey"))
+        .respond_with(ok(page(vec![])))
+        .mount(&server)
+        .await;
+    get("/api/v1/music/albums")
+        .respond_with(ok(page(vec![album(9, "Saltwater")])))
+        .mount(&server)
+        .await;
+    get("/api/v1/music/artists")
+        .and(query_param("q", "Mara Vey"))
+        .respond_with(ok(page(vec![
+            json!({"id": 7, "name": "Mara Vey", "mb_artist_id": null, "albums": 1, "appears_on": 0}),
+        ])))
+        .mount(&server)
+        .await;
+    get("/api/v1/music/artists/7")
+        .respond_with(ok(
+            json!({"id": 7, "name": "Mara Vey", "mb_artist_id": null, "albums": 1,
+            "appears_on": 0, "album_list": [album(9, "Saltwater")], "appears_on_list": []}),
+        ))
+        .mount(&server)
+        .await;
+    let mut saltwater = album(9, "Saltwater");
+    saltwater["track_list"] = json!([song(11, "Folk", "Saltwater"), song(12, "Folk", "Saltwater")]);
+    get("/api/v1/music/albums/9")
+        .respond_with(ok(saltwater))
+        .mount(&server)
+        .await;
+    get("/api/v1/music/tracks")
+        .and(query_param("q", "Mara Vey"))
+        .respond_with(ok(page(vec![])))
         .mount(&server)
         .await;
     // The rules' candidates: folk, one of them marked Not Interested.
-    get("/Items")
-        .and(query_param("genreIds", "g-folk"))
-        .respond_with(items(json!([
-            song("f1", "Folk", "A"),
-            song("hidden", "Folk", "B"),
-            song("f2", "Folk", "C")
+    get("/api/v1/music/tracks")
+        .and(query_param("genre", "Folk"))
+        .respond_with(ok(page(vec![
+            song(21, "Folk", "A"),
+            song(22, "Folk", "B"),
+            song(23, "Folk", "C"),
         ])))
         .expect(1)
         .mount(&server)
@@ -493,7 +481,7 @@ async fn a_mood_becomes_a_mix_with_the_names_first_and_the_hidden_left_out() {
     store
         .call(|w| {
             w.store
-                .set_not_interested(true, "hidden", "key-hidden", aoide_store::now_millis())
+                .set_not_interested(true, "22", "key-hidden", aoide_store::now_millis())
                 .unwrap();
         })
         .await
@@ -502,13 +490,13 @@ async fn a_mood_becomes_a_mix_with_the_names_first_and_the_hidden_left_out() {
     keyring
         .set(aoide_integrations::openrouter::KEYRING_ENTRY, "sk-or-test")
         .unwrap();
-    let client = JellyfinClient::new(
-        aoide_jellyfin::ServerAddress::parse(&server.uri()).unwrap(),
-        aoide_jellyfin::Device::new("Test", "device-1"),
+    let client = MeleteClient::new(
+        aoide_melete::ServerAddress::parse(&server.uri()).unwrap(),
+        aoide_melete::Device::new("Test", "device-1"),
     )
     .unwrap()
-    .with_credentials(aoide_jellyfin::Credentials {
-        user_id: "u1".into(),
+    .with_credentials(aoide_melete::Credentials {
+        user_id: "1".into(),
         access_token: "tok".into(),
         username: "tester".into(),
     });
@@ -518,15 +506,14 @@ async fn a_mood_becomes_a_mix_with_the_names_first_and_the_hidden_left_out() {
         "test/model".into(),
         client,
         store.clone(),
-        Some("lib1".into()),
         "forgotten folk and Mara Vey".into(),
     )
     .await
     .unwrap();
     let ids: Vec<&str> = mix.tracks.iter().map(|t| t.id.as_str()).collect();
-    assert_eq!(&ids[..2], ["mv1", "mv2"], "the names come first: {ids:?}");
+    assert_eq!(&ids[..2], ["11", "12"], "the names come first: {ids:?}");
     assert_eq!(ids.len(), 4, "cut at the rules' limit: {ids:?}");
-    assert!(!ids.contains(&"hidden"), "{ids:?}");
+    assert!(!ids.contains(&"22"), "{ids:?}");
     assert_eq!(
         mix.looked_for,
         "Mara Vey · Folk · not played in 6 months · 4 tracks"

@@ -1,10 +1,10 @@
-//! Collections: saved filters. A filter picks genres, years and tags (from
-//! what the library actually has, `query_filters`) and optionally only
-//! favourites, over songs or albums; saved under a name it is kept in the
-//! config file and listed in the sidebar. Jellyfin has no saved filters of its
-//! own (its collections are box sets), so they stay on this computer.
+//! Collections: saved filters. A filter picks genres and years (from what the
+//! library actually has) and optionally only the songs the listener likes,
+//! over songs or albums; saved under a name it is kept in the config file and
+//! listed in the sidebar. Melete has no saved filters of its own, so they
+//! stay on this computer.
 
-use aoide_jellyfin::{Item, ItemKind, ListQuery, QueryFilters, Sort, SortOrder};
+use aoide_melete::{Item, Sort};
 use iced::widget::Column;
 use iced::{Element, Fill, Task};
 use serde::{Deserialize, Serialize};
@@ -15,6 +15,7 @@ use crate::artwork::ArtKey;
 use crate::failure::Failure;
 use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
+use crate::song_filter::{LibraryFilters, SongFilter};
 
 mod view;
 
@@ -37,34 +38,31 @@ pub struct SavedFilter {
     pub id: String,
     pub name: String,
     pub kind: Kind,
-    /// Genre item ids, with their names beside them for showing.
+    /// Genres by id, with their names beside them for showing. Melete names
+    /// genres rather than numbering them, so the two are the same.
     pub genre_ids: Vec<String>,
     pub genre_names: Vec<String>,
     pub years: Vec<i32>,
-    pub tags: Vec<String>,
+    /// Only the songs the listener likes.
     pub favourites_only: bool,
 }
 
 impl SavedFilter {
-    /// The list query this filter is, inside `library`.
-    pub fn query(&self, library: Option<&str>) -> ListQuery {
-        ListQuery {
-            parent_id: library.map(str::to_owned),
-            genre_ids: self.genre_ids.clone(),
+    /// What this filter asks Melete for.
+    pub fn query(&self) -> SongFilter {
+        SongFilter {
+            term: None,
+            genres: self.genre_ids.clone(),
             years: self.years.clone(),
-            tags: self.tags.clone(),
-            favorites_only: self.favourites_only,
+            liked_only: self.favourites_only,
             sort: match self.kind {
                 Kind::Songs => Sort::Name,
                 Kind::Albums => Sort::Artist,
             },
-            order: SortOrder::Ascending,
-            limit: Some(RESULTS),
-            ..ListQuery::default()
         }
     }
 
-    /// "Folk · 2019, 2022 · late night · favourites".
+    /// "Folk · 2019, 2022 · liked".
     pub fn summary(&self) -> String {
         let mut parts = Vec::new();
         if !self.genre_names.is_empty() {
@@ -74,11 +72,8 @@ impl SavedFilter {
             let years: Vec<String> = self.years.iter().map(i32::to_string).collect();
             parts.push(years.join(", "));
         }
-        if !self.tags.is_empty() {
-            parts.push(self.tags.join(", "));
-        }
         if self.favourites_only {
-            parts.push("favourites".to_owned());
+            parts.push("liked".to_owned());
         }
         if parts.is_empty() {
             "Everything".to_owned()
@@ -104,10 +99,6 @@ impl SavedFilter {
 
     pub fn toggle_year(&mut self, year: i32) {
         toggle(&mut self.years, year);
-    }
-
-    pub fn toggle_tag(&mut self, tag: &str) {
-        toggle(&mut self.tags, tag.to_owned());
     }
 }
 
@@ -137,7 +128,7 @@ pub struct State {
     filter: SavedFilter,
     /// Saved already: the page is that collection.
     saved: bool,
-    filters: Load<QueryFilters>,
+    filters: Load<LibraryFilters>,
     songs: Load<Vec<TrackMeta>>,
     albums: Load<Vec<Tile>>,
     name: String,
@@ -146,12 +137,11 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Filters(Result<QueryFilters, Failure>),
+    Filters(Result<LibraryFilters, Failure>),
     Saved(Option<SavedFilter>),
     Kind(Kind),
     Genre(String, String),
     Year(i32),
-    Tag(String),
     Favourites(bool),
     Songs(Result<Vec<Item>, Failure>),
     Albums(Result<Vec<Item>, Failure>),
@@ -185,27 +175,23 @@ pub fn open(ctx: &Ctx<'_>, id: Option<&str>) -> (State, Task<AppMessage>) {
 impl State {
     fn load_filters(&self, ctx: &Ctx<'_>) -> Task<AppMessage> {
         let client = ctx.client.clone();
-        let library = ctx.library.map(str::to_owned);
-        let kind = match self.filter.kind {
-            Kind::Songs => ItemKind::Audio,
-            Kind::Albums => ItemKind::MusicAlbum,
-        };
         fetch(
             ctx.key,
-            async move { client.query_filters(library.as_deref(), &[kind]).await },
+            async move { crate::song_filter::library_filters(&client).await },
             |r| PageMsg::Collections(Message::Filters(r)),
         )
     }
 
     fn load_results(&mut self, ctx: &Ctx<'_>) -> Task<AppMessage> {
         let client = ctx.client.clone();
-        let query = self.filter.query(ctx.library);
+        let query = self.filter.query();
+        let limit = Some(RESULTS as usize);
         match self.filter.kind {
             Kind::Songs => {
                 self.songs = Load::Loading;
                 fetch(
                     ctx.key,
-                    async move { client.songs(&query).await.map(|p| p.items) },
+                    async move { query.songs(&client, limit).await },
                     |r| PageMsg::Collections(Message::Songs(r)),
                 )
             }
@@ -213,7 +199,7 @@ impl State {
                 self.albums = Load::Loading;
                 fetch(
                     ctx.key,
-                    async move { client.albums(&query).await.map(|p| p.items) },
+                    async move { query.albums(&client, limit).await },
                     |r| PageMsg::Collections(Message::Albums(r)),
                 )
             }
@@ -240,7 +226,6 @@ impl State {
             }
             Message::Genre(id, name) => self.filter.toggle_genre(&id, &name),
             Message::Year(year) => self.filter.toggle_year(year),
-            Message::Tag(tag) => self.filter.toggle_tag(&tag),
             Message::Favourites(on) => self.filter.favourites_only = on,
             Message::Songs(result) => {
                 self.songs = Load::from(
@@ -377,22 +362,17 @@ mod tests {
             ..SavedFilter::default()
         };
         assert_eq!(filter.summary(), "Everything");
-        filter.toggle_genre("g-Folk", "Folk");
+        filter.toggle_genre("Folk", "Folk");
         filter.toggle_year(2019);
         filter.toggle_year(2022);
-        filter.toggle_tag("late night");
         filter.favourites_only = true;
-        let query = filter.query(Some("lib1"));
-        assert_eq!(query.genre_ids, ["g-Folk"]);
+        let query = filter.query();
+        assert_eq!(query.genres, ["Folk"]);
         assert_eq!(query.years, [2019, 2022]);
-        assert_eq!(query.tags, ["late night"]);
-        assert!(query.favorites_only);
-        assert_eq!(query.parent_id.as_deref(), Some("lib1"));
-        assert_eq!(
-            filter.summary(),
-            "Folk · 2019, 2022 · late night · favourites"
-        );
-        filter.toggle_genre("g-Folk", "Folk");
+        assert!(query.liked_only);
+        assert_eq!(query.sort, Sort::Artist);
+        assert_eq!(filter.summary(), "Folk · 2019, 2022 · liked");
+        filter.toggle_genre("Folk", "Folk");
         filter.toggle_year(2019);
         assert!(filter.genre_names.is_empty());
         assert_eq!(filter.years, [2022]);
@@ -404,10 +384,9 @@ mod tests {
             id: "c1".into(),
             name: "Folk evenings".into(),
             kind: Kind::Songs,
-            genre_ids: vec!["g-Folk".into()],
+            genre_ids: vec!["Folk".into()],
             genre_names: vec!["Folk".into()],
             years: vec![2022],
-            tags: Vec::new(),
             favourites_only: false,
         };
         let json = serde_json::to_string(&filter).unwrap();

@@ -4,7 +4,7 @@
 <component type="desktop-application">
   <id>io.github.Virel0.Aoide.Linux</id>
   <name>Aoide for Linux</name>
-  <summary>A native Jellyfin music player</summary>
+  <summary>A native music player for Melete</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later AND OFL-1.1</project_license>
 
@@ -14,9 +14,9 @@
 
   <description>
     <p>
-      Aoide for Linux plays the music on your own Jellyfin server. It is a
-      native app, and the companion of the Aoide app for iPhone: with the Aoide
-      plugin on the server, playlists and listening history sync between them.
+      Aoide for Linux plays the music on your own Melete server. It is a
+      native app, and the companion of the Aoide app for iPhone: playlists and
+      listening history sync between them through the server.
     </p>
     <ul>
       <li>Gapless playback, sample-exact for FLAC, ALAC, WAV and AIFF</li>

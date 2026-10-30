@@ -38,8 +38,8 @@ pub struct State {
     pub sleep_minutes: String,
     /// The full-screen player, while it is open.
     pub full: Option<crate::full_player::FullPlayer>,
-    /// Private listening: no playback reports to Jellyfin and no play
-    /// events in the history while on. Lasts until switched off or quit.
+    /// Private listening: no play events in the history (so none reach
+    /// Melete) while on. Lasts until switched off or quit.
     pub private: bool,
     /// The internet lyrics finder, made when first needed.
     pub finder: Option<std::sync::Arc<aoide_lyrics::LyricsFinder>>,
@@ -151,32 +151,23 @@ impl App {
         })
     }
 
-    /// Private listening on or off. On: the song playing is reported
-    /// stopped and its play event closed, as if it ended here, and nothing
-    /// after that is reported or recorded. Off: reporting and recording
-    /// start again with the next song, so a song half heard in private
-    /// isn't counted from its middle.
+    /// Private listening on or off. On: the song playing has its play event
+    /// closed, as if it ended here, and nothing after that is recorded. Off:
+    /// recording starts again with the next song, so a song half heard in
+    /// private isn't counted from its middle.
     fn set_private(&mut self, on: bool) -> Task<Message> {
         self.listening.menu = None;
         if on == self.listening.private {
             return Task::none();
         }
-        let task = if on {
-            let report = self.final_report();
-            let task = self.send_reports(report.into_iter().collect());
+        if on {
             let at = aoide_store::now_millis();
             self.store.send(move |w| {
                 let _ = w.recorder.stopped(&w.store, at);
             });
-            task
-        } else {
-            if let Some(signed) = self.session.as_mut() {
-                signed.reporter = crate::playback::report::Reporter::default();
-            }
-            Task::none()
-        };
+        }
         self.listening.private = on;
-        task
+        Task::none()
     }
 
     pub(crate) fn listening(&mut self, msg: Msg) -> Task<Message> {

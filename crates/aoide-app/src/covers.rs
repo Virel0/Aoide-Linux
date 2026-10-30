@@ -1,7 +1,7 @@
 //! Aoide playlists' covers: which picture to draw (`Store::playlist_covers`),
 //! the bytes of a chosen one fetched only when it is about to be drawn
 //! (`aoide_sidecar::cover_bytes`, from this computer's blob directory first),
-//! choosing one from a file, taking it off, and "Repair covers".
+//! choosing one from a file, and taking it off.
 //!
 //! A chosen picture is kept in the blob directory in the data directory, not
 //! the cache: until the next sync uploads it, it is the only copy. The sync
@@ -11,9 +11,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use aoide_jellyfin::{Item, JellyfinClient};
 use aoide_sidecar::{SidecarClient, cover_bytes};
-use aoide_store::{BlobDirectory, NamedJellyfinPlaylist, PlaylistCover, Store};
+use aoide_store::{BlobDirectory, PlaylistCover, Store};
 use iced::Task;
 
 use crate::app::{App, Message};
@@ -32,8 +31,8 @@ pub fn open_blobs(paths: Option<&Paths>) -> Option<BlobDirectory> {
     BlobDirectory::open(blobs_dir(paths?)).ok()
 }
 
-/// A cover's bytes have no Jellyfin item: they are drawn under this key,
-/// which nothing ever asks the server for.
+/// A cover's bytes are no album's: they are drawn under this key, which
+/// nothing ever asks the server for.
 pub fn blob_key(hash: &str) -> ArtKey {
     ArtKey::new("aoidecover", hash)
 }
@@ -46,26 +45,28 @@ pub struct Resolved {
     pub bytes: Vec<(ArtKey, Vec<u8>)>,
 }
 
-/// The Jellyfin item each item-drawn cover names, by playlist.
-pub fn items_to_fetch(covers: &HashMap<String, PlaylistCover>) -> Vec<(String, String)> {
-    let mut wanted: Vec<(String, String)> = covers
+/// The album cover each first-track cover stands for, by playlist. A cover
+/// naming a Jellyfin item (from before Melete) has nothing to draw: Melete's
+/// import clears those, and an app uploads a picture again.
+pub fn album_covers(covers: &HashMap<String, PlaylistCover>) -> Vec<(String, ArtKey)> {
+    let mut wanted: Vec<(String, ArtKey)> = covers
         .iter()
         .filter_map(|(playlist, cover)| match cover {
-            PlaylistCover::JellyfinItem(item) | PlaylistCover::FirstTrack(item) => {
-                Some((playlist.clone(), item.clone()))
-            }
+            PlaylistCover::FirstTrack(album) => Some((
+                playlist.clone(),
+                ArtKey::new(album, aoide_melete::COVER_TAG),
+            )),
             _ => None,
         })
         .collect();
-    wanted.sort();
+    wanted.sort_by(|a, b| a.0.cmp(&b.0));
     wanted
 }
 
 /// The covers of these playlists, the way they are drawn: chosen pictures as
-/// bytes (fetched from the sidecar only if this computer lacks them), items
-/// and first tracks by their image tags.
+/// bytes (fetched from the server only if this computer lacks them), first
+/// tracks by their album's cover.
 pub async fn resolve(
-    client: JellyfinClient,
     store: StoreHandle,
     shared: Arc<Store>,
     sidecar: Option<SidecarClient>,
@@ -98,22 +99,8 @@ pub async fn resolve(
             resolved.bytes.push((key, bytes));
         }
     }
-    let wanted = items_to_fetch(&covers);
-    if !wanted.is_empty() {
-        let ids: Vec<&str> = wanted.iter().map(|(_, item)| item.as_str()).collect();
-        let items = client.items_by_ids(&ids).await.unwrap_or_default();
-        let art: HashMap<&str, ArtKey> = items
-            .iter()
-            .filter_map(|item: &Item| {
-                let (id, tag) = item.artwork_source()?;
-                Some((item.id.as_str(), ArtKey::new(id, tag)))
-            })
-            .collect();
-        for (playlist, item) in wanted {
-            if let Some(key) = art.get(item.as_str()) {
-                resolved.art.entry(playlist).or_insert_with(|| key.clone());
-            }
-        }
+    for (playlist, key) in album_covers(&covers) {
+        resolved.art.entry(playlist).or_insert(key);
     }
     resolved
 }
@@ -148,12 +135,6 @@ pub enum Msg {
         key: u64,
         result: Result<String, String>,
     },
-    /// Sync panel: borrow Jellyfin playlists' pictures by name.
-    Repair {
-        key: u64,
-    },
-    /// Every page drawing covers looks again.
-    RefreshAll,
 }
 
 impl App {
@@ -164,16 +145,15 @@ impl App {
         match message {
             Msg::Resolve { key, ids } => self.resolve_covers(key, ids),
             Msg::Resolved { key, found } => self.covers_resolved(key, *found),
-            Msg::Choose { key, playlist } => Task::perform(
-                crate::screens::jellyfin_playlist::pick_picture("Choose a cover"),
-                move |file| {
+            Msg::Choose { key, playlist } => {
+                Task::perform(pick_picture("Choose a cover"), move |file| {
                     Message::Covers(Msg::Picked {
                         key,
                         playlist: playlist.clone(),
                         file,
                     })
-                },
-            ),
+                })
+            }
             Msg::Picked { file: None, .. } => Task::none(),
             Msg::Picked {
                 key,
@@ -189,8 +169,6 @@ impl App {
                 Task::done(Message::PlaylistsChanged),
                 self.refresh_covers(),
             ]),
-            Msg::Repair { key } => self.repair_covers(key),
-            Msg::RefreshAll => self.refresh_covers(),
         }
     }
 
@@ -208,18 +186,14 @@ impl App {
         } else {
             ids
         };
-        let client = signed.connection.client.clone();
         let sidecar = signed.sidecar.clone();
         let shared = store.shared();
-        Task::perform(
-            resolve(client, store, shared, sidecar, blobs, ids),
-            move |found| {
-                Message::Covers(Msg::Resolved {
-                    key,
-                    found: Box::new(found),
-                })
-            },
-        )
+        Task::perform(resolve(store, shared, sidecar, blobs, ids), move |found| {
+            Message::Covers(Msg::Resolved {
+                key,
+                found: Box::new(found),
+            })
+        })
     }
 
     /// The covers found: the chosen pictures into the artwork cache, and
@@ -313,52 +287,6 @@ impl App {
         )
     }
 
-    /// Repair Covers: each playlist with no picture borrows the one
-    /// Jellyfin playlist's with exactly its name.
-    fn repair_covers(&mut self, key: u64) -> Task<Message> {
-        let store = self.store.clone();
-        let Some(signed) = self.session.as_mut() else {
-            return Task::none();
-        };
-        let client = signed.connection.client.clone();
-        let now = aoide_store::now_millis();
-        Task::perform(
-            async move {
-                let lists = client
-                    .playlists(&crate::screens::jellyfin_playlists::query())
-                    .await
-                    .map_err(|e| crate::failure::describe(&e).to_string())?;
-                let named: Vec<NamedJellyfinPlaylist> = lists
-                    .items
-                    .into_iter()
-                    .map(|i| NamedJellyfinPlaylist {
-                        id: i.id,
-                        name: i.name,
-                    })
-                    .collect();
-                store
-                    .call(move |w| {
-                        w.store
-                            .repair_covers(&named, now)
-                            .map(|written| written.len())
-                            .map_err(|e| e.to_string())
-                    })
-                    .await
-                    .unwrap_or_else(|| Err("the library is closing".into()))
-            },
-            move |result| {
-                Message::Page(
-                    key,
-                    PageMsg::SyncStatus(crate::screens::sync_status::Message::Note(repair_note(
-                        result,
-                    ))),
-                )
-            },
-        )
-        .chain(Task::done(Message::PlaylistsChanged))
-        .chain(Task::done(Message::Covers(Msg::RefreshAll)))
-    }
-
     /// Every open page that draws playlist covers, asked to find them again.
     fn refresh_covers(&mut self) -> Task<Message> {
         let Some(nav) = self.session.as_mut().and_then(|s| s.nav.as_mut()) else {
@@ -381,18 +309,21 @@ impl App {
     }
 }
 
-/// What Repair Covers did, in words.
-pub fn repair_note(result: Result<usize, String>) -> String {
-    match result {
-        Ok(0) => "No playlist needed a cover from Jellyfin: none without one shares its name \
-                  with exactly one Jellyfin playlist."
-            .to_owned(),
-        Ok(1) => "1 playlist now has the cover of the Jellyfin playlist with its name.".to_owned(),
-        Ok(n) => {
-            format!("{n} playlists now have the covers of the Jellyfin playlists with their names.")
-        }
-        Err(error) => format!("Covers couldn't be repaired: {error}"),
-    }
+/// A picture chosen in the system's file dialog, read whole; `None` when the
+/// dialog was closed.
+async fn pick_picture(title: &str) -> Option<Result<Vec<u8>, String>> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_title(title)
+        .add_filter("Pictures", &["jpg", "jpeg", "png", "webp"])
+        .pick_file()
+        .await?;
+    let path = file.path().to_owned();
+    Some(
+        tokio::task::spawn_blocking(move || std::fs::read(&path))
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|read| read.map_err(|e| e.to_string())),
+    )
 }
 
 #[cfg(test)]
@@ -400,7 +331,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_item_and_first_track_covers_ask_the_server() {
+    fn first_track_covers_are_their_albums_and_jellyfin_items_draw_nothing() {
         let covers = HashMap::from([
             ("p1".to_owned(), PlaylistCover::JellyfinItem("jp1".into())),
             ("p2".to_owned(), PlaylistCover::FirstTrack("al1".into())),
@@ -414,36 +345,13 @@ mod tests {
             ("p4".to_owned(), PlaylistCover::None),
         ]);
         assert_eq!(
-            items_to_fetch(&covers),
-            [
-                ("p1".to_owned(), "jp1".to_owned()),
-                ("p2".to_owned(), "al1".to_owned())
-            ]
+            album_covers(&covers),
+            [("p2".to_owned(), ArtKey::new("al1", aoide_melete::COVER_TAG))]
         );
     }
 
-    #[test]
-    fn repairs_are_counted_in_words() {
-        assert!(repair_note(Ok(0)).starts_with("No playlist needed"));
-        assert!(repair_note(Ok(1)).starts_with("1 playlist now has"));
-        assert!(repair_note(Ok(3)).starts_with("3 playlists now have"));
-        assert!(repair_note(Err("offline".into())).ends_with("offline"));
-    }
-
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_chosen_picture_is_drawn_from_this_computer_without_asking_the_server() {
-        use aoide_jellyfin::{Credentials, Device, ServerAddress};
-        let server = wiremock::MockServer::start().await;
-        let client = JellyfinClient::new(
-            ServerAddress::parse(&server.uri()).unwrap(),
-            Device::new("Test", "device-1"),
-        )
-        .unwrap()
-        .with_credentials(Credentials {
-            user_id: "u1".into(),
-            access_token: "tok".into(),
-            username: "alice".into(),
-        });
+    async fn a_chosen_picture_is_drawn_from_this_computer() {
         let dir = tempfile::tempdir().unwrap();
         let blobs = BlobDirectory::open(dir.path().join("covers")).unwrap();
         let store = StoreHandle::in_memory("desk").unwrap();
@@ -461,9 +369,8 @@ mod tests {
                 .unwrap()
         };
         let shared = store.shared();
-        let found = resolve(client, store, shared, None, Some(blobs), vec![id.clone()]).await;
+        let found = resolve(store, shared, None, Some(blobs), vec![id.clone()]).await;
         assert_eq!(found.art.get(&id), Some(&blob_key(&hash)));
         assert_eq!(found.bytes, [(blob_key(&hash), png)]);
-        assert!(server.received_requests().await.unwrap().is_empty());
     }
 }

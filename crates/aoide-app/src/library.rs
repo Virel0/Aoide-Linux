@@ -1,6 +1,6 @@
 //! Library views' shared pieces: tiles.
 
-use aoide_jellyfin::Item;
+use aoide_melete::Item;
 
 use crate::artwork::ArtKey;
 
@@ -11,7 +11,7 @@ pub struct Tile {
     pub title: String,
     pub subtitle: String,
     pub art: Option<ArtKey>,
-    /// Drawn round: an artist's own picture, as Apple Music shows artists.
+    /// Drawn round, as Apple Music shows artists.
     pub round: bool,
 }
 
@@ -31,8 +31,8 @@ impl Tile {
         }
     }
 
-    /// An artist, with the artist's own picture (Jellyfin's Primary image
-    /// for the artist) when there is one.
+    /// An artist. Melete has no pictures of artists, so a round placeholder
+    /// stands in.
     pub fn artist(item: &Item) -> Self {
         let subtitle = match item.child_count {
             Some(1) => "1 album".to_owned(),
@@ -43,16 +43,13 @@ impl Tile {
             id: item.id.clone(),
             title: item.name.clone(),
             subtitle,
-            art: item
-                .image_tags
-                .get("Primary")
-                .map(|tag| ArtKey::new(&item.id, tag)),
+            art: None,
             round: true,
         }
     }
 
-    /// The album a track belongs to, as a tile: what Home's played shelves show,
-    /// since Jellyfin keeps play statistics on tracks only.
+    /// The album a track belongs to, as a tile: what Home's most played shelf
+    /// shows, since plays are counted on tracks.
     pub fn album_of_track(item: &Item) -> Option<Self> {
         let album_id = item.album_id.clone()?;
         Some(Self {
@@ -64,9 +61,8 @@ impl Tile {
                 .or_else(|| item.artists.first().cloned())
                 .unwrap_or_default(),
             art: item
-                .album_primary_image_tag
-                .clone()
-                .map(|tag| ArtKey::new(album_id, tag)),
+                .has_cover
+                .then(|| ArtKey::new(album_id, aoide_melete::COVER_TAG)),
             round: false,
         })
     }
@@ -86,46 +82,55 @@ pub fn albums_of_tracks(tracks: &[Item], limit: usize) -> Vec<Tile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aoide_melete::{COVER_TAG, ItemKind};
 
-    fn item(json: serde_json::Value) -> Item {
-        serde_json::from_value(json).unwrap()
+    fn track(id: &str, album: Option<(&str, &str)>) -> Item {
+        Item {
+            id: id.into(),
+            name: id.into(),
+            album_id: album.map(|(id, _)| id.into()),
+            album: album.map(|(_, name)| name.into()),
+            has_cover: true,
+            ..Item::default()
+        }
     }
 
     #[test]
     fn played_tracks_become_their_albums_once_each() {
         let tracks = [
-            item(
-                serde_json::json!({"Id": "t1", "Name": "a", "AlbumId": "A", "Album": "Alpha", "AlbumPrimaryImageTag": "x"}),
-            ),
-            item(serde_json::json!({"Id": "t2", "Name": "b", "AlbumId": "B", "Album": "Beta"})),
-            item(serde_json::json!({"Id": "t3", "Name": "c", "AlbumId": "A", "Album": "Alpha"})),
-            item(serde_json::json!({"Id": "t4", "Name": "loose"})),
+            track("t1", Some(("A", "Alpha"))),
+            track("t2", Some(("B", "Beta"))),
+            track("t3", Some(("A", "Alpha"))),
+            track("t4", None),
         ];
         let tiles = albums_of_tracks(&tracks, 10);
         let ids: Vec<&str> = tiles.iter().map(|t| t.id.as_str()).collect();
         assert_eq!(ids, ["A", "B"]);
-        assert_eq!(tiles[0].art, Some(ArtKey::new("A", "x")));
-        assert_eq!(tiles[1].art, None);
+        assert_eq!(tiles[0].art, Some(ArtKey::new("A", COVER_TAG)));
         assert!(!tiles[0].round);
     }
 
     #[test]
-    fn an_artist_tile_is_round_and_shows_the_artist_s_own_picture() {
-        let pictured = Tile::artist(&item(serde_json::json!({
-            "Id": "ar1", "Name": "Mara Vey", "Type": "MusicArtist", "ChildCount": 2,
-            "ImageTags": {"Primary": "p1"},
-        })));
-        assert!(pictured.round);
-        assert_eq!(pictured.art, Some(ArtKey::new("ar1", "p1")));
-        assert_eq!(pictured.subtitle, "2 albums");
-        let bare = Tile::artist(&item(
-            serde_json::json!({"Id": "ar2", "Name": "Odd Hours", "Type": "MusicArtist"}),
-        ));
-        assert!(bare.round);
-        assert_eq!(bare.art, None, "a round placeholder stands in");
-        let album = Tile::album(&item(serde_json::json!({
-            "Id": "al1", "Name": "Low Tide Radio", "ImageTags": {"Primary": "c1"},
-        })));
+    fn an_artist_tile_is_round_with_a_placeholder() {
+        let artist = Tile::artist(&Item {
+            id: "1".into(),
+            name: "Mara Vey".into(),
+            kind: ItemKind::Artist,
+            child_count: Some(2),
+            ..Item::default()
+        });
+        assert!(artist.round);
+        assert_eq!(artist.art, None);
+        assert_eq!(artist.subtitle, "2 albums");
+        let album = Tile::album(&Item {
+            id: "2".into(),
+            name: "Low Tide Radio".into(),
+            kind: ItemKind::Album,
+            album_id: Some("2".into()),
+            has_cover: true,
+            ..Item::default()
+        });
         assert!(!album.round);
+        assert_eq!(album.art, Some(ArtKey::new("2", COVER_TAG)));
     }
 }

@@ -8,7 +8,7 @@ pub enum SidecarError {
         /// The request path, relative to the server address: `aoide/next`.
         path: String,
     },
-    /// HTTP 401: the Jellyfin token was revoked or never valid. Sign in again.
+    /// HTTP 401: the session token was revoked or never valid. Sign in again.
     #[error("the token was not accepted")]
     Unauthorized,
     /// HTTP 403: the token is fine but this user may not do this, such as sharing

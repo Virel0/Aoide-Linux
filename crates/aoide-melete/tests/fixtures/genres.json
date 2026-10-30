@@ -1,0 +1,12 @@
+[
+  {
+    "albums": 1,
+    "name": "Rock",
+    "tracks": 3
+  },
+  {
+    "albums": 1,
+    "name": "Jazz",
+    "tracks": 1
+  }
+]

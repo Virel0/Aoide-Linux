@@ -18,7 +18,7 @@
 pkgname=aoide-linux
 pkgver=0
 pkgrel=1
-pkgdesc="Aoide for Linux: a native Jellyfin music client with local playlists, play history, and sync with the Aoide iOS app"
+pkgdesc="Aoide for Linux: a native music client for Melete with local playlists, play history, and sync with the Aoide iOS app"
 arch=('x86_64')
 url="https://github.com/Virel0/Aoide-Linux"
 license=('GPL-3.0-or-later' 'OFL-1.1')

@@ -132,8 +132,8 @@ fn check_button(label: &'static str, on: bool, action: RowAction) -> Element<'st
         .into()
 }
 
-/// Add to Playlist's lists: Aoide's playlists, then Jellyfin's, both
-/// filtered by what is typed once there are enough to need it.
+/// Add to Playlist's list of Aoide playlists, filtered by what is typed once
+/// there are enough to need it.
 fn playlist_choices<'a>(menu: &'a Menu, view: &View<'a>) -> Column<'a, Message> {
     let mut lists = column![].spacing(2);
     if view.playlists.len() > actions::PLAYLIST_SEARCH_AFTER {
@@ -155,22 +155,6 @@ fn playlist_choices<'a>(menu: &'a Menu, view: &View<'a>) -> Column<'a, Message> 
                 .padding([4, 8])
                 .on_press(Message::Row(RowAction::AddTo(playlist.id.clone()))),
         );
-    }
-    lists = lists.push(heading("Jellyfin playlists"));
-    match &menu.jellyfin {
-        None => {}
-        Some(Err(error)) => lists = lists.push(secondary(error.as_str()).size(12)),
-        Some(Ok(jellyfin)) => {
-            for (id, name) in actions::matching(jellyfin, |p| p.1.as_str(), &menu.filter) {
-                lists = lists.push(
-                    button(text(name.as_str()).size(13))
-                        .width(Fill)
-                        .style(theme::row)
-                        .padding([4, 8])
-                        .on_press(Message::Row(RowAction::AddToJellyfin(id.clone()))),
-                );
-            }
-        }
     }
     lists
 }

@@ -1,0 +1,12 @@
+{
+  "content_type": "audio/flac",
+  "duration_seconds": 20.0,
+  "expires_at": 1793462875,
+  "format": "original",
+  "gapless": {
+    "encoder_delay": 0,
+    "padding": 0
+  },
+  "spatial": null,
+  "stream_url": "/api/v1/music/stream/TOKEN"
+}

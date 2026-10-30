@@ -1,6 +1,6 @@
 //! Genres: every genre, by name.
 
-use aoide_jellyfin::{Item, ListQuery, Page as ItemPage};
+use aoide_melete::Item;
 use iced::widget::{button, column, row, text};
 use iced::{Element, Task};
 
@@ -17,16 +17,12 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Loaded(Result<ItemPage<Item>, Failure>),
+    Loaded(Result<Vec<Item>, Failure>),
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
     let client = ctx.client.clone();
-    let query = ListQuery {
-        parent_id: ctx.library.map(str::to_owned),
-        ..ListQuery::default()
-    };
-    let task = fetch(ctx.key, async move { client.genres(&query).await }, |r| {
+    let task = fetch(ctx.key, async move { client.genres().await }, |r| {
         PageMsg::Genres(Message::Loaded(r))
     });
     (
@@ -42,7 +38,7 @@ impl State {
         match message {
             Message::Loaded(result) => {
                 self.genres = Load::from(
-                    result.map(|page| page.items.into_iter().map(|g| (g.id, g.name)).collect()),
+                    result.map(|genres| genres.into_iter().map(|g| (g.id, g.name)).collect()),
                 );
             }
         }

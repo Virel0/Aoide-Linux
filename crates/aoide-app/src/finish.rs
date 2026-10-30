@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use aoide_jellyfin::Item;
+use aoide_melete::Item;
 use aoide_store::{FinishCounts, FinishRate};
 
 use crate::store_worker::StoreHandle;
@@ -36,26 +36,22 @@ pub async fn finish_of(store: StoreHandle, ids: Vec<String>, of: &'static str) -
 }
 
 /// An artist's most played songs: by this listener's plays in the history,
-/// then by the server's count, each song once; songs nobody has played are
-/// left out, so an unplayed artist shows no list rather than an arbitrary one.
+/// each song once; unplayed songs are left out, so an unplayed artist shows
+/// no list rather than an arbitrary one.
 pub fn top_songs(items: &[Item], local_plays: &HashMap<String, i64>, limit: usize) -> Vec<Item> {
     let mut seen = std::collections::HashSet::new();
-    let mut ranked: Vec<(i64, u32, &Item)> = items
+    let mut ranked: Vec<(i64, &Item)> = items
         .iter()
         .filter(|item| seen.insert(item.id.as_str()))
-        .map(|item| {
-            let local = local_plays.get(&item.id).copied().unwrap_or(0);
-            let server = item.user_data.as_ref().map_or(0, |u| u.play_count);
-            (local, server, item)
-        })
-        .filter(|(local, server, _)| *local > 0 || *server > 0)
+        .map(|item| (local_plays.get(&item.id).copied().unwrap_or(0), item))
+        .filter(|(plays, _)| *plays > 0)
         .collect();
     // Stable: ties keep the album order they came in.
-    ranked.sort_by_key(|a| std::cmp::Reverse((a.0, a.1)));
+    ranked.sort_by_key(|(plays, _)| std::cmp::Reverse(*plays));
     ranked
         .into_iter()
         .take(limit)
-        .map(|(_, _, item)| item.clone())
+        .map(|(_, item)| item.clone())
         .collect()
 }
 
@@ -83,28 +79,26 @@ mod tests {
         assert_eq!(finish_line([], "x"), None);
     }
 
-    fn item(id: &str, server_plays: u32) -> Item {
-        serde_json::from_value(serde_json::json!({
-            "Id": id, "Name": id, "Type": "Audio",
-            "UserData": {"PlayCount": server_plays}
-        }))
-        .unwrap()
+    fn item(id: &str) -> Item {
+        Item {
+            id: id.into(),
+            name: id.into(),
+            ..Item::default()
+        }
     }
 
     #[test]
     fn top_songs_rank_this_listeners_plays_first() {
-        let items = [
-            item("a", 9),
-            item("b", 1),
-            item("c", 0),
-            item("d", 4),
-            item("a", 9),
-        ];
-        let local = HashMap::from([("b".to_owned(), 5), ("c".to_owned(), 2)]);
+        let items = [item("a"), item("b"), item("c"), item("d"), item("a")];
+        let local = HashMap::from([
+            ("b".to_owned(), 5),
+            ("c".to_owned(), 2),
+            ("a".to_owned(), 2),
+        ]);
         let top = top_songs(&items, &local, 3);
         let ids: Vec<&str> = top.iter().map(|i| i.id.as_str()).collect();
-        assert_eq!(ids, ["b", "c", "a"]);
-        assert!(top_songs(&[item("x", 0)], &HashMap::new(), 10).is_empty());
+        assert_eq!(ids, ["b", "a", "c"], "a tie keeps the album order");
+        assert!(top_songs(&[item("x")], &HashMap::new(), 10).is_empty());
     }
 
     #[tokio::test]

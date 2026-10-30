@@ -52,7 +52,7 @@ pub enum Command {
 /// What is playing, as a desktop controller shows it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NowPlaying {
-    /// The Jellyfin id of the current track.
+    /// The id of the current track.
     pub track_id: Option<String>,
     pub title: String,
     pub artist: String,
@@ -273,12 +273,12 @@ pub fn art_url(cached: &Path) -> Option<String> {
     if !cached.is_file() {
         return None;
     }
-    aoide_jellyfin::Url::from_file_path(cached)
+    aoide_melete::Url::from_file_path(cached)
         .ok()
         .map(String::from)
 }
 
-/// A desktop request as an app command. `current` is the Jellyfin id of what
+/// A desktop request as an app command. `current` is the id of what
 /// plays now: a position for another track is dropped.
 pub fn from_mpris(command: aoide_mpris::Command, current: Option<&str>) -> Option<Command> {
     use aoide_mpris::Command as M;

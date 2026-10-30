@@ -45,9 +45,9 @@ Then make a key for the app:
 docker compose exec libretranslate ltmanage keys add 120
 ```
 
-Put it behind the same HTTPS reverse proxy as Jellyfin (for example
+Put it behind the same HTTPS reverse proxy as Melete (for example
 `translate.example.net`). An address on your home network works over plain
-HTTP, as Jellyfin's does, but HTTPS is better anywhere else.
+HTTP, as Melete's does, but HTTPS is better anywhere else.
 
 Nothing here talks to a hosted translation service.
 

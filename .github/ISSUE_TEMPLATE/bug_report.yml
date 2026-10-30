@@ -51,10 +51,10 @@ body:
     validations:
       required: true
   - type: input
-    id: jellyfin
+    id: melete
     attributes:
-      label: Jellyfin version, and the sidecar's if installed
-      placeholder: "Jellyfin 10.11.0, sidecar 1.18.0.0"
+      label: Melete version
+      placeholder: "Melete 0.1.0"
   - type: textarea
     id: logs
     attributes:

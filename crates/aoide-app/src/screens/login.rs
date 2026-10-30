@@ -1,9 +1,7 @@
-//! The sign-in screen: server address, username, password, Connect, and
-//! Find Servers on This Network (discover.rs) to pick an address instead of
-//! typing one.
+//! The sign-in screen: server address, username, password and Connect, or
+//! Quick Connect: a code to approve in Melete's web UI instead of a password.
 
-use aoide_jellyfin::DiscoveredServer;
-use iced::widget::{button, column, container, row, text, text_input};
+use iced::widget::{button, column, container, text, text_input};
 use iced::{Center, Element, Fill, Length};
 
 use crate::session::SignInForm;
@@ -18,10 +16,8 @@ pub struct State {
     pub form: SignInForm,
     pub error: Option<String>,
     pub busy: bool,
-    /// The servers found on the network: `None` before looking, `Err` when
-    /// the search itself failed.
-    pub found: Option<Result<Vec<DiscoveredServer>, String>>,
-    pub finding: bool,
+    /// Quick Connect's code while it waits to be approved.
+    pub quick: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -32,11 +28,12 @@ pub enum Message {
     /// Enter in a field: on to the next one.
     Next(&'static str),
     Submit,
-    /// Find Servers on This Network.
-    Find,
-    Found(Result<Vec<DiscoveredServer>, String>),
-    /// A found server's address, picked.
-    Pick(String),
+    /// Quick Connect pressed.
+    QuickConnect,
+    /// A Quick Connect code to show, or why there is none.
+    QuickStarted(Result<String, String>),
+    /// Stop waiting for the code to be approved.
+    CancelQuick,
 }
 
 /// What the app should do after a form message.
@@ -47,8 +44,10 @@ pub enum Action {
     /// Sign in with this form. The password has already been cleared from the
     /// screen's own copy.
     SignIn(SignInForm),
-    /// Look for servers on the network.
-    FindServers,
+    /// Start Quick Connect with this server.
+    StartQuickConnect(String),
+    /// Stop asking whether the code was approved.
+    StopQuickConnect,
 }
 
 impl State {
@@ -92,22 +91,26 @@ impl State {
                 self.form.password.clear();
                 Action::SignIn(form)
             }
-            Message::Find => {
-                if self.finding || self.busy {
+            Message::QuickConnect => {
+                if self.busy || self.form.server.trim().is_empty() {
                     return Action::None;
                 }
-                self.finding = true;
-                Action::FindServers
+                self.busy = true;
+                self.error = None;
+                Action::StartQuickConnect(self.form.server.clone())
             }
-            Message::Found(result) => {
-                self.finding = false;
-                self.found = Some(result);
+            Message::QuickStarted(Ok(code)) => {
+                self.quick = Some(code);
                 Action::None
             }
-            Message::Pick(address) => {
-                self.form.server = address;
-                self.found = None;
-                Action::Focus(USERNAME)
+            Message::QuickStarted(Err(error)) => {
+                self.failed(error);
+                Action::None
+            }
+            Message::CancelQuick => {
+                self.quick = None;
+                self.busy = false;
+                Action::StopQuickConnect
             }
         }
     }
@@ -124,6 +127,7 @@ impl State {
     /// The server answered no.
     pub fn failed(&mut self, error: String) {
         self.busy = false;
+        self.quick = None;
         self.error = Some(error);
     }
 
@@ -136,7 +140,7 @@ impl State {
         };
         let editable = !self.busy;
 
-        let server = text_input("jellyfin.local:8096", &self.form.server)
+        let server = text_input("melete.local:8100", &self.form.server)
             .id(SERVER)
             .on_input_maybe(editable.then_some(Message::Server))
             .on_submit(Message::Next(USERNAME))
@@ -172,15 +176,14 @@ impl State {
 
         let mut form = column![
             text("Aoide").size(34).font(bold),
-            text("Sign in to your Jellyfin server.").style(|t| text::Style {
+            text("Sign in to your Melete server.").style(|t| text::Style {
                 color: Some(theme::secondary(t)),
             }),
             column![
                 label("Server"),
                 server,
-                self.found_view(editable),
                 text(
-                    "Home addresses (jellyfin.local, or a local network IP) connect over plain HTTP; \
+                    "Home addresses (melete.local, or a local network IP) connect over plain HTTP; \
                      anything else uses HTTPS. Type a full address to choose."
                 )
                 .size(12)
@@ -204,77 +207,52 @@ impl State {
             );
         }
         form = form.push(connect);
+        form = form.push(self.quick_view(editable));
 
         container(form).center(Fill).style(theme::page).into()
     }
 }
 
 impl State {
-    /// Find Servers on This Network, and what it found.
-    fn found_view(&self, editable: bool) -> Element<'_, Message> {
+    /// Quick Connect: the button, or the code while it waits.
+    fn quick_view(&self, editable: bool) -> Element<'_, Message> {
         let quiet = |t: &iced::Theme| text::Style {
             color: Some(theme::secondary(t)),
         };
-        let mut part = column![
-            button(
-                text(if self.finding {
-                    "Looking…"
-                } else {
-                    "Find servers on this network"
-                })
-                .size(13),
+        let Some(code) = &self.quick else {
+            return button(
+                text("Sign in with Quick Connect")
+                    .width(Fill)
+                    .align_x(Center),
             )
+            .width(Fill)
+            .padding(10)
             .style(theme::tonal)
-            .padding([4, 10])
-            .on_press_maybe((editable && !self.finding).then_some(Message::Find)),
+            .on_press_maybe(
+                (editable && !self.form.server.trim().is_empty()).then_some(Message::QuickConnect),
+            )
+            .into();
+        };
+        column![
+            text(code.as_str())
+                .size(34)
+                .font(crate::widgets::BOLD)
+                .width(Fill)
+                .align_x(Center),
+            text(
+                "In Melete's web UI, signed in on another device, open Quick Connect and enter \
+                 this code. It works for five minutes; this window signs in once it is approved."
+            )
+            .size(13)
+            .style(quiet),
+            button(text("Cancel").width(Fill).align_x(Center))
+                .width(Fill)
+                .padding(8)
+                .style(theme::tonal)
+                .on_press(Message::CancelQuick),
         ]
-        .spacing(4);
-        match &self.found {
-            None => {}
-            Some(Err(error)) => {
-                part = part.push(
-                    text(format!("The network couldn't be searched: {error}"))
-                        .size(12)
-                        .style(quiet),
-                );
-            }
-            Some(Ok(servers)) if servers.is_empty() => {
-                part = part.push(
-                    text(
-                        "No server answered. Its discovery may be off, or a firewall in the way; \
-                         type the address instead.",
-                    )
-                    .size(12)
-                    .style(quiet),
-                );
-            }
-            Some(Ok(servers)) => {
-                for server in servers {
-                    part = part.push(
-                        button(
-                            row![
-                                text(crate::discover::label(server)).size(14).width(Fill),
-                                // A server with no name is already listed by address.
-                                text(if server.name.trim().is_empty() {
-                                    ""
-                                } else {
-                                    server.address.as_str()
-                                })
-                                .size(12)
-                                .style(quiet),
-                            ]
-                            .spacing(8)
-                            .align_y(Center),
-                        )
-                        .width(Fill)
-                        .padding([6, 10])
-                        .style(theme::row)
-                        .on_press_maybe(editable.then(|| Message::Pick(server.address.clone()))),
-                    );
-                }
-            }
-        }
-        part.into()
+        .spacing(10)
+        .into()
     }
 }
 
@@ -338,25 +316,29 @@ mod tests {
     }
 
     #[test]
-    fn a_found_server_fills_in_the_address() {
+    fn quick_connect_needs_an_address_and_runs_once() {
         let mut state = State::default();
-        assert_eq!(state.update(Message::Find), Action::FindServers);
-        // Once at a time.
-        assert_eq!(state.update(Message::Find), Action::None);
-        let server = DiscoveredServer {
-            id: "s1".into(),
-            name: "Living Room".into(),
-            address: "http://192.0.2.10:8096".into(),
-            endpoint_address: None,
-        };
-        state.update(Message::Found(Ok(vec![server])));
-        assert!(!state.finding);
+        assert_eq!(state.update(Message::QuickConnect), Action::None);
+        state.update(Message::Server("music.example.net".into()));
         assert_eq!(
-            state.update(Message::Pick("http://192.0.2.10:8096".into())),
-            Action::Focus(USERNAME)
+            state.update(Message::QuickConnect),
+            Action::StartQuickConnect("music.example.net".into())
         );
-        assert_eq!(state.form.server, "http://192.0.2.10:8096");
-        assert!(state.found.is_none());
+        assert_eq!(state.update(Message::QuickConnect), Action::None);
+        state.update(Message::QuickStarted(Ok("482913".into())));
+        assert_eq!(state.quick.as_deref(), Some("482913"));
+        assert_eq!(state.update(Message::CancelQuick), Action::StopQuickConnect);
+        assert!(state.quick.is_none() && !state.busy);
+    }
+
+    #[test]
+    fn a_quick_connect_failure_unlocks_the_form() {
+        let mut state = State::new(Some("music.example.net".into()));
+        state.update(Message::QuickConnect);
+        state.update(Message::QuickStarted(Ok("1".into())));
+        state.failed("The code ran out before it was approved.".into());
+        assert!(state.quick.is_none() && !state.busy);
+        assert!(state.error.is_some());
     }
 
     #[test]

@@ -1,8 +1,11 @@
 //! Who is signed in: the session's states, signing in and out, and the words
 //! a failure is reported in.
 //!
-//! Signing in checks the address really is Jellyfin before asking for the
-//! password, so a wrong address says so rather than "wrong password". The
+//! Signing in checks the address really is Melete before asking for the
+//! password, so a wrong address says so rather than "wrong password". Quick
+//! Connect signs in without a password: the app shows a code, someone signed
+//! in to Melete's web UI approves it, and the app, asking every few seconds,
+//! gets a session of its own. The
 //! token goes to the system keyring before anything else is written; if the
 //! keyring will not keep it, signing in fails rather than leaving a login that
 //! vanishes at the next launch. Signing out never waits on the network: the
@@ -11,7 +14,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use aoide_jellyfin::{Credentials, Device, Error, JellyfinClient, ServerAddress};
+use aoide_melete::{Credentials, Device, Error, MeleteClient, QuickConnectCode, ServerAddress};
 
 use crate::config::Account;
 use crate::credentials::CredentialStore;
@@ -42,7 +45,7 @@ pub enum Event {
     SignInFailed,
     SignOut,
     /// The server stopped accepting the token: the password changed, or the
-    /// device was removed from the dashboard.
+    /// session was signed out from Melete's web UI.
     TokenRejected,
 }
 
@@ -104,7 +107,7 @@ pub struct SignInForm {
 
 impl SignInForm {
     /// Checks the form before anything is sent: an address that parses, and a
-    /// username. An empty password is allowed; Jellyfin allows one.
+    /// username. The password is sent as typed; the server decides.
     pub fn validate(&self) -> Result<(ServerAddress, String), String> {
         if self.server.trim().is_empty() {
             return Err("Enter your server's address.".to_owned());
@@ -126,8 +129,11 @@ impl SignInForm {
 pub fn describe(error: &Error) -> String {
     match error {
         Error::MalformedAddress(raw) => format!("\"{}\" isn't a valid server address.", raw.trim()),
-        Error::NotJellyfin(host) => {
-            format!("{host} responded, but doesn't look like a Jellyfin server.")
+        Error::NotMelete(host) => {
+            format!("{host} responded, but doesn't look like a Melete server.")
+        }
+        Error::Http { status: 429, .. } => {
+            "Too many tries with this username. Wait 15 minutes, then try again.".to_owned()
         }
         Error::Unauthorized => "Your username or password wasn't accepted.".to_owned(),
         // The rest as every screen words them: a sentence, never the
@@ -139,11 +145,22 @@ pub fn describe(error: &Error) -> String {
 /// A signed-in session's connection.
 #[derive(Debug, Clone)]
 pub struct Connection {
-    pub client: JellyfinClient,
+    pub client: MeleteClient,
     pub account: Account,
+    /// The runtime the client's connections live on, for the player's
+    /// downloads to ask for stream links from their own threads.
+    pub runtime: tokio::runtime::Handle,
 }
 
 impl Connection {
+    /// Where the player asks for stream links.
+    pub fn streams(&self) -> crate::playback::tracks::Streams {
+        crate::playback::tracks::Streams {
+            client: self.client.clone(),
+            runtime: self.runtime.clone(),
+        }
+    }
+
     pub fn token(&self) -> &str {
         self.client
             .credentials()
@@ -159,17 +176,64 @@ pub async fn sign_in(
     keyring: Arc<dyn CredentialStore>,
 ) -> Result<Connection, String> {
     let (address, username) = form.validate()?;
-    let anonymous = JellyfinClient::new(address.clone(), device).map_err(|e| describe(&e))?;
-    anonymous
-        .public_system_info()
-        .await
-        .map_err(|e| describe(&e))?;
+    let anonymous = probe(address, device).await?;
     let credentials = anonymous
-        .authenticate_by_name(&username, &form.password)
+        .sign_in(&username, &form.password)
         .await
         .map_err(|e| describe(&e))?;
+    keep(anonymous, credentials, keyring).await
+}
+
+/// Quick Connect's first half: the address is checked and a code made for
+/// this device, to show until it is approved or runs out.
+pub async fn start_quick_connect(
+    server: String,
+    device: Device,
+) -> Result<(MeleteClient, QuickConnectCode), String> {
+    if server.trim().is_empty() {
+        return Err("Enter your server's address.".to_owned());
+    }
+    let address = ServerAddress::parse(&server).map_err(|e| describe(&e))?;
+    let anonymous = probe(address, device).await?;
+    let code = anonymous
+        .start_quick_connect()
+        .await
+        .map_err(|e| describe(&e))?;
+    Ok((anonymous, code))
+}
+
+/// Quick Connect's second half, asked every few seconds: `Ok(None)` while the
+/// code waits; once approved, the token is kept as signing in keeps it.
+pub async fn poll_quick_connect(
+    anonymous: MeleteClient,
+    secret: String,
+    keyring: Arc<dyn CredentialStore>,
+) -> Result<Option<Connection>, String> {
+    match anonymous.poll_quick_connect(&secret).await {
+        Ok(None) => Ok(None),
+        Ok(Some(credentials)) => keep(anonymous, credentials, keyring).await.map(Some),
+        Err(Error::NotFound { .. }) => {
+            Err("The code ran out before it was approved. Start again for a new one.".to_owned())
+        }
+        Err(error) => Err(describe(&error)),
+    }
+}
+
+/// A signed-out client for the address, once it answers as Melete does.
+async fn probe(address: ServerAddress, device: Device) -> Result<MeleteClient, String> {
+    let anonymous = MeleteClient::new(address, device).map_err(|e| describe(&e))?;
+    anonymous.server_info().await.map_err(|e| describe(&e))?;
+    Ok(anonymous)
+}
+
+/// Keeps a new session's token in the keyring, then hands the session over.
+async fn keep(
+    anonymous: MeleteClient,
+    credentials: Credentials,
+    keyring: Arc<dyn CredentialStore>,
+) -> Result<Connection, String> {
     let account = Account {
-        server: address.to_string(),
+        server: anonymous.address().to_string(),
         user_id: credentials.user_id.clone(),
         username: credentials.username.clone(),
     };
@@ -181,6 +245,7 @@ pub async fn sign_in(
     Ok(Connection {
         client: anonymous.with_credentials(credentials),
         account,
+        runtime: tokio::runtime::Handle::current(),
     })
 }
 
@@ -199,14 +264,18 @@ pub async fn restore(
         return Ok(None);
     };
     let address = ServerAddress::parse(&account.server).map_err(|e| describe(&e))?;
-    let client = JellyfinClient::new(address, device)
+    let client = MeleteClient::new(address, device)
         .map_err(|e| describe(&e))?
         .with_credentials(Credentials {
             user_id: account.user_id.clone(),
             access_token: token,
             username: account.username.clone(),
         });
-    Ok(Some(Connection { client, account }))
+    Ok(Some(Connection {
+        client,
+        account,
+        runtime: tokio::runtime::Handle::current(),
+    }))
 }
 
 /// Forgets the token. Errors are reported but change nothing: the session is
@@ -295,11 +364,11 @@ mod tests {
             form.validate().unwrap_err(),
             "\"ftp://example.com\" isn't a valid server address."
         );
-        form.server = "jellyfin.local:8096".into();
+        form.server = "melete.local:8100".into();
         assert_eq!(form.validate().unwrap_err(), "Enter your username.");
         form.username = "  alice ".into();
         let (address, username) = form.validate().unwrap();
-        assert_eq!(address.to_string(), "http://jellyfin.local:8096");
+        assert_eq!(address.to_string(), "http://melete.local:8100");
         assert_eq!(username, "alice");
         assert!(form.can_submit());
     }
@@ -311,8 +380,8 @@ mod tests {
             "Your username or password wasn't accepted."
         );
         assert_eq!(
-            describe(&Error::NotJellyfin("music.example.net".into())),
-            "music.example.net responded, but doesn't look like a Jellyfin server."
+            describe(&Error::NotMelete("music.example.net".into())),
+            "music.example.net responded, but doesn't look like a Melete server."
         );
         let unreachable = describe(&Error::Transport(
             "tcp connect error: Connection refused (os error 61)".into(),
@@ -338,16 +407,24 @@ mod tests {
         Device::new("Test", "device-1")
     }
 
-    async fn jellyfin() -> MockServer {
+    async fn melete() -> MockServer {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/System/Info/Public"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "Id": "server-1", "Version": "10.11.2", "ServerName": "Test"
-            })))
+            .and(path("/api/v1/health"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"status": "ok", "version": "0.1.0"})),
+            )
             .mount(&server)
             .await;
         server
+    }
+
+    fn session(id: i64, username: &str, token: &str) -> serde_json::Value {
+        serde_json::json!({
+            "token": token,
+            "user": {"id": id, "username": username, "is_admin": false},
+        })
     }
 
     fn form(server: &MockServer, password: &str) -> SignInForm {
@@ -360,22 +437,20 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn signing_in_keeps_the_token_and_never_the_password() {
-        let server = jellyfin().await;
+        let server = melete().await;
         Mock::given(method("POST"))
-            .and(path("/Users/AuthenticateByName"))
-            .and(body_json(
-                serde_json::json!({"Username": "alice", "Pw": "pw-123"}),
-            ))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "User": {"Id": "u1", "Name": "Alice"}, "AccessToken": "tok-1"
+            .and(path("/api/v1/auth/login"))
+            .and(body_json(serde_json::json!({
+                "username": "alice", "password": "pw-123", "device_name": "Test"
             })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(session(1, "Alice", "tok-1")))
             .mount(&server)
             .await;
         let keyring = Arc::new(MemoryStore::default());
         let connection = sign_in(form(&server, "pw-123"), device(), keyring.clone())
             .await
             .unwrap();
-        assert_eq!(connection.account.user_id, "u1");
+        assert_eq!(connection.account.user_id, "1");
         assert_eq!(connection.account.username, "Alice");
         assert_eq!(connection.token(), "tok-1");
         let key = connection.account.keyring_key();
@@ -402,9 +477,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_wrong_password_says_so() {
-        let server = jellyfin().await;
+        let server = melete().await;
         Mock::given(method("POST"))
-            .and(path("/Users/AuthenticateByName"))
+            .and(path("/api/v1/auth/login"))
             .respond_with(ResponseTemplate::new(401))
             .mount(&server)
             .await;
@@ -419,10 +494,10 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn something_that_isnt_jellyfin_is_named_before_the_password_is_sent() {
+    async fn something_that_isnt_melete_is_named_before_the_password_is_sent() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/System/Info/Public"))
+            .and(path("/api/v1/health"))
             .respond_with(ResponseTemplate::new(200).set_body_string("<html>router</html>"))
             .mount(&server)
             .await;
@@ -434,7 +509,7 @@ mod tests {
         .await
         .unwrap_err();
         assert!(
-            error.ends_with("doesn't look like a Jellyfin server."),
+            error.ends_with("doesn't look like a Melete server."),
             "{error}"
         );
         let sent_password = server
@@ -442,18 +517,16 @@ mod tests {
             .await
             .unwrap()
             .iter()
-            .any(|r| r.url.path().contains("Authenticate"));
+            .any(|r| r.url.path().contains("login"));
         assert!(!sent_password);
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_keyring_that_refuses_fails_the_sign_in() {
-        let server = jellyfin().await;
+        let server = melete().await;
         Mock::given(method("POST"))
-            .and(path("/Users/AuthenticateByName"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "User": {"Id": "u1", "Name": "Alice"}, "AccessToken": "tok-1"
-            })))
+            .and(path("/api/v1/auth/login"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(session(1, "Alice", "tok-1")))
             .mount(&server)
             .await;
         let error = sign_in(
@@ -467,14 +540,67 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn quick_connect_waits_then_keeps_the_approved_session() {
+        let server = melete().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/auth/quick-connect"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "code": "482913", "secret": "s3cret", "expires_in": 300
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/auth/quick-connect/poll"))
+            .respond_with(ResponseTemplate::new(202))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/auth/quick-connect/poll"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(session(2, "bea", "tok-2")))
+            .mount(&server)
+            .await;
+        let keyring = Arc::new(MemoryStore::default());
+        let (client, code) = start_quick_connect(server.uri(), device()).await.unwrap();
+        assert_eq!(code.code, "482913");
+        let waiting = poll_quick_connect(client.clone(), code.secret.clone(), keyring.clone())
+            .await
+            .unwrap();
+        assert!(waiting.is_none());
+        let connection = poll_quick_connect(client, code.secret, keyring.clone())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(connection.account.username, "bea");
+        let key = connection.account.keyring_key();
+        assert_eq!(keyring.get(&key).unwrap().as_deref(), Some("tok-2"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_quick_connect_code_that_ran_out_says_start_again() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/auth/quick-connect/poll"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let client =
+            MeleteClient::new(ServerAddress::parse(&server.uri()).unwrap(), device()).unwrap();
+        let error = poll_quick_connect(client, "old".into(), Arc::new(MemoryStore::default()))
+            .await
+            .unwrap_err();
+        assert!(error.starts_with("The code ran out"), "{error}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn telling_the_server_gives_up_after_the_grace_period() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/Sessions/Logout"))
+            .and(path("/api/v1/auth/logout"))
             .respond_with(ResponseTemplate::new(204).set_delay(Duration::from_secs(30)))
             .mount(&server)
             .await;
-        let client = JellyfinClient::new(ServerAddress::parse(&server.uri()).unwrap(), device())
+        let client = MeleteClient::new(ServerAddress::parse(&server.uri()).unwrap(), device())
             .unwrap()
             .with_credentials(Credentials {
                 user_id: "u1".into(),
@@ -482,7 +608,7 @@ mod tests {
                 username: "alice".into(),
             });
         let started = std::time::Instant::now();
-        crate::playing::leave_server(client, None).await;
+        crate::playing::leave_server(client).await;
         assert!(started.elapsed() < SIGN_OUT_GRACE + Duration::from_secs(2));
     }
 }

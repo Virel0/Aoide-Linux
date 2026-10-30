@@ -1,10 +1,9 @@
-//! Signing in and out: the login form, restoring a saved login, claiming
-//! the store for the account, and finding its music library.
+//! Signing in and out: the login form (or Quick Connect), restoring a saved
+//! login, and claiming the store for the account.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use aoide_jellyfin::Item;
 use aoide_sidecar::{SidecarClient, SyncEngine};
 use aoide_store::AccountClaim;
 use iced::Task;
@@ -15,11 +14,13 @@ use crate::actions::Menu;
 use crate::lyrics_panel::LyricsState;
 use crate::nav::BackStack;
 use crate::playback::infinity::InfinityTrigger;
-use crate::playback::report::Reporter;
 use crate::playback::tracks::Measures;
 use crate::screens::{PlaylistSummary, Section, login};
 use crate::session::{self, Connection, Effect, Event, Phase};
 use crate::sync::{self, SyncThrottle};
+
+/// How often a Quick Connect code is asked about while it waits.
+const QUICK_CONNECT_POLL: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// Everything that exists only while signed in.
 pub(crate) struct Signed {
@@ -36,10 +37,6 @@ pub(crate) struct Signed {
     pub unknown_owner: bool,
     /// Erase Them was pressed: asking once more before erasing.
     pub confirm_erase: bool,
-    /// The music library to stay inside; `None` until found, or if the
-    /// server has none (everything is shown then).
-    pub library: Option<String>,
-    pub library_known: bool,
     pub section: Section,
     pub nav: Option<BackStack<Entry>>,
     pub next_key: u64,
@@ -62,7 +59,8 @@ pub(crate) struct Signed {
     pub measure_asked: HashSet<String>,
     /// The sidecar answers `/aoide/next` (false after a 404).
     pub next_available: bool,
-    pub reporter: Reporter,
+    /// When the saved queue last followed the playhead, by the app's clock.
+    pub queue_saved_at: u64,
     pub infinity: InfinityTrigger,
     pub lyrics: Option<LyricsState>,
     /// The lyric line last scrolled to.
@@ -92,8 +90,6 @@ impl Signed {
             sync_status: None,
             unknown_owner: false,
             confirm_erase: false,
-            library: None,
-            library_known: false,
             section: Section::Home,
             nav: None,
             next_key: 1,
@@ -108,7 +104,7 @@ impl Signed {
             measuring: false,
             measure_asked: HashSet::new(),
             next_available: true,
-            reporter: Reporter::default(),
+            queue_saved_at: 0,
             infinity: InfinityTrigger::default(),
             lyrics: None,
             lyric_line: None,
@@ -131,10 +127,80 @@ impl App {
                     Message::SignedIn,
                 )
             }
-            login::Action::FindServers => Task::perform(crate::discover::find(), |r| {
-                Message::Login(login::Message::Found(r))
-            }),
+            login::Action::StartQuickConnect(server) => {
+                self.phase = session::transition(self.phase, Event::Submitted).0;
+                self.quick_attempts += 1;
+                let attempt = self.quick_attempts;
+                Task::perform(
+                    session::start_quick_connect(server, device(&self.config)),
+                    move |result| Message::QuickStarted(attempt, result),
+                )
+            }
+            login::Action::StopQuickConnect => {
+                self.quick = None;
+                self.phase = session::transition(self.phase, Event::SignInFailed).0;
+                Task::none()
+            }
         }
+    }
+
+    pub(super) fn quick_started(
+        &mut self,
+        attempt: u64,
+        result: Result<(aoide_melete::MeleteClient, aoide_melete::QuickConnectCode), String>,
+    ) -> Task<Message> {
+        if attempt != self.quick_attempts || self.phase != Phase::SigningIn {
+            return Task::none();
+        }
+        match result {
+            Ok((client, code)) => {
+                self.login
+                    .update(login::Message::QuickStarted(Ok(code.code)));
+                self.quick = Some((attempt, client, code.secret));
+                self.poll_quick()
+            }
+            Err(error) => self.signed_in(Err(error)),
+        }
+    }
+
+    pub(super) fn quick_polled(
+        &mut self,
+        attempt: u64,
+        result: Result<Option<Connection>, String>,
+    ) -> Task<Message> {
+        if self
+            .quick
+            .as_ref()
+            .is_none_or(|(waiting, ..)| *waiting != attempt)
+        {
+            return Task::none();
+        }
+        match result {
+            Ok(None) => self.poll_quick(),
+            Ok(Some(connection)) => {
+                self.quick = None;
+                self.signed_in(Ok(connection))
+            }
+            Err(error) => {
+                self.quick = None;
+                self.signed_in(Err(error))
+            }
+        }
+    }
+
+    /// Asks about the waiting code again in a few seconds.
+    fn poll_quick(&self) -> Task<Message> {
+        let Some((attempt, client, secret)) = self.quick.clone() else {
+            return Task::none();
+        };
+        let keyring = Arc::clone(&self.keyring);
+        Task::perform(
+            async move {
+                tokio::time::sleep(QUICK_CONNECT_POLL).await;
+                session::poll_quick_connect(client, secret, keyring).await
+            },
+            move |result| Message::QuickPolled(attempt, result),
+        )
     }
 
     pub(super) fn restored(&mut self, result: Result<Option<Connection>, String>) -> Task<Message> {
@@ -198,7 +264,7 @@ impl App {
             return Task::none();
         };
         signed.unknown_owner = false;
-        let user = signed.connection.account.user_id.clone();
+        let user = signed.connection.account.store_owner();
         self.store.send(move |w| {
             let _ = if keep {
                 w.store.keep_and_claim(&user)
@@ -214,19 +280,6 @@ impl App {
         self.login.error =
             Some("The server no longer accepts this login. Sign in again.".to_owned());
         task
-    }
-
-    pub(super) fn libraries(&mut self, result: Result<Vec<Item>, String>) -> Task<Message> {
-        let Some(signed) = self.session.as_mut() else {
-            return Task::none();
-        };
-        signed.library = result
-            .ok()
-            .and_then(|libraries| libraries.into_iter().next())
-            .map(|library| library.id);
-        signed.library_known = true;
-        let section = signed.section.clone();
-        self.show_section(section)
     }
 
     /// Signs in (or restores): records the account, then runs the effects.
@@ -263,7 +316,12 @@ impl App {
                 // The sync and everything that reads the store wait for the
                 // claim (see `Message::Claimed`).
                 Effect::AdoptAccount => tasks.push(self.adopt_account()),
-                Effect::Connect => tasks.push(self.find_library()),
+                Effect::Connect => {
+                    let section = self.session.as_ref().map(|s| s.section.clone());
+                    if let Some(section) = section {
+                        tasks.push(self.show_section(section));
+                    }
+                }
                 _ => {}
             }
         }
@@ -285,7 +343,7 @@ impl App {
         let Some(signed) = &self.session else {
             return Task::none();
         };
-        let user = signed.connection.account.user_id.clone();
+        let user = signed.connection.account.store_owner();
         let store = self.store.clone();
         Task::perform(
             async move {
@@ -298,22 +356,6 @@ impl App {
         )
     }
 
-    fn find_library(&self) -> Task<Message> {
-        let Some(signed) = &self.session else {
-            return Task::none();
-        };
-        let client = signed.connection.client.clone();
-        Task::perform(
-            async move { client.music_libraries().await },
-            |result| match result {
-                Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
-                result => {
-                    Message::Libraries(result.map_err(|e| crate::failure::describe(&e).to_string()))
-                }
-            },
-        )
-    }
-
     /// Signs out, or drops a rejected login. The screen changes now; nothing
     /// here waits on the network.
     pub(super) fn leave(&mut self, event: Event) -> Task<Message> {
@@ -323,7 +365,6 @@ impl App {
         }
         self.phase = phase;
         crate::failure::set_server(None);
-        let report = self.final_report();
         let Some(signed) = self.session.take() else {
             return Task::none();
         };
@@ -354,10 +395,9 @@ impl App {
                 }
                 Effect::NotifyServer => {
                     let client = signed.connection.client.clone();
-                    tasks.push(Task::perform(
-                        crate::playing::leave_server(client, report.clone()),
-                        |()| Message::Ignore,
-                    ));
+                    tasks.push(Task::perform(crate::playing::leave_server(client), |()| {
+                        Message::Ignore
+                    }));
                 }
                 Effect::AdoptAccount | Effect::Connect => {}
             }

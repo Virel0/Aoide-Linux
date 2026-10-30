@@ -1,8 +1,7 @@
 //! What was actually listened to, into the local store.
 //!
-//! Alongside the Jellyfin report, not instead of it: the server counts a play
-//! when audio starts, so skipping through an album marks every track played.
-//! Here a play is opened when a track is heard to start and closed when the
+//! The play events sync carries to Melete, which keeps the household's
+//! history from them. A play is opened when a track is heard to start and closed when the
 //! next one starts or playback stops, with the furthest point reached, and
 //! the store's classifier decides whether that was a play or a skip.
 //!

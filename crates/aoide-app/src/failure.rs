@@ -5,7 +5,7 @@
 use std::fmt;
 use std::sync::RwLock;
 
-use aoide_jellyfin::Error;
+use aoide_melete::Error;
 
 /// Something that failed, as the listener reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,15 +21,6 @@ impl Failure {
         Self {
             summary: summary.into(),
             details,
-        }
-    }
-
-    /// The same failure after a sentence saying what it stopped: "The
-    /// playlist couldn't be renamed."
-    pub fn after(self, what: &str) -> Self {
-        Self {
-            summary: format!("{what} {}", self.summary),
-            details: self.details,
         }
     }
 }
@@ -102,10 +93,7 @@ pub fn sidecar_at(error: &aoide_sidecar::SidecarError, server: Option<&str>) -> 
             "Your server sent an answer Aoide couldn't read.",
             Some(error.to_string()),
         ),
-        E::Absent { .. } => Failure::new(
-            "Your server's Aoide sidecar can't do this.",
-            Some(error.to_string()),
-        ),
+        E::Absent { .. } => Failure::new("Your server can't do this.", Some(error.to_string())),
         E::Unauthorized => "Your server didn't accept this sign-in.".into(),
         E::Forbidden => "Your server doesn't allow this account to do that.".into(),
         E::InvalidUrl(_) | E::Unsupported(_) => Failure::new(
@@ -139,13 +127,13 @@ impl From<crate::smart::Failure> for Failure {
     }
 }
 
-/// A Jellyfin error in words, naming the signed-in server.
+/// A Melete error in words, naming the signed-in server.
 pub fn describe(error: &Error) -> Failure {
     let server = SERVER.read().ok().and_then(|s| s.clone());
     describe_at(error, server.as_deref())
 }
 
-/// A Jellyfin error in words, naming `server` when there is one.
+/// A Melete error in words, naming `server` when there is one.
 pub fn describe_at(error: &Error, server: Option<&str>) -> Failure {
     match error {
         Error::Transport(message) => Failure::new(
@@ -180,8 +168,8 @@ pub fn describe_at(error: &Error, server: Option<&str>) -> Failure {
             raw.trim()
         )
         .into(),
-        Error::NotJellyfin(host) => {
-            format!("{host} answered, but doesn't look like a Jellyfin server.").into()
+        Error::NotMelete(host) => {
+            format!("{host} answered, but doesn't look like a Melete server.").into()
         }
         Error::Unauthorized => "Your server didn't accept this sign-in.".into(),
         Error::NotSignedIn => "You're not signed in.".into(),
@@ -249,10 +237,10 @@ mod tests {
 
     #[test]
     fn plain_failures_have_no_details() {
-        let failure = describe_at(&Error::NotJellyfin("music.example.net".into()), None);
+        let failure = describe_at(&Error::NotMelete("music.example.net".into()), None);
         assert_eq!(
             failure.summary,
-            "music.example.net answered, but doesn't look like a Jellyfin server."
+            "music.example.net answered, but doesn't look like a Melete server."
         );
         assert_eq!(failure.details, None);
         assert_eq!(Failure::from("The library is closing.").details, None);
@@ -279,6 +267,6 @@ mod tests {
             "music.example.net"
         );
         assert_eq!(shown_address("http://192.0.2.10:8096"), "192.0.2.10:8096");
-        assert_eq!(shown_address("jellyfin.local:8096"), "jellyfin.local:8096");
+        assert_eq!(shown_address("melete.local:8100"), "melete.local:8100");
     }
 }

@@ -2,17 +2,17 @@
 //! which answers with smart rules and the names the description mentioned;
 //! the library and the listening history then pick the tracks.
 //!
-//! - **Names** ("Mara Vey", "Night Shift") are searched in Jellyfin: the
-//!   albums and album artists they name, and songs by that name.
+//! - **Names** ("Mara Vey", "Night Shift") are searched in Melete: the
+//!   albums and artists they name, and songs by that name.
 //! - **The library half of the rules** (genre, year, and the text and
-//!   length fields) is asked of Jellyfin as a pre-filter where it can be
-//!   (genres by id, years) and checked here on every
-//!   candidate ([`rules::library_matches`]); the model's genre words are first
-//!   resolved to the library's own genres (`match_genres`: "rock" takes Hard
-//!   Rock, not Rockabilly).
+//!   length fields) is asked of Melete as a pre-filter where it can be
+//!   (genres, years; else a sample of the whole library) and checked here on
+//!   every candidate ([`rules::library_matches`]); the model's genre words
+//!   are first resolved to the library's own genres (`match_genres`: "rock"
+//!   takes Hard Rock, not Rockabilly).
 //! - **The listening half** (play and skip counts, first and last played,
-//!   and liked, which is Aoide's own like, not the Jellyfin favourite, as
-//!   in a saved smart playlist) only the local store knows: the candidates
+//!   and liked, as in a saved smart playlist) only the local store knows:
+//!   the candidates
 //!   go into the store's track
 //!   cache and those rules are evaluated there. Every mix also leaves out
 //!   the songs marked Not Interested, as the store's evaluation does.
@@ -30,18 +30,19 @@ use aoide_integrations::openrouter::mix_plan::{
     order_candidates, wants_rule_candidates,
 };
 use aoide_integrations::openrouter::smart_rules::{Match, SmartRules};
-use aoide_jellyfin::{ItemKind, JellyfinClient};
+use aoide_melete::MeleteClient;
 use iced::Task;
 
 use crate::app::{App, Message as AppMessage};
 use crate::credentials::CredentialStore;
 use crate::playback::tracks::TrackMeta;
 use crate::smart::{Failure, read_key};
+use crate::song_filter::SongFilter;
 use crate::store_worker::StoreHandle;
 
 mod rules;
 
-use rules::{candidate_query, history_rules, select, sorted, store_rules};
+use rules::{CANDIDATES, candidate_filter, history_rules, select, sorted, store_rules};
 
 /// Songs in a mix when the rules give no limit.
 pub const DEFAULT_LENGTH: usize = 50;
@@ -85,11 +86,10 @@ pub enum Request {
 /// The tracks a name stands for: the albums it names, the album artists
 /// it names (a few albums each), and songs by that name.
 async fn name_tracks(
-    client: &JellyfinClient,
-    library: Option<&str>,
+    client: &MeleteClient,
     name: &str,
-) -> Result<Vec<TrackMeta>, aoide_jellyfin::Error> {
-    let found = client.search(name, library, NAME_SONGS).await?;
+) -> Result<Vec<TrackMeta>, aoide_melete::Error> {
+    let found = client.search(name, NAME_SONGS).await?;
     let mut tracks: Vec<TrackMeta> = Vec::new();
     for album in found.albums.iter().take(NAME_ALBUMS) {
         tracks.extend(
@@ -125,18 +125,15 @@ pub async fn compose(
     openrouter: OpenRouter,
     keyring: Arc<dyn CredentialStore>,
     model: String,
-    client: JellyfinClient,
+    client: MeleteClient,
     store: StoreHandle,
-    library: Option<String>,
     description: String,
 ) -> Result<Mix, Failure> {
     let key = read_key(keyring).await.map_err(Failure::Other)?;
-    let library = library.as_deref();
-    let filters = client
-        .query_filters(library, &[ItemKind::Audio])
+    let filters = crate::song_filter::library_filters(&client)
         .await
         .map_err(Failure::Server)?;
-    let library_genres: Vec<String> = filters.genres.iter().map(|g| g.name.clone()).collect();
+    let library_genres = filters.genres;
     let outcome = openrouter
         .describe_mix(&key, &model, &description, &library_genres)
         .await;
@@ -152,13 +149,26 @@ pub async fn compose(
     let looked_for = describe_plan(&plan);
 
     let mut found = Candidates::default();
-    found.by_name(&client, library, &outcome.names).await?;
+    found.by_name(&client, &outcome.names).await?;
     if wants_rule_candidates(outcome.rules.as_ref(), &outcome.names)
         && let Some(rules) = &outcome.rules
     {
-        let query = candidate_query(rules, &genres, &filters.genres, &filters.years, library);
-        let page = client.songs(&query).await.map_err(Failure::Server)?;
-        found.by_rules(&page.items);
+        let filter = candidate_filter(rules, &genres, &filters.years);
+        let pool = if filter.genres.is_empty() {
+            // Nothing Melete can narrow by: a sample of everything, a few
+            // times over so a year rule still leaves enough.
+            let sample = crate::song_filter::sample(&client, CANDIDATES * 4)
+                .await
+                .map_err(Failure::Server)?;
+            let kept = SongFilter {
+                years: filter.years.clone(),
+                ..SongFilter::default()
+            };
+            sample.into_iter().filter(|s| kept.keeps_year(s)).collect()
+        } else {
+            filter.songs(&client, None).await.map_err(Failure::Server)?
+        };
+        found.by_rules(&crate::screens::home::pick(pool, CANDIDATES));
     }
     let chosen = choose(&store, outcome.rules.as_ref(), &found, &library_genres).await?;
     log::info!(
@@ -182,7 +192,7 @@ pub async fn compose(
 }
 
 /// The songs a mix may take, by id: those the names stand for, and those
-/// the library rules asked Jellyfin for.
+/// the library rules asked Melete for.
 #[derive(Default)]
 struct Candidates {
     tracks: HashMap<String, TrackMeta>,
@@ -193,16 +203,9 @@ struct Candidates {
 }
 
 impl Candidates {
-    async fn by_name(
-        &mut self,
-        client: &JellyfinClient,
-        library: Option<&str>,
-        names: &[String],
-    ) -> Result<(), Failure> {
+    async fn by_name(&mut self, client: &MeleteClient, names: &[String]) -> Result<(), Failure> {
         for name in names {
-            let found = name_tracks(client, library, name)
-                .await
-                .map_err(Failure::Server)?;
+            let found = name_tracks(client, name).await.map_err(Failure::Server)?;
             if found.is_empty() {
                 self.missed.push(name.clone());
             }
@@ -214,7 +217,7 @@ impl Candidates {
         Ok(())
     }
 
-    fn by_rules(&mut self, items: &[aoide_jellyfin::Item]) {
+    fn by_rules(&mut self, items: &[aoide_melete::Item]) {
         for item in items {
             let track = TrackMeta::from_item(item);
             self.rule_ids.push(track.id.clone());
@@ -354,11 +357,10 @@ impl App {
                 self.config.system.smart_search.model().to_owned(),
                 signed.connection.client.clone(),
                 self.store.clone(),
-                signed.library.clone(),
                 description,
             ),
             move |result| match result {
-                Err(Failure::Server(aoide_jellyfin::Error::Unauthorized)) => {
+                Err(Failure::Server(aoide_melete::Error::Unauthorized)) => {
                     AppMessage::TokenRejected
                 }
                 result => AppMessage::Page(

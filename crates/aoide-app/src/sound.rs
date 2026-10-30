@@ -13,7 +13,7 @@ mod output;
 mod transcode;
 
 pub use output::{DeviceOption, chosen_option, device_options};
-pub use transcode::{Transcode, TranscodeFormat, transcoded};
+pub use transcode::{Transcode, TranscodeFormat, stream_format};
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]

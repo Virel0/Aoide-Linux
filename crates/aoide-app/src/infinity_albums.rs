@@ -3,8 +3,9 @@
 //!
 //! The Electron app's albums mode, ported rule for rule
 //! (`infinity-taste.ts`, `chooseAlbumsByTaste`): a pool several times what is
-//! wanted (albums like the one playing, then the albums of its Instant Mix,
-//! then the artist's, then any), each album judged on its tracks — its genres
+//! wanted (the albums of the songs Melete's `/aoide/next` would play after
+//! the one playing, then the artist's, then any), each album judged on its
+//! tracks — its genres
 //! are its tracks' genres, its finish counts their sum, and it counts as just
 //! heard when any track on it was — and the best few queued whole.
 //!
@@ -12,19 +13,22 @@
 //! something it gives. Taking its songs' albums would let one strong song pull
 //! in a weak record, and the desktop's albums mode doesn't ask it either. So
 //! with this setting on Infinity ranks albums here, from the local history,
-//! whether the sidecar answers `/aoide/next` or not; with it off, songs from
-//! `/aoide/next` (or Instant Mix) as before.
+//! whatever `/aoide/next` says; with it off, songs from `/aoide/next` as
+//! before.
 
 use std::collections::{HashMap, HashSet};
 
-use aoide_jellyfin::{Item, JellyfinClient, ListQuery, Sort, SortOrder};
+use aoide_melete::{Item, MeleteClient};
+use aoide_sidecar::{NextMode, NextRequest, SidecarClient};
 use aoide_store::{FinishCounts, TasteCandidate, TasteProfile, TasteRanking};
 use iced::Task;
 
 use crate::app::{App, Message};
-use crate::playback::infinity::{TopUp, WINDOW_DAYS};
+use crate::playback::infinity::TopUp;
 use crate::store_worker::StoreHandle;
 
+/// How far back the taste profile reads.
+const WINDOW_DAYS: i64 = 90;
 /// Albums added each time the queue runs short.
 pub const ALBUMS_PER_TOP_UP: usize = 2;
 /// How many times that to gather, so the ranking has something to reject.
@@ -122,11 +126,11 @@ fn gather(
     }
 }
 
-/// The pool: albums like the one playing, the albums of its Instant Mix, the
-/// artist's, then any, without the ones already queued.
+/// The pool: the albums of what `/aoide/next` would play after the song
+/// playing, the artist's, then any, without the ones already queued.
 pub async fn pool(
-    client: &JellyfinClient,
-    library: Option<String>,
+    client: &MeleteClient,
+    sidecar: Option<&SidecarClient>,
     seed: &Seed,
     queued_albums: &HashSet<String>,
     count: usize,
@@ -135,19 +139,26 @@ pub async fn pool(
     let mut skip = queued_albums.clone();
     if let Some(album) = &seed.album {
         skip.insert(album.clone());
-        if let Ok(similar) = client.similar_albums(album, (count * 2) as u32).await {
-            gather(&mut pool, similar.into_iter().map(|a| a.id), &skip, count);
-        }
     }
-    if pool.len() < count
-        && let Ok(mix) = client.instant_mix(&seed.track, (count * 4) as u32).await
+    let request = NextRequest::new(
+        &seed.track,
+        &[],
+        &[],
+        NextMode::Infinity,
+        (count * 4) as u32,
+    );
+    if let Some(sidecar) = sidecar
+        && let Ok(next) = sidecar.next(&request).await
     {
-        gather(
-            &mut pool,
-            mix.into_iter().filter_map(|t| t.album_id),
-            &skip,
-            count,
-        );
+        let ids: Vec<String> = next.candidates.into_iter().map(|c| c.id).collect();
+        if let Ok(songs) = client.items_by_ids(&ids).await {
+            gather(
+                &mut pool,
+                songs.into_iter().filter_map(|t| t.album_id),
+                &skip,
+                count,
+            );
+        }
     }
     if pool.len() < count
         && let Some(artist) = &seed.artist
@@ -155,22 +166,10 @@ pub async fn pool(
     {
         gather(&mut pool, albums.into_iter().map(|a| a.id), &skip, count);
     }
-    if pool.len() < count {
-        let query = ListQuery {
-            parent_id: library,
-            sort: Sort::Random,
-            order: SortOrder::Ascending,
-            limit: Some(count as u32),
-            ..ListQuery::default()
-        };
-        if let Ok(page) = client.albums(&query).await {
-            gather(
-                &mut pool,
-                page.items.into_iter().map(|a| a.id),
-                &skip,
-                count,
-            );
-        }
+    if pool.len() < count
+        && let Ok(albums) = crate::song_filter::sample_albums(client, count).await
+    {
+        gather(&mut pool, albums.into_iter().map(|a| a.id), &skip, count);
     }
     pool
 }
@@ -178,16 +177,16 @@ pub async fn pool(
 /// One top-up: the pool, its tracklists, the ranking, and the chosen albums'
 /// songs in album order with the reason on each.
 pub async fn top_up(
-    client: JellyfinClient,
+    client: MeleteClient,
+    sidecar: Option<SidecarClient>,
     store: StoreHandle,
-    library: Option<String>,
     seed: Seed,
     queued_albums: HashSet<String>,
     now: aoide_store::Millis,
 ) -> TopUp {
     let albums = pool(
         &client,
-        library,
+        sidecar.as_ref(),
         &seed,
         &queued_albums,
         ALBUMS_PER_TOP_UP * POOL_MULTIPLIER,
@@ -236,8 +235,8 @@ pub fn queue_order(
         };
         on_it.sort_by_key(|t| {
             (
-                t.parent_index_number.unwrap_or(1),
-                t.index_number.unwrap_or(i32::MAX),
+                t.disc_number.unwrap_or(1),
+                t.track_number.unwrap_or(i32::MAX),
             )
         });
         for track in on_it.into_iter().filter(|t| !hidden.contains(&t.id)) {
@@ -281,12 +280,12 @@ impl App {
             artist: current.artist_id,
         };
         let client = signed.connection.client.clone();
-        let library = signed.library.clone();
+        let sidecar = signed.sidecar.clone();
         Task::perform(
             top_up(
                 client,
+                sidecar,
                 store,
-                library,
                 seed,
                 queued_albums,
                 aoide_store::now_millis(),
@@ -302,11 +301,16 @@ mod tests {
     use std::collections::BTreeSet;
 
     fn track(id: &str, album: &str, artist: &str, genre: &str, n: i32) -> Item {
-        serde_json::from_value(serde_json::json!({
-            "Id": id, "Name": id, "Type": "Audio", "AlbumId": album, "Album": format!("Album {album}"),
-            "AlbumArtist": artist, "Genres": [genre], "IndexNumber": n
-        }))
-        .unwrap()
+        Item {
+            id: id.into(),
+            name: id.into(),
+            album_id: Some(album.into()),
+            album: Some(format!("Album {album}")),
+            album_artist: Some(artist.into()),
+            genres: vec![genre.into()],
+            track_number: Some(n),
+            ..Item::default()
+        }
     }
 
     fn ids(list: &[&str]) -> Vec<String> {

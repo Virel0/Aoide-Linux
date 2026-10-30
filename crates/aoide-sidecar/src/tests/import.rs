@@ -9,7 +9,7 @@ use wiremock::matchers::{body_json, header_exists, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use crate::{
-    ImportError, ImportedTrack, JellyfinSearch, LibraryTrack, MatchedBy, SidecarClient,
+    ImportError, ImportedTrack, LibrarySearch, LibraryTrack, MatchedBy, SidecarClient,
     TrackMatcher, fetch_spotify_playlist_from, match_playlist, parse_playlist_csv,
     parse_spotify_embed, spotify_playlist_id,
 };
@@ -338,7 +338,7 @@ struct Library {
     searches: Mutex<Vec<String>>,
 }
 
-impl JellyfinSearch for Library {
+impl LibrarySearch for Library {
     async fn search_songs(&self, term: &str, limit: usize) -> Result<Vec<LibraryTrack>, String> {
         assert_eq!(limit, crate::SEARCH_LIMIT);
         self.searches.lock().unwrap().push(term.to_owned());
@@ -451,7 +451,7 @@ async fn without_the_sidecar_the_same_rules_run_over_library_search() {
 #[tokio::test]
 async fn a_failing_search_is_a_missing_track_not_a_failed_import() {
     struct Down;
-    impl JellyfinSearch for Down {
+    impl LibrarySearch for Down {
         async fn search_songs(&self, _: &str, _: usize) -> Result<Vec<LibraryTrack>, String> {
             Err("offline".into())
         }

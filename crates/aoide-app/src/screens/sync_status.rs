@@ -100,8 +100,8 @@ pub fn describe(
     if overview.sidecar_absent {
         lines.push(Line::explained(
             "This server can't sync yet.",
-            "It has no Aoide sidecar, so playlists and history stay on this computer. Install \
-             the sidecar plugin on the server and they'll sync from then on.",
+            "It doesn't sync Aoide's playlists and history, so they stay on this computer. \
+             They'll sync once the server is updated.",
             true,
         ));
         return lines;
@@ -180,8 +180,8 @@ fn held_back(overview: &SyncOverview) -> Option<Line> {
             changes(overview.held_back)
         ),
         format!(
-            "Your server's sidecar doesn't accept {} yet. They're kept here and go as soon \
-             as the sidecar is updated.",
+            "Your server doesn't accept {} yet. They're kept here and go as soon as the \
+             server is updated.",
             if kinds.is_empty() {
                 "them".to_owned()
             } else {

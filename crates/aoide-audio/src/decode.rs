@@ -36,6 +36,11 @@ impl MediaSource {
     pub fn http(url: impl Into<String>) -> Self {
         MediaSource::Http(HttpSource::new(url))
     }
+
+    /// A stream whose URL `resolve` gives each time its download starts.
+    pub fn http_resolved(resolve: crate::http::ResolveUrl) -> Self {
+        MediaSource::Http(HttpSource::resolved(resolve))
+    }
 }
 
 /// One decoded packet: interleaved samples at the file's own rate and channel

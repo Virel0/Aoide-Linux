@@ -107,6 +107,12 @@ impl Account {
     pub fn keyring_key(&self) -> String {
         format!("{}@{}", self.user_id, self.server)
     }
+
+    /// Whose the local store is: one per user per server, since Melete numbers
+    /// its users from 1 on every server.
+    pub fn store_owner(&self) -> String {
+        format!("{}@{}", self.user_id, self.server)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -158,7 +164,7 @@ impl Default for WindowGeometry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
-    /// Generated once; Jellyfin keys sessions and playback reports off it.
+    /// Generated once; sync and the server name this install by it.
     pub device_id: String,
     /// What the sign-in screen offers, kept after signing out.
     pub last_server: Option<String>,

@@ -35,10 +35,7 @@ impl App {
                 if let Some(menu) = self.menu_mut() {
                     menu.adding = !menu.adding;
                 }
-                self.offer_jellyfin_playlists()
-            }
-            RowAction::JellyfinPlaylists(_) | RowAction::AddToJellyfin(_) => {
-                self.jellyfin_menu_action(action)
+                Task::none()
             }
             RowAction::GetInfo => self.menu_info(),
             RowAction::StartRadio => self.menu_radio(),
@@ -140,7 +137,7 @@ impl App {
         Task::perform(
             crate::actions::collection_tracks(client, store, collection),
             move |result| match result {
-                Err(crate::actions::Failure::Server(aoide_jellyfin::Error::Unauthorized)) => {
+                Err(crate::actions::Failure::Server(aoide_melete::Error::Unauthorized)) => {
                     Message::TokenRejected
                 }
                 result => Message::Row(RowAction::CollectionTracks(
@@ -326,14 +323,17 @@ impl App {
             .unwrap_or(track.favourite);
         let client = signed.connection.client.clone();
         let id = track.id.clone();
+        let wanted = !current;
+        // A like in Melete is the sync log's like: written there as this
+        // device would, and pulled back here with the next sync.
         Task::perform(
-            async move { client.set_favorite(&id, !current).await },
+            async move { client.set_liked(&id, wanted).await },
             move |result| match result {
-                Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
+                Err(aoide_melete::Error::Unauthorized) => Message::TokenRejected,
                 result => Message::Favourited(
                     track.id.clone(),
                     result
-                        .map(|data| data.is_favorite)
+                        .map(|()| wanted)
                         .map_err(|e| crate::failure::describe(&e).to_string()),
                 ),
             },

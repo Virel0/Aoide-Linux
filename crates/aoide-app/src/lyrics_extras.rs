@@ -12,7 +12,7 @@
 //! isn't there. The lyrics go to that server and nowhere else.
 
 use aoide_integrations::translate::libre::LibreTranslate;
-use aoide_jellyfin::Lyrics;
+use aoide_melete::Lyrics;
 use iced::widget::{button, column, container, row, text};
 use iced::{Center, Element, Task};
 

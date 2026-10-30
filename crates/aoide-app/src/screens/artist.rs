@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use aoide_jellyfin::Item;
+use aoide_melete::Item;
 use aoide_store::PlaySource;
 use iced::widget::{column, text};
 use iced::{Element, Task};
@@ -138,7 +138,7 @@ impl State {
         let mut body = column![
             widgets::title_bar(&self.name, view.can_go_back),
             crate::radio::start_button(crate::radio::Station::new(
-                aoide_jellyfin::MixSeed::Artist(self.id.clone()),
+                crate::radio::MixSeed::Artist(self.id.clone()),
                 self.name.clone(),
             )),
         ]

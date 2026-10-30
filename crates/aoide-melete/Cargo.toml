@@ -1,0 +1,28 @@
+[package]
+name = "aoide-melete"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# rustls with the ring provider and the platform certificate verifier, as
+# aoide-audio and aoide-sidecar use it: one TLS stack in the app. Not reqwest's
+# `rustls` feature, which brings aws-lc-rs into every crate of the workspace.
+# No OpenSSL, no HTTP/2, no system-proxy probing.
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+# `try_join!` in search; the runtime is the application's.
+tokio = { version = "1.54.1", default-features = false, features = ["macros"] }
+
+[dev-dependencies]
+# The live test fetches a stream and a cover as the player and the cover cache do.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net"] }
+wiremock = "0.6.5"

@@ -1,6 +1,6 @@
 //! An album: its cover, artist and year, Play and Shuffle, and its tracks.
 
-use aoide_jellyfin::Item;
+use aoide_melete::Item;
 use aoide_store::PlaySource;
 use iced::widget::{button, column, row, text};
 use iced::{Element, Length, Task};
@@ -26,22 +26,16 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Album(Result<Vec<Item>, Failure>),
-    Tracks(Result<Vec<Item>, Failure>),
+    Album(Box<Result<(Item, Vec<Item>), Failure>>),
     Finish(Option<String>),
 }
 
 pub fn open(ctx: &Ctx<'_>, id: &str, title: &str) -> (State, Task<App>) {
-    let (a, b) = (ctx.client.clone(), ctx.client.clone());
-    let (ia, ib) = (id.to_owned(), id.to_owned());
-    let tasks = Task::batch([
-        fetch(ctx.key, async move { a.items_by_ids(&[ia]).await }, |r| {
-            PageMsg::Album(Message::Album(r))
-        }),
-        fetch(ctx.key, async move { b.album_tracks(&ib).await }, |r| {
-            PageMsg::Album(Message::Tracks(r))
-        }),
-    ]);
+    let client = ctx.client.clone();
+    let asked = id.to_owned();
+    let tasks = fetch(ctx.key, async move { client.album(&asked).await }, |r| {
+        PageMsg::Album(Message::Album(Box::new(r)))
+    });
     (
         State {
             id: id.to_owned(),
@@ -58,15 +52,13 @@ pub fn open(ctx: &Ctx<'_>, id: &str, title: &str) -> (State, Task<App>) {
 impl State {
     pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {
         match message {
-            Message::Album(Ok(items)) => {
-                if let Some(album) = items.into_iter().next() {
+            Message::Album(result) => {
+                let result = (*result).map(|(album, items)| {
                     self.title = album.name.clone();
                     self.art = album.artwork_source().map(|(id, tag)| ArtKey::new(id, tag));
                     self.album = Some(album);
-                }
-            }
-            Message::Album(Err(_)) => {}
-            Message::Tracks(result) => {
+                    items
+                });
                 self.tracks = Load::from(result.map(|items| {
                     let mut tracks: Vec<TrackMeta> =
                         items.iter().map(TrackMeta::from_item).collect();
@@ -101,7 +93,7 @@ impl State {
         let tracks: &[TrackMeta] = self.tracks.ready().map(Vec::as_slice).unwrap_or(&[]);
         let total_ms: i64 = tracks.iter().filter_map(|t| t.duration_ms).sum();
         let mut facts = Vec::new();
-        if let Some(year) = self.album.as_ref().and_then(|a| a.production_year) {
+        if let Some(year) = self.album.as_ref().and_then(|a| a.year) {
             facts.push(year.to_string());
         }
         if !tracks.is_empty() {
@@ -136,7 +128,7 @@ impl State {
             format!("{}:album", view.key),
             PlaySource::Album,
             vec![crate::radio::start_button(crate::radio::Station::new(
-                aoide_jellyfin::MixSeed::Album(self.id.clone()),
+                crate::radio::MixSeed::Album(self.id.clone()),
                 self.title.clone(),
             ))],
         ));
@@ -224,13 +216,13 @@ mod tests {
     use super::*;
 
     fn track(disc: Option<i32>, number: Option<i32>) -> TrackMeta {
-        TrackMeta::from_item(
-            &serde_json::from_value(serde_json::json!({
-                "Id": format!("{disc:?}-{number:?}"), "Name": "t", "Type": "Audio",
-                "ParentIndexNumber": disc, "IndexNumber": number,
-            }))
-            .unwrap(),
-        )
+        TrackMeta::from_item(&Item {
+            id: format!("{disc:?}-{number:?}"),
+            name: "t".into(),
+            disc_number: disc,
+            track_number: number,
+            ..Item::default()
+        })
     }
 
     #[test]

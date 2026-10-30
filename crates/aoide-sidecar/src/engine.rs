@@ -393,7 +393,7 @@ impl<T: SyncTransport> SyncEngine<T> {
         self
     }
 
-    /// This user's Jellyfin id: what tells a share granted to this user from one this
+    /// This user's Melete id: what tells a share granted to this user from one this
     /// user granted. Without it only ownerless shares count as editable.
     pub fn with_user_id(mut self, user_id: impl Into<String>) -> Self {
         self.user_id = Some(user_id.into());
