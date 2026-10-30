@@ -17,7 +17,8 @@
 //! - **Lists:** [`ListQuery`] drives songs, albums and artists: paging, sorting,
 //!   words, a genre and artists. [`MeleteClient::genres`] lists the genres.
 //! - **Home:** [`MeleteClient::home`].
-//! - **Likes:** [`MeleteClient::liked_songs`] and [`MeleteClient::set_liked`].
+//! - **Likes:** [`MeleteClient::likes`], [`MeleteClient::set_liked`] and
+//!   [`MeleteClient::set_album_liked`].
 //! - **Get Info:** [`MeleteClient::item_details`].
 //! - **Sharing:** [`MeleteClient::user_directory`] names whom to share with.
 //! - **Playing:** [`MeleteClient::play`] for a stream link,
@@ -45,7 +46,7 @@ pub use auth::{Credentials, Device, QuickConnectCode, ServerInfo, UserName};
 pub use client::MeleteClient;
 pub use details::ItemDetails;
 pub use error::Error;
-pub use library::{Home, ListQuery, SearchResults, Sort};
+pub use library::{Home, Likes, ListQuery, SearchResults, Sort};
 pub use lyrics::{LyricLine, LyricWord, Lyrics};
 pub use media::{Stream, StreamFormat};
 pub use model::{COVER_TAG, Item, ItemKind, NameId, Page};

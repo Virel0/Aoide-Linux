@@ -1,8 +1,7 @@
-//! Favourites: the songs this listener likes (Melete's likes, the sync log's
-//! own), and the albums and artists of those songs, one tab each. Melete keeps
-//! likes on songs only.
+//! Favourites: the songs and albums this listener likes (Melete's likes, the
+//! sync log's own), and the artists of those songs, one tab each.
 
-use aoide_melete::{Item, ItemKind};
+use aoide_melete::{Item, ItemKind, Likes};
 use aoide_store::PlaySource;
 use iced::widget::{button, column, row, text};
 use iced::{Element, Task};
@@ -45,7 +44,7 @@ pub struct State {
 #[derive(Debug, Clone)]
 pub enum Message {
     Tab(Tab),
-    Liked(Result<Vec<Item>, Failure>),
+    Liked(Result<Likes, Failure>),
 }
 
 /// The artists credited on `songs`, each once, in the order first met.
@@ -68,7 +67,7 @@ fn artists_of(songs: &[Item]) -> Vec<Tile> {
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
     let client = ctx.client.clone();
-    let task = fetch(ctx.key, async move { client.liked_songs().await }, |r| {
+    let task = fetch(ctx.key, async move { client.likes().await }, |r| {
         PageMsg::Favourites(Message::Liked(r))
     });
     (
@@ -86,10 +85,10 @@ impl State {
     pub fn update(&mut self, message: Message) -> Task<App> {
         match message {
             Message::Tab(tab) => self.tab = tab,
-            Message::Liked(Ok(songs)) => {
-                self.albums = Load::Ready(crate::library::albums_of_tracks(&songs, usize::MAX));
-                self.artists = Load::Ready(artists_of(&songs));
-                self.songs = Load::Ready(songs.iter().map(TrackMeta::from_item).collect());
+            Message::Liked(Ok(likes)) => {
+                self.albums = Load::Ready(likes.albums.iter().map(Tile::album).collect());
+                self.artists = Load::Ready(artists_of(&likes.songs));
+                self.songs = Load::Ready(likes.songs.iter().map(TrackMeta::from_item).collect());
             }
             Message::Liked(Err(error)) => {
                 self.albums = Load::Failed(error.clone());
@@ -166,7 +165,7 @@ impl State {
                 Load::Loading => widgets::loading(),
                 Load::Failed(error) => view.failure(error),
                 Load::Ready(tiles) if tiles.is_empty() => {
-                    widgets::empty("No albums yet: they're the ones with a song you like.")
+                    widgets::empty("No liked albums yet. Favourite one from its page.")
                 }
                 Load::Ready(tiles) => {
                     widgets::tile_grid(tiles, view.artwork, super::home::open_album)

@@ -93,6 +93,16 @@ pub struct SearchResults {
     pub artists: Vec<Item>,
 }
 
+/// What the signed-in user likes, newest like first, as their sync log says; a
+/// liked track or album gone from the library is left out.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Likes {
+    /// The liked tracks.
+    pub songs: Vec<Item>,
+    /// The liked albums. Liking an album likes none of its tracks.
+    pub albums: Vec<Item>,
+}
+
 /// What Melete's Home view has, worked out on the server from this listener's
 /// own history.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -111,6 +121,9 @@ struct WireAlbumDetail {
     #[serde(flatten)]
     album: WireAlbum,
     track_list: Vec<WireTrack>,
+    /// Older servers don't say.
+    #[serde(default)]
+    liked: bool,
 }
 
 #[derive(Deserialize)]
@@ -135,11 +148,19 @@ struct WireMostPlayed {
 #[derive(Deserialize)]
 struct WireLikes {
     tracks: Vec<WireLike>,
+    /// Servers before album likes don't send it.
+    #[serde(default)]
+    albums: Vec<WireAlbumLike>,
 }
 
 #[derive(Deserialize)]
 struct WireLike {
     track: Option<WireTrack>,
+}
+
+#[derive(Deserialize)]
+struct WireAlbumLike {
+    album: Option<WireAlbum>,
 }
 
 type Query = Vec<(&'static str, String)>;
@@ -237,8 +258,12 @@ impl MeleteClient {
         let album: WireAlbumDetail = self
             .get(&["api", "v1", "music", "albums", album_id], &[])
             .await?;
+        let liked = album.liked;
         Ok((
-            Item::from(album.album),
+            Item {
+                liked,
+                ..Item::from(album.album)
+            },
             album.track_list.into_iter().map(Item::from).collect(),
         ))
     }
@@ -326,12 +351,33 @@ impl MeleteClient {
     /// HTTP 403 as [`Error::Http`](crate::Error::Http) for a user who may see only
     /// some music libraries; otherwise the [request errors](MeleteClient#errors).
     pub async fn liked_songs(&self) -> Result<Vec<Item>> {
+        Ok(self.likes().await?.songs)
+    }
+
+    /// The tracks and albums the signed-in user likes.
+    ///
+    /// # Errors
+    ///
+    /// As [`liked_songs`](Self::liked_songs).
+    pub async fn likes(&self) -> Result<Likes> {
         let likes: WireLikes = self.get(&["api", "v1", "music", "likes"], &[]).await?;
-        Ok(likes
-            .tracks
-            .into_iter()
-            .filter_map(|like| like.track.map(Item::from))
-            .collect())
+        Ok(Likes {
+            songs: likes
+                .tracks
+                .into_iter()
+                .filter_map(|like| like.track.map(Item::from))
+                .collect(),
+            albums: likes
+                .albums
+                .into_iter()
+                .filter_map(|like| {
+                    like.album.map(|album| Item {
+                        liked: true,
+                        ..Item::from(album)
+                    })
+                })
+                .collect(),
+        })
     }
 
     /// Likes or unlikes a track, written into the user's sync log as one of their
@@ -346,6 +392,23 @@ impl MeleteClient {
         self.send_empty(
             method,
             &["api", "v1", "music", "tracks", track_id, "like"],
+            &[],
+        )
+        .await
+    }
+
+    /// Likes or unlikes an album, as [`set_liked`](Self::set_liked) does a track.
+    /// Liking an album likes none of its tracks.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::NotFound`](crate::Error::NotFound) for an album the server
+    /// doesn't have; otherwise the [request errors](MeleteClient#errors).
+    pub async fn set_album_liked(&self, album_id: &str, liked: bool) -> Result<()> {
+        let method = if liked { Method::PUT } else { Method::DELETE };
+        self.send_empty(
+            method,
+            &["api", "v1", "music", "albums", album_id, "like"],
             &[],
         )
         .await

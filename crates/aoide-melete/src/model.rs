@@ -57,7 +57,8 @@ pub struct Item {
     /// Whether the album has a cover: always for a track, whose album may or may
     /// not (Melete doesn't say on the track).
     pub has_cover: bool,
-    /// Whether the signed-in user likes the track, as their sync log says.
+    /// Whether the signed-in user likes the track (or, on an album's own page and
+    /// in their liked albums, the album), as their sync log says.
     pub liked: bool,
     /// A track's ISRC, when tagged.
     pub isrc: Option<String>,

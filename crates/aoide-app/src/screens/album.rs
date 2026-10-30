@@ -1,14 +1,16 @@
-//! An album: its cover, artist and year, Play and Shuffle, and its tracks.
+//! An album: its cover, artist and year, Play, Shuffle, Start radio and
+//! Favourite, and its tracks.
 
 use aoide_melete::Item;
 use aoide_store::PlaySource;
 use iced::widget::{button, column, row, text};
-use iced::{Element, Length, Task};
+use iced::{Alignment, Element, Length, Task};
 
 use super::{Ctx, Load, PageMsg, Route, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
 use crate::failure::Failure;
+use crate::icons::{Icon, Tone, icon};
 use crate::playback::tracks::TrackMeta;
 use crate::theme;
 use crate::widgets::{self, ListStyle};
@@ -22,12 +24,18 @@ pub struct State {
     pub tracks: Load<Vec<TrackMeta>>,
     /// "You finish 78% of this album's songs", once there is enough history.
     finish: Option<String>,
+    /// Whether the listener likes the album, as the server last said.
+    liked: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     Album(Box<Result<(Item, Vec<Item>), Failure>>),
     Finish(Option<String>),
+    /// Favourite or Unfavourite pressed.
+    Favourite,
+    /// The server's answer: whether the album is liked now.
+    Favourited(Result<bool, Failure>),
 }
 
 pub fn open(ctx: &Ctx<'_>, id: &str, title: &str) -> (State, Task<App>) {
@@ -44,6 +52,7 @@ pub fn open(ctx: &Ctx<'_>, id: &str, title: &str) -> (State, Task<App>) {
             art: None,
             tracks: Load::Loading,
             finish: None,
+            liked: false,
         },
         tasks,
     )
@@ -56,6 +65,7 @@ impl State {
                 let result = (*result).map(|(album, items)| {
                     self.title = album.name.clone();
                     self.art = album.artwork_source().map(|(id, tag)| ArtKey::new(id, tag));
+                    self.liked = album.liked;
                     self.album = Some(album);
                     items
                 });
@@ -75,6 +85,16 @@ impl State {
                 }
             }
             Message::Finish(line) => self.finish = line,
+            Message::Favourite => {
+                let (client, id, wanted) = (ctx.client.clone(), self.id.clone(), !self.liked);
+                // Written into the sync log as this device would; pulled back with
+                // the next sync.
+                let request =
+                    async move { client.set_album_liked(&id, wanted).await.map(|()| wanted) };
+                return fetch(ctx.key, request, |r| PageMsg::Album(Message::Favourited(r)));
+            }
+            Message::Favourited(Ok(liked)) => self.liked = liked,
+            Message::Favourited(Err(error)) => return Task::done(App::Notice(error.to_string())),
         }
         Task::none()
     }
@@ -127,10 +147,13 @@ impl State {
             tracks,
             format!("{}:album", view.key),
             PlaySource::Album,
-            vec![crate::radio::start_button(crate::radio::Station::new(
-                crate::radio::MixSeed::Album(self.id.clone()),
-                self.title.clone(),
-            ))],
+            vec![
+                crate::radio::start_button(crate::radio::Station::new(
+                    crate::radio::MixSeed::Album(self.id.clone()),
+                    self.title.clone(),
+                )),
+                self.favourite_button(view.key),
+            ],
         ));
 
         let mut body = column![
@@ -163,6 +186,31 @@ impl State {
             ),
         });
         crate::handoff::played_from(widgets::page(body), Some(self.context()))
+    }
+
+    /// Favourite, or Unfavourite once liked. Liking an album likes none of its songs.
+    fn favourite_button<'a>(&self, key: u64) -> Element<'a, App> {
+        let (glyph, label) = if self.liked {
+            (Icon::HeartFilled, "Unfavourite")
+        } else {
+            (Icon::Heart, "Favourite")
+        };
+        button(
+            row![
+                icon(glyph, 14.0, Tone::Accent),
+                text(label).wrapping(text::Wrapping::None)
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+        )
+        .style(theme::tonal)
+        .padding([8, 14])
+        .on_press_maybe(
+            self.album
+                .is_some()
+                .then_some(App::Page(key, PageMsg::Album(Message::Favourite))),
+        )
+        .into()
     }
 
     /// What playing from this page is remembered as.

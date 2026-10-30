@@ -16,6 +16,10 @@ sign-in, and playlists, likes and history come back from Melete.
 - Quick Connect: sign in by approving a code in Melete's web UI.
 - Home's recently played, recently added and most played shelves come from
   Melete's history of every device, not this computer's alone.
+- Albums can be favourited, from Favourite on the album's page. Favourites'
+  Albums tab lists them, in place of the albums of liked songs. Album likes
+  are their own sync record (`album_likes`), shared with Melete and the
+  iPhone app; favouriting an album favourites none of its songs.
 
 ### Changed
 - Everything the app asked of Jellyfin it asks of Melete: the library, search,

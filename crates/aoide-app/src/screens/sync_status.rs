@@ -81,6 +81,7 @@ fn kind(table: &str) -> &str {
     match E::from_local_table(table) {
         Some(E::TrackFlags) => "taste flags (not interested, don't count plays)",
         Some(E::Like) => "likes",
+        Some(E::AlbumLike) => "album likes",
         Some(E::QueueState) => "the queue for handoff",
         Some(E::PlayEvent) => "plays",
         Some(E::Playlist | E::PlaylistItem) => "playlist edits",

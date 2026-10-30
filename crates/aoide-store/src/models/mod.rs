@@ -32,6 +32,7 @@ macro_rules! sync_meta {
     };
 }
 
+mod album_like;
 mod curation;
 mod history;
 mod op;
@@ -39,6 +40,7 @@ mod queue;
 mod taste;
 mod track;
 
+pub use album_like::AlbumLike;
 pub use curation::{Folder, Playlist, PlaylistItem};
 pub use history::{PlayEvent, PlaySource};
 pub use op::{Op, OpKind};

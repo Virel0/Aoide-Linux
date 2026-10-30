@@ -20,12 +20,34 @@ use crate::error::Result;
 use crate::field_stamps::merged;
 use crate::json::{self, canonical_json};
 use crate::models::{
-    Folder, Like, Op, OpKind, PlayEvent, Playlist, PlaylistItem, QueueState, TrackFlags,
+    AlbumLike, Folder, Like, Op, OpKind, PlayEvent, Playlist, PlaylistItem, QueueState, TrackFlags,
 };
 use crate::quarantine::{QuarantinedOp, SyncDirection, write_pull_cursor};
 use crate::record::{Record, SyncRecord};
 use crate::store::Store;
 use crate::sync::{PullCursor, PulledOp, SyncEntity, SyncFault, SyncPolicy, SyncReport};
+
+/// A like of something: a row unique on the track or album it names.
+trait Liking: SyncRecord {
+    /// The condition matching rows that name the same thing.
+    const UNIQUE_ON: &'static str;
+    /// What it names.
+    fn liked_item(&self) -> &str;
+}
+
+impl Liking for Like {
+    const UNIQUE_ON: &'static str = "\"jellyfinId\" = ?";
+    fn liked_item(&self) -> &str {
+        &self.jellyfin_id
+    }
+}
+
+impl Liking for AlbumLike {
+    const UNIQUE_ON: &'static str = "\"albumId\" = ?";
+    fn liked_item(&self) -> &str {
+        &self.album_id
+    }
+}
 
 pub(crate) struct InboundApplier {
     policy: SyncPolicy,
@@ -82,7 +104,8 @@ impl InboundApplier {
             SyncEntity::Playlist => self.merge_stamped::<Playlist>(op, tx),
             SyncEntity::Folder => self.merge_stamped::<Folder>(op, tx),
             SyncEntity::PlaylistItem => self.merge_item(op, tx),
-            SyncEntity::Like => self.merge_like(op, tx),
+            SyncEntity::Like => self.merge_like::<Like>(op, tx),
+            SyncEntity::AlbumLike => self.merge_like::<AlbumLike>(op, tx),
             SyncEntity::TrackFlags => self.merge_track_flags(op, tx),
             SyncEntity::QueueState => self.merge_queue(op, tx),
             SyncEntity::PlayEvent => self.append_event(op, operation, tx),
@@ -122,28 +145,29 @@ impl InboundApplier {
         Ok(())
     }
 
-    /// Likes have an identity that is not their key: the table is unique on the track,
-    /// and two devices liking it offline mint two rows. The clash is settled by the
-    /// same comparison as everything else and the loser removed — a hard delete without
-    /// an op, safe here and only here because every device reaches it alone.
-    fn merge_like(&mut self, op: &PulledOp, tx: &Transaction<'_>) -> Result<()> {
-        let existing = Like::fetch(tx, &op.entity_id)?;
+    /// Likes have an identity that is not their key: the table is unique on the track
+    /// (or album), and two devices liking it offline mint two rows. The clash is
+    /// settled by the same comparison as everything else and the loser removed — a hard
+    /// delete without an op, safe here and only here because every device reaches it
+    /// alone.
+    fn merge_like<R: Liking>(&mut self, op: &PulledOp, tx: &Transaction<'_>) -> Result<()> {
+        let existing = R::fetch(tx, &op.entity_id)?;
         let Some(row) = self.winner(op, existing, tx)? else {
             return Ok(());
         };
-        let clash = Like::fetch_where(tx, "\"jellyfinId\" = ?", [&row.jellyfin_id])?
+        let clash = R::fetch_where(tx, R::UNIQUE_ON, [row.liked_item()])?
             .into_iter()
             .next();
-        if let Some(clash) = clash.filter(|clash| clash.id != row.id) {
+        if let Some(clash) = clash.filter(|clash| clash.id() != row.id()) {
             if !incoming_wins(
-                (row.updated_at, &row.origin_device),
-                (clash.updated_at, &clash.origin_device),
+                (row.updated_at(), row.origin_device()),
+                (clash.updated_at(), clash.origin_device()),
                 true,
             ) {
                 self.report.ignored_stale += 1;
                 return Ok(());
             }
-            Like::delete(tx, &clash.id)?;
+            R::delete(tx, clash.id())?;
             self.report.superseded_likes += 1;
         }
         row.save(tx)?;
