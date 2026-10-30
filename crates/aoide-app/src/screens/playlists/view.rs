@@ -22,7 +22,7 @@ impl State {
         };
         let shown = self.folder.as_deref();
         let mut body = column![
-            crate::screens::jellyfin_playlists::header(false, view.can_go_back),
+            widgets::title_bar("Playlists", view.can_go_back),
             self.create_row(key)
         ]
         .spacing(20);

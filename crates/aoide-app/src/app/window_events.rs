@@ -39,14 +39,9 @@ impl App {
     pub(crate) fn quit(&mut self) -> Task<Message> {
         self.save_config();
         let _ = self.save_queue();
-        let report = self.final_report();
-        let client = self.session.as_ref().map(|s| s.connection.client.clone());
         let store = self.store.clone();
         let now = aoide_store::now_millis();
         Task::future(async move {
-            if let (Some(client), Some(report)) = (client, report) {
-                crate::playing::report_on_quit(client, report).await;
-            }
             store
                 .call(move |w| {
                     let _ = w.recorder.stopped(&w.store, now);

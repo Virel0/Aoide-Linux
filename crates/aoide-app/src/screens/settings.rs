@@ -460,7 +460,7 @@ fn hidden_section(state: &State, key: u64) -> Element<'_, App> {
 
 fn sync_section(sync: crate::sync::Status<'_>) -> Element<'_, App> {
     let sync_line = if !sync.available {
-        "This server has no Aoide sidecar; playlists and history stay on this computer."
+        "This server doesn't sync Aoide's playlists and history, so they stay on this computer."
     } else if sync.running {
         "Syncing…"
     } else {

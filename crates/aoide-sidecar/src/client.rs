@@ -1,4 +1,5 @@
-//! The sidecar over HTTP: same origin and same token as Jellyfin.
+//! Aoide's routes on Melete (`/aoide/*`) over HTTP: the same server and token as
+//! the rest of the app.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -19,14 +20,14 @@ use crate::types::{
 /// How many ids the measurement endpoints take per call.
 pub const MAX_IDS_PER_CALL: usize = 200;
 
-/// How much of an error body is kept: an ASP.NET exception page runs to kilobytes, and
+/// How much of an error body is kept: an HTML error page runs to kilobytes, and
 /// the first line names the fault.
 const DETAIL_LIMIT: usize = 400;
 
-/// A connection to one user's sidecar.
+/// A connection to one user's `/aoide/*` routes.
 ///
-/// Paths are joined onto the server URL segment by segment, so a Jellyfin behind a
-/// reverse-proxy subpath (`https://host/jellyfin`) keeps its prefix. Bodies are read
+/// Paths are joined onto the server URL segment by segment, so a Melete behind a
+/// reverse-proxy subpath (`https://host/melete`) keeps its prefix. Bodies are read
 /// with a plain JSON decoder: op payloads are opaque client JSON the server stores
 /// verbatim, and a key spelled `Notes` must arrive as `Notes`.
 ///
@@ -39,8 +40,8 @@ const DETAIL_LIMIT: usize = 400;
 ///   60-second timeout).
 /// - [`SidecarError::Unauthorized`] and [`SidecarError::Forbidden`]: HTTP 401
 ///   and 403.
-/// - [`SidecarError::Absent`]: HTTP 404, 405 or 501, an older sidecar or none.
-/// - [`SidecarError::Status`]: any other non-2xx status; 503 is the sidecar's
+/// - [`SidecarError::Absent`]: HTTP 404, 405 or 501, an older server or none.
+/// - [`SidecarError::Status`]: any other non-2xx status; 503 is the server's
 ///   "storage unavailable".
 /// - [`SidecarError::Decode`]: a 2xx answer that isn't the JSON expected.
 #[derive(Clone)]
@@ -60,8 +61,8 @@ impl std::fmt::Debug for SidecarClient {
 }
 
 impl SidecarClient {
-    /// `base_url` is the Jellyfin server address the user signed in to; `token` is the
-    /// Jellyfin access token. There is no separate login.
+    /// `base_url` is the Melete server address the user signed in to; `token` is the
+    /// session token sign-in gave. There is no separate login.
     ///
     /// # Errors
     ///
@@ -79,16 +80,13 @@ impl SidecarClient {
             )));
         }
 
-        let authorization = HeaderValue::from_str(&format!("MediaBrowser Token=\"{token}\""))
-            .map_err(|_| {
-                SidecarError::InvalidUrl(
-                    "the token contains characters a header cannot carry".to_owned(),
-                )
-            })?;
+        let authorization = HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| {
+            SidecarError::InvalidUrl(
+                "the token contains characters a header cannot carry".to_owned(),
+            )
+        })?;
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, authorization.clone());
-        // Jellyfin 10.8 and earlier read this one instead.
-        headers.insert("X-Emby-Authorization", authorization);
+        headers.insert(AUTHORIZATION, authorization);
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
         // ring, never aws-lc: see the manifest. Installing is first-wins and harmless
@@ -127,7 +125,7 @@ impl SidecarClient {
     /// # Errors
     ///
     /// The [request errors](SidecarClient#errors); [`SidecarError::Absent`] means
-    /// no sidecar.
+    /// no such routes.
     pub async fn status(&self) -> Result<SyncStatus, SidecarError> {
         self.get_json("aoide/sync/status", &[]).await
     }
@@ -257,7 +255,7 @@ impl SidecarClient {
             .collect())
     }
 
-    /// `POST /aoide/shares`: invites another Jellyfin user to a playlist this user
+    /// `POST /aoide/shares`: invites another Melete user to a playlist this user
     /// owns. Their edits and this user's then both travel through the ordinary pull.
     ///
     /// # Errors
@@ -311,12 +309,12 @@ impl SidecarClient {
 
     // MARK: - Infinity and Discover
 
-    /// `POST /aoide/next`. A 404 here is an older sidecar — or a seed this user cannot
+    /// `POST /aoide/next`. A 404 here is an older server — or a seed this user cannot
     /// see; the caller tells them apart by whether the seed is a track it just played.
     ///
     /// # Errors
     ///
-    /// [`SidecarError::Absent`] for an older sidecar or a seed this user can't see;
+    /// [`SidecarError::Absent`] for an older server or a seed this user can't see;
     /// [`SidecarError::Status`] with 503 when the server's storage is down;
     /// otherwise the [request errors](SidecarClient#errors).
     pub async fn next(&self, request: &NextRequest) -> Result<NextResponse, SidecarError> {
@@ -324,12 +322,12 @@ impl SidecarClient {
             .await
     }
 
-    /// `GET /aoide/discover`. `limit` is held to 1…100. A 404 is an older sidecar: hide
+    /// `GET /aoide/discover`. `limit` is held to 1…100. A 404 is an older server: hide
     /// the tile.
     ///
     /// # Errors
     ///
-    /// [`SidecarError::Absent`] for a sidecar without Discover; otherwise the
+    /// [`SidecarError::Absent`] for a server without Discover; otherwise the
     /// [request errors](SidecarClient#errors).
     pub async fn discover(&self, limit: u32) -> Result<DiscoverResponse, SidecarError> {
         let limit = limit.clamp(1, DiscoverResponse::MAX_LIMIT);
@@ -480,13 +478,17 @@ fn check(status: u16, body: &[u8], path: &str) -> Result<(), SidecarError> {
         200..=299 => Ok(()),
         401 => Err(SidecarError::Unauthorized),
         403 => Err(SidecarError::Forbidden),
-        // The endpoint itself is missing: an older sidecar, or a proxy answering the
+        // The endpoint itself is missing: an older server, or a proxy answering the
         // path. One is "your server can't do this yet", never "try again".
         404 | 405 | 501 => Err(SidecarError::Absent {
             path: path.to_owned(),
         }),
         _ => {
-            let text = String::from_utf8_lossy(body);
+            // Melete's errors are `{"error": "…"}`; anything else is shown as sent.
+            let text = serde_json::from_slice::<serde_json::Value>(body)
+                .ok()
+                .and_then(|value| value.get("error")?.as_str().map(str::to_owned))
+                .unwrap_or_else(|| String::from_utf8_lossy(body).into_owned());
             let trimmed = text.trim();
             let detail: String = trimmed.chars().take(DETAIL_LIMIT).collect();
             Err(SidecarError::Status {
@@ -514,10 +516,10 @@ fn network(path: &str, error: &reqwest::Error) -> SidecarError {
 }
 
 /// Redirects are followed only within the server's own origin (scheme, host
-/// and port), at most ten: the token rides in `X-Emby-Authorization` (a default header),
-/// which reqwest doesn't strip when a redirect leaves for another host or
-/// drops to plain HTTP, as it does `Authorization`. A redirect elsewhere is
-/// returned as the redirect response, an error to the caller.
+/// and port), at most ten. The token is a default header, which reqwest keeps
+/// on a redirect from https to plain http on the same host; staying within the
+/// origin covers that. A redirect elsewhere is returned as the redirect
+/// response, an error to the caller.
 fn same_origin_redirects() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
         let same = attempt

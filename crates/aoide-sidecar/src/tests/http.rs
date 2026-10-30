@@ -1,5 +1,5 @@
 //! The HTTP client against a local mock server. Includes the applicable cases of
-//! JellyfinKit's `SyncEndpointTests.swift` ("Sidecar requests").
+//! MeleteKit's `SyncEndpointTests.swift` ("Sidecar requests").
 
 use std::collections::BTreeMap;
 
@@ -55,17 +55,14 @@ fn the_sidecar_hangs_off_the_server_root() {
     );
 }
 
-/// A Jellyfin behind a reverse proxy lives at a subpath, and the sidecar under it.
+/// A Melete behind a reverse proxy lives at a subpath, and its Aoide routes under it.
 #[test]
 fn a_reverse_proxy_subpath_is_preserved() {
-    for base in [
-        "https://example.com/jellyfin",
-        "https://example.com/jellyfin/",
-    ] {
+    for base in ["https://example.com/melete", "https://example.com/melete/"] {
         let client = SidecarClient::new(base, TOKEN).unwrap();
         assert_eq!(
             client.url("aoide/sync/pull", &[]).as_str(),
-            "https://example.com/jellyfin/aoide/sync/pull"
+            "https://example.com/melete/aoide/sync/pull"
         );
     }
 }
@@ -89,7 +86,7 @@ fn the_token_stays_out_of_debug_output() {
 }
 
 #[tokio::test]
-async fn the_sidecar_gets_the_same_mediabrowser_token_as_everything_else() {
+async fn the_aoide_routes_get_the_same_bearer_token_as_everything_else() {
     let (server, client) = mock().await;
     respond(
         &server,
@@ -100,16 +97,12 @@ async fn the_sidecar_gets_the_same_mediabrowser_token_as_everything_else() {
     .await;
     client.status().await.unwrap();
     let request = &requests(&server).await[0];
-    let expected = format!("MediaBrowser Token=\"{TOKEN}\"");
+    let expected = format!("Bearer {TOKEN}");
     assert_eq!(
         header_value(request, "authorization").as_deref(),
         Some(expected.as_str())
     );
-    // 10.8 and earlier read the other one.
-    assert_eq!(
-        header_value(request, "x-emby-authorization").as_deref(),
-        Some(expected.as_str())
-    );
+    assert_eq!(header_value(request, "x-emby-authorization"), None);
 }
 
 // MARK: - Pull
@@ -211,7 +204,7 @@ async fn a_push_sends_the_contracts_envelope_and_reads_the_answer() {
     assert!(sent.contains(r#""Notes":"kept as written""#), "{sent}");
 }
 
-// MARK: - Telling "no sidecar" from "not right now"
+// MARK: - Telling "no such route" from "not right now"
 
 #[tokio::test]
 async fn a_missing_plugin_is_absent_not_a_failure_to_retry() {
@@ -449,7 +442,7 @@ async fn covers_are_asked_for_uploaded_and_fetched_by_hash() {
     assert_eq!(put.body, b"png bytes");
 }
 
-/// An older sidecar without the image endpoints.
+/// An older server without the image endpoints.
 #[tokio::test]
 async fn uploading_to_a_sidecar_without_covers_is_absent() {
     let (_server, client) = mock().await;

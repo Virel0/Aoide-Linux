@@ -1,6 +1,6 @@
 //! Songs: every song by title, a page at a time.
 
-use aoide_jellyfin::{Item, ListQuery, Page as ItemPage};
+use aoide_melete::{Item, ListQuery, Page as ItemPage};
 use aoide_store::PlaySource;
 use iced::widget::{column, sensor};
 use iced::{Element, Task};
@@ -45,7 +45,6 @@ impl State {
         }
         self.loading = true;
         let query = ListQuery {
-            parent_id: ctx.library.map(str::to_owned),
             start_index: self.tracks.len() as u32,
             limit: Some(PAGE),
             ..ListQuery::default()
@@ -62,7 +61,7 @@ impl State {
                 self.loading = false;
                 match result {
                     Ok(page) => {
-                        self.total = Some(page.total_record_count);
+                        self.total = Some(page.total);
                         self.tracks
                             .extend(page.items.iter().map(TrackMeta::from_item));
                         if page.items.is_empty() {

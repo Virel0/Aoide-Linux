@@ -16,14 +16,10 @@ impl App {
         };
         signed.section = section.clone();
         signed.menu = None;
-        if !signed.library_known {
-            return Task::none();
-        }
         let key = signed.next_key;
         signed.next_key += 1;
         let ctx = Ctx {
             client: &signed.connection.client,
-            library: signed.library.as_deref(),
             store: &store,
             key,
         };
@@ -66,7 +62,6 @@ impl App {
         signed.next_key += 1;
         let ctx = Ctx {
             client: &signed.connection.client,
-            library: signed.library.as_deref(),
             store: &store,
             key,
         };
@@ -110,7 +105,6 @@ impl App {
         signed.menu = None;
         let ctx = Ctx {
             client: &signed.connection.client,
-            library: signed.library.as_deref(),
             store: &store,
             key: new_key,
         };
@@ -143,7 +137,6 @@ impl App {
         };
         let ctx = Ctx {
             client: &signed.connection.client,
-            library: signed.library.as_deref(),
             store: &store,
             key,
         };

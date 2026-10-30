@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use aoide_audio::EngineEvent;
-use aoide_jellyfin::{Device, Item, Lyrics};
+use aoide_melete::{Device, Lyrics};
 use aoide_store::{AccountClaim, SyncReport};
 use iced::theme::Mode;
 use iced::widget::{center, text};
@@ -56,6 +56,10 @@ pub struct App {
     clock: Instant,
     phase: Phase,
     login: login::State,
+    /// Quick Connect while its code waits: which attempt, the server, the
+    /// secret to ask with.
+    quick: Option<(u64, aoide_melete::MeleteClient, String)>,
+    quick_attempts: u64,
     pub(crate) session: Option<Signed>,
     /// The tray and the other services of Settings → System.
     pub(crate) system: crate::system::State,
@@ -101,6 +105,13 @@ pub enum Message {
     Login(login::Message),
     Restored(Result<Option<Connection>, String>),
     SignedIn(Result<Connection, String>),
+    /// Quick Connect attempt `.0` has a code, or failed to get one.
+    QuickStarted(
+        u64,
+        Result<(aoide_melete::MeleteClient, aoide_melete::QuickConnectCode), String>,
+    ),
+    /// What asking about attempt `.0`'s code said.
+    QuickPolled(u64, Result<Option<Connection>, String>),
     Claimed(Result<AccountClaim, String>),
     ResolveOwner {
         keep: bool,
@@ -109,10 +120,9 @@ pub enum Message {
     ConfirmErase(bool),
     SignOut,
     TokenRejected,
-    /// Sync with the sidecar now, not at the next launch or focus.
+    /// Sync with Melete now, not at the next launch or focus.
     SyncNow,
     Synced(Result<SyncReport, String>),
-    Libraries(Result<Vec<Item>, String>),
     Section(Section),
     /// Settings, at one category: the command palette's way in.
     OpenSettings(screens::settings::Category),
@@ -153,8 +163,6 @@ pub enum Message {
     Handoff(crate::handoff::Msg),
     Discover(crate::screens::discover::Msg),
     SyncPanel(crate::screens::sync_status::Msg),
-    /// A Jellyfin playlist changed (this one, or which ones there are).
-    JellyfinPlaylistChanged(Option<String>),
     Radio(crate::radio::Msg),
     Covers(crate::covers::Msg),
     Sharing(crate::screens::share::Msg),
@@ -213,6 +221,8 @@ impl App {
         let key = crate::smart::load_key(Arc::clone(&keyring));
         let app = Self {
             login: login::State::new(config.last_server.clone()),
+            quick: None,
+            quick_attempts: 0,
             paths,
             config,
             keyring,
@@ -316,6 +326,8 @@ impl App {
             Message::Login(message) => self.login_message(message),
             Message::Restored(result) => self.restored(result),
             Message::SignedIn(result) => self.signed_in(result),
+            Message::QuickStarted(attempt, result) => self.quick_started(attempt, result),
+            Message::QuickPolled(attempt, result) => self.quick_polled(attempt, result),
             Message::Claimed(result) => self.claimed(result),
             Message::ConfirmErase(ask) => self.confirm_erase(ask),
             Message::ResolveOwner { keep } => self.resolve_owner(keep),
@@ -323,7 +335,6 @@ impl App {
             Message::SyncNow => self.sync_now(),
             Message::TokenRejected => self.token_rejected(),
             Message::Synced(result) => self.synced(result),
-            Message::Libraries(result) => self.libraries(result),
             Message::Section(section) => self.show_section(section),
             Message::Retry(key) => self.retry(key),
             Message::FailureDetails(open) => {
@@ -370,7 +381,6 @@ impl App {
             Message::Handoff(message) => self.handoff(message),
             Message::Discover(message) => self.discover(message),
             Message::SyncPanel(message) => self.sync_panel(message),
-            Message::JellyfinPlaylistChanged(id) => self.jellyfin_playlists_changed(id),
             Message::Radio(message) => self.radio(message),
             Message::Covers(message) => self.covers(message),
             Message::Sharing(message) => self.sharing(message),

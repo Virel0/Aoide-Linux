@@ -1,4 +1,4 @@
-//! When the sidecar sync runs, and what its outcome changes.
+//! When the Melete sync runs, and what its outcome changes.
 
 use aoide_store::SyncReport;
 use iced::Task;

@@ -114,7 +114,7 @@ impl SyncRecord for Folder {
     }
 }
 
-/// A playlist: hand-made, smart, or imported from Jellyfin. Merged field by field.
+/// A playlist: hand-made, smart, or imported. Merged field by field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Playlist {
@@ -149,7 +149,7 @@ pub struct Playlist {
     /// The Jellyfin playlist this was imported from, if it was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_jellyfin_id: Option<String>,
-    /// A Jellyfin item whose cover stands in for this playlist's.
+    /// A Melete album whose cover stands in for this playlist's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artwork_item_id: Option<String>,
     /// SHA-256 of a cover uploaded for this playlist; beats `artwork_item_id`.
@@ -275,10 +275,10 @@ pub struct PlaylistItem {
     pub id: String,
     /// The playlist it belongs to.
     pub playlist_id: String,
-    /// The track's Jellyfin id, or the last one that resolved with
+    /// The track's id, or the last one that resolved with
     /// [`crate::UNRESOLVED_PREFIX`] before it when the track has gone missing.
     pub jellyfin_id: String,
-    /// Stored beside the id because Jellyfin ids are derived per file: a rescan after
+    /// Stored beside the id because Melete ids belong to the file: a rescan after
     /// files move mints new ones, and without this every entry would dangle.
     pub content_key: String,
     /// A `FractionalIndex` key, not an integer.

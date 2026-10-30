@@ -21,10 +21,10 @@ Homepage: https://github.com/Virel0/Aoide-Linux
 Depends: libc6 (>= 2.35), libgcc-s1, libasound2t64 | libasound2, libdbus-1-3, libxkbcommon0, libwayland-client0, libwayland-cursor0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrandr2
 Recommends: libvulkan1, mesa-vulkan-drivers | vulkan-icd, fonts-noto-cjk
 Suggests: gnome-keyring | keepassxc
-Description: native Jellyfin music client
- Aoide for Linux plays the music on your own Jellyfin server. It is the
- companion of the Aoide app for iPhone: with the Aoide plugin on the
- server, playlists and listening history sync between them.
+Description: native music client for Melete
+ Aoide for Linux plays the music on your own Melete server. It is the
+ companion of the Aoide app for iPhone: playlists and listening history
+ sync between them through the server.
  .
  It installs beside the Electron-based Aoide desktop app, as the command
  aoide-linux.

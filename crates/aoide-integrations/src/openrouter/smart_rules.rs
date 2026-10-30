@@ -93,8 +93,8 @@ impl RuleField {
     }
 
     /// From the document's snake_case, or the camelCase the phone also
-    /// accepts inbound. Emitted as snake_case only, which is what the sidecar
-    /// is written against.
+    /// accepts inbound. Emitted as snake_case only, the document's own
+    /// spelling.
     pub fn parse(text: &str) -> Option<Self> {
         let alias = match text {
             "albumArtist" => Some(Self::AlbumArtist),
@@ -120,7 +120,7 @@ impl RuleField {
     }
 
     /// Whether the field describes listening (only the local history knows
-    /// it) rather than the library (Jellyfin answers it).
+    /// it) rather than the library (Melete answers it).
     pub fn is_history(self) -> bool {
         matches!(
             self,

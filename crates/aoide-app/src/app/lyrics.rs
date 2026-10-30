@@ -1,7 +1,7 @@
 //! The lyrics panel: fetching the playing song's lyrics, and keeping the
 //! lit line in view.
 
-use aoide_jellyfin::Lyrics;
+use aoide_melete::Lyrics;
 use iced::Task;
 
 use super::{App, Message, Panel};
@@ -63,7 +63,7 @@ impl App {
                 (item, result)
             },
             |(item, result)| match result {
-                Err(aoide_jellyfin::Error::Unauthorized) => Message::TokenRejected,
+                Err(aoide_melete::Error::Unauthorized) => Message::TokenRejected,
                 result => Message::Listening(crate::listening::Msg::LyricsFound(
                     item,
                     result.map_err(|e| crate::failure::describe(&e)),

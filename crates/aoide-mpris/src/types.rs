@@ -1,5 +1,5 @@
 //! The crate's own vocabulary. The app maps its player to and from these; nothing
-//! here knows about iced, the audio engine or Jellyfin's client types.
+//! here knows about iced, the audio engine or Melete's client types.
 
 use std::time::Duration;
 
@@ -60,14 +60,14 @@ impl LoopStatus {
     }
 }
 
-/// What is playing. Strings come from the Jellyfin server and are cleaned
+/// What is playing. Strings come from the Melete server and are cleaned
 /// before they go on the bus: NUL characters, which a D-Bus string can't hold,
 /// are removed. Empty fields are left out of the map rather than sent empty.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Metadata {
-    /// The Jellyfin item id. It becomes the MPRIS track id through
+    /// The Melete track id. It becomes the MPRIS track id through
     /// [`crate::track_object_path`].
-    pub jellyfin_id: String,
+    pub track_id: String,
     /// `xesam:title`.
     pub title: String,
     /// `xesam:artist`, in credit order.
@@ -81,7 +81,7 @@ pub struct Metadata {
     /// Cover art. Only `https://` and `file://` URLs are published, and an
     /// `https` URL carrying credentials (user info, or an `api_key`/token query
     /// parameter) is dropped: every process on the session bus can read it.
-    /// Jellyfin's image endpoints need no token, or the app can pass a cached
+    /// Melete's covers need the Bearer token, so the app passes a cached
     /// `file://` copy.
     pub art_url: Option<String>,
     /// `xesam:trackNumber`, the track's number on its disc. Left out above
@@ -139,9 +139,9 @@ impl Default for PlayerState {
 }
 
 impl PlayerState {
-    /// The Jellyfin id of the loaded track, if any.
+    /// The id of the loaded track, if any.
     pub fn track_id(&self) -> Option<&str> {
-        self.metadata.as_ref().map(|m| m.jellyfin_id.as_str())
+        self.metadata.as_ref().map(|m| m.track_id.as_str())
     }
 }
 
@@ -168,7 +168,7 @@ pub enum Command {
     /// Move by this many microseconds, negative for backwards (MPRIS `Seek`).
     /// The spec asks a seek past the end to act like `Next`.
     Seek(i64),
-    /// Jump to this position in the track with this Jellyfin id (MPRIS
+    /// Jump to this position in the track with this id (MPRIS
     /// `SetPosition`). Already checked to be the current track and within its
     /// length.
     SetPosition(String, Duration),

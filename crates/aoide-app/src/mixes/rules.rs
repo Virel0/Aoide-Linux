@@ -4,16 +4,15 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::playback::tracks::TrackMeta;
+use crate::song_filter::SongFilter;
 use aoide_integrations::openrouter::mix_plan::match_genres;
 use aoide_integrations::openrouter::smart_rules::{
     Match, RuleField, RuleOperator, RuleValue, SmartRule, SmartRules, SortDirection,
 };
-use aoide_jellyfin::{ListQuery, NameId, Sort};
 
-use crate::playback::tracks::TrackMeta;
-
-/// Candidates asked of Jellyfin by the rules.
-const CANDIDATES: u32 = 300;
+/// Candidates the rules pick from.
+pub const CANDIDATES: usize = 300;
 
 fn lower(text: &str) -> String {
     text.to_lowercase()
@@ -109,39 +108,24 @@ pub fn library_matches(
     })
 }
 
-/// The Jellyfin pre-filter for the rules: only what narrows without ever
-/// dropping a track the rules would keep. For "any", nothing but the
-/// genres when the genres are all there is.
-pub fn candidate_query(
+/// The pre-filter for the rules: only what narrows without ever dropping a
+/// track the rules would keep. For "any", nothing but the genres when the
+/// genres are all there is.
+pub fn candidate_filter(
     rules: &SmartRules,
     genres: &[String],
-    genre_ids: &[NameId],
     library_years: &[i32],
-    library: Option<&str>,
-) -> ListQuery {
-    let mut query = ListQuery {
-        parent_id: library.map(str::to_owned),
-        sort: Sort::Random,
-        limit: Some(CANDIDATES),
-        ..ListQuery::default()
-    };
+) -> SongFilter {
+    let mut filter = SongFilter::default();
     let only_genres = rules.rules.iter().all(|r| r.field == RuleField::Genre);
     if rules.match_ == Match::Any && !only_genres {
-        return query;
+        return filter;
     }
     let positive_genre = rules.rules.iter().any(|r| {
         r.field == RuleField::Genre && matches!(r.op, RuleOperator::Is | RuleOperator::Contains)
     });
-    if positive_genre && !genres.is_empty() {
-        query.genre_ids = genres
-            .iter()
-            .filter_map(|g| {
-                genre_ids
-                    .iter()
-                    .find(|n| n.name == *g)
-                    .map(|n| n.id.clone())
-            })
-            .collect();
+    if positive_genre {
+        filter.genres = genres.to_vec();
     }
     if rules.match_ == Match::All {
         let years: Vec<i32> = library_years
@@ -162,12 +146,12 @@ pub fn candidate_query(
             .rules
             .iter()
             .any(|r| r.field == RuleField::Year && r.op != RuleOperator::IsNot);
-        // An empty list is every year to Jellyfin: only send a real narrowing.
+        // No years would read as every year: only keep a real narrowing.
         if has_year_rule && !years.is_empty() && years.len() < library_years.len() {
-            query.years = years;
+            filter.years = years;
         }
     }
-    query
+    filter
 }
 
 /// The rules only the store can answer: the listening history, and liked

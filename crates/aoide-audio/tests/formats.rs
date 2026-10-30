@@ -15,7 +15,7 @@
 //! | MP3 (LAME tag) | exact | 0 | 0 |
 //! | Ogg Vorbis | exact | 0 | 0 |
 //! | AAC in M4A (Apple encoder) | priming + padding | 2112 | 3077 frames (64 ms) |
-//! | AAC in ADTS (ffmpeg, as Jellyfin transcodes) | priming + padding | 1024 | 1029 frames (21 ms) |
+//! | AAC in ADTS (ffmpeg, as Melete converts) | priming + padding | 1024 | 1029 frames (21 ms) |
 //!
 //! Shift and gap are in frames at 48 kHz; the gap is A's padding plus B's
 //! priming, so it changes with A's length.
@@ -273,7 +273,7 @@ fn aac_in_m4a_keeps_its_priming_and_padding() {
 
 #[test]
 fn aac_in_adts_keeps_its_priming_and_padding() {
-    // ffmpeg's native AAC encoder, which Jellyfin transcodes with: 1024
+    // ffmpeg's native AAC encoder (Melete converts with ffmpeg): 1024
     // frames of priming, padding to a whole packet (5 frames for A, 713 for
     // B), and ADTS has no field to say so.
     measure(&Lossy {

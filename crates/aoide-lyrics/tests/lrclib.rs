@@ -216,13 +216,16 @@ async fn nothing_is_sent_until_a_lookup_and_not_for_an_unsearchable_track() {
 }
 
 #[tokio::test]
-async fn a_track_query_comes_from_a_jellyfin_item() {
-    let item: aoide_jellyfin::Item = serde_json::from_value(json!({
-        "Id": "t1", "Name": "Harbour Lights", "Album": "Low Tide Radio",
-        "AlbumArtist": "Various Artists", "Artists": ["The Quiet Engines", "Mara Vey"],
-        "RunTimeTicks": 2_434_000_000_i64
-    }))
-    .unwrap();
+async fn a_track_query_comes_from_a_melete_track() {
+    let item = aoide_melete::Item {
+        id: "t1".into(),
+        name: "Harbour Lights".into(),
+        album: Some("Low Tide Radio".into()),
+        album_artist: Some("Various Artists".into()),
+        artists: vec!["The Quiet Engines".into(), "Mara Vey".into()],
+        duration: Some(std::time::Duration::from_micros(243_400_000)),
+        ..aoide_melete::Item::default()
+    };
     assert_eq!(TrackQuery::from_item(&item), track());
 }
 

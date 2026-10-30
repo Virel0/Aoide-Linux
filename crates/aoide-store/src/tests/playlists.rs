@@ -2,7 +2,7 @@
 //! Jellyfin", "Playlist covers", "Cover blobs", "Import for export adoption" and
 //! "Covers that reach the server".
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 
 use super::{all, links, pending, store};
 use crate::{
@@ -636,104 +636,6 @@ fn relinking_leaves_an_id_that_still_resolves_completely_alone() {
     assert_eq!(store.items(&list.id).unwrap()[0].updated_at, 0);
 }
 
-// MARK: - Importing from Jellyfin
-
-#[test]
-fn importing_copies_the_servers_songs_in_order() {
-    let store = store();
-    let list = store
-        .import_playlist("Road Trip", "srv-1", &links(&["a", "b", "c"]), now_millis())
-        .unwrap();
-    assert_eq!(list.name, "Road Trip");
-    assert_eq!(list.source_jellyfin_id.as_deref(), Some("srv-1"));
-    assert_eq!(ids(&store.items(&list.id).unwrap()), ["a", "b", "c"]);
-}
-
-/// Tapping import twice must not leave two playlists.
-#[test]
-fn importing_the_same_playlist_twice_refreshes_one_copy() {
-    let store = store();
-    let first = store
-        .import_playlist("Road Trip", "srv-1", &links(&["a", "b"]), now_millis())
-        .unwrap();
-    let second = store
-        .import_playlist("Road Trip", "srv-1", &links(&["a", "b", "c"]), now_millis())
-        .unwrap();
-    assert_eq!(first.id, second.id);
-    assert_eq!(store.playlists().unwrap().len(), 1);
-    assert_eq!(ids(&store.items(&second.id).unwrap()), ["a", "b", "c"]);
-}
-
-#[test]
-fn a_refresh_drops_songs_the_server_no_longer_has() {
-    let store = store();
-    let list = store
-        .import_playlist("Trimmed", "srv-2", &links(&["a", "b", "c"]), now_millis())
-        .unwrap();
-    store
-        .import_playlist("Trimmed", "srv-2", &links(&["b"]), now_millis())
-        .unwrap();
-    assert_eq!(ids(&store.items(&list.id).unwrap()), ["b"]);
-}
-
-#[test]
-fn a_refresh_emits_a_delete_op_for_every_song_it_drops() {
-    let store = store();
-    store
-        .import_playlist("Trimmed", "srv-3", &links(&["a", "b"]), now_millis())
-        .unwrap();
-    let before = pending(&store)
-        .iter()
-        .filter(|op| op.operation == "delete")
-        .count();
-    store
-        .import_playlist("Trimmed", "srv-3", &links(&["a"]), now_millis())
-        .unwrap();
-    let after = pending(&store)
-        .iter()
-        .filter(|op| op.operation == "delete")
-        .count();
-    assert_eq!(
-        after,
-        before + 2,
-        "both old rows have to be told to the other devices"
-    );
-}
-
-#[test]
-fn playlists_made_by_hand_are_untouched_by_an_import_of_the_same_name() {
-    let store = store();
-    let mine = store
-        .create_playlist("Road Trip", None, None, now_millis())
-        .unwrap();
-    store
-        .add_tracks(&links(&["x"]), &mine.id, now_millis())
-        .unwrap();
-    store
-        .import_playlist("Road Trip", "srv-1", &links(&["a"]), now_millis())
-        .unwrap();
-    assert_eq!(store.playlists().unwrap().len(), 2);
-    assert_eq!(ids(&store.items(&mine.id).unwrap()), ["x"]);
-}
-
-#[test]
-fn the_imported_set_names_exactly_the_server_playlists_that_have_a_copy() {
-    let store = store();
-    store
-        .import_playlist("One", "srv-1", &links(&["a"]), now_millis())
-        .unwrap();
-    store
-        .create_playlist("By Hand", None, None, now_millis())
-        .unwrap();
-    assert_eq!(
-        store.imported_source_ids().unwrap(),
-        BTreeSet::from(["srv-1".to_owned()])
-    );
-    let copy = store.imported_playlist("srv-1").unwrap().unwrap();
-    store.delete_playlist(&copy.id, now_millis()).unwrap();
-    assert!(store.imported_source_ids().unwrap().is_empty());
-}
-
 // MARK: - Playlist covers
 
 fn cache_album(store: &Store, track: &str, album: &str) {
@@ -1013,52 +915,6 @@ fn a_cover_adds_only_a_hash_to_the_op_never_bytes() {
     assert!(
         op.payload.len() < 2_000,
         "a quarter-megabyte cover must not be in here"
-    );
-}
-
-// MARK: - Import for export adoption
-
-/// The name is the join; a copy that changed it would make adoption miss.
-#[test]
-fn a_copy_keeps_the_server_playlists_name_exactly() {
-    let store = store();
-    for name in ["Road Trip", "  Padded  ", "Café — 90s", "Copy"] {
-        let list = store
-            .import_playlist(name, &format!("srv-{name}"), &links(&["a"]), now_millis())
-            .unwrap();
-        assert_eq!(list.name, name);
-    }
-}
-
-#[test]
-fn two_server_playlists_sharing_a_name_stay_two_distinct_copies() {
-    let store = store();
-    let first = store
-        .import_playlist("Favourites", "srv-1", &links(&["a"]), now_millis())
-        .unwrap();
-    let second = store
-        .import_playlist("Favourites", "srv-2", &links(&["b"]), now_millis())
-        .unwrap();
-    assert_ne!(first.id, second.id);
-    assert_eq!(store.playlists().unwrap().len(), 2);
-    assert_eq!(first.source_jellyfin_id.as_deref(), Some("srv-1"));
-    assert_eq!(second.source_jellyfin_id.as_deref(), Some("srv-2"));
-}
-
-#[test]
-fn a_copy_records_exactly_which_server_playlist_it_came_from() {
-    let store = store();
-    let list = store
-        .import_playlist("Road Trip", "srv-42", &links(&["a"]), now_millis())
-        .unwrap();
-    let op = pending(&store)
-        .into_iter()
-        .rev()
-        .find(|op| op.entity_id == list.id)
-        .unwrap();
-    assert!(
-        op.payload.contains("srv-42"),
-        "the mapping has to reach the server to be usable there"
     );
 }
 

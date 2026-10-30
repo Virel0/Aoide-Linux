@@ -54,7 +54,7 @@ impl App {
             self.notice = Some(error);
         }
         match control {
-            Transport::Toggle => Task::batch([self.report_pause_state(), self.save_queue()]),
+            Transport::Toggle => self.save_queue(),
             Transport::Next | Transport::Previous | Transport::Shuffle | Transport::Repeat => {
                 Task::batch([self.check_infinity(), self.save_queue()])
             }

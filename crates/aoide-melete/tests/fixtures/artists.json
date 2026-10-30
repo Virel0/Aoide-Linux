@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "albums": 1,
+      "appears_on": 0,
+      "id": 1,
+      "mb_artist_id": null,
+      "name": "Other Artist"
+    },
+    {
+      "albums": 1,
+      "appears_on": 0,
+      "id": 2,
+      "mb_artist_id": null,
+      "name": "Test Artist"
+    }
+  ],
+  "total": 2
+}

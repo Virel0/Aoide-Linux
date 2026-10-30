@@ -1,4 +1,4 @@
-//! What the sidecar's endpoints send and answer, field for field as the client
+//! What the `/aoide/*` endpoints send and answer, field for field as the client
 //! contract documents them. Every response field is `camelCase` on the wire.
 
 use std::collections::BTreeMap;
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
-    /// Where the sidecar's SQLite database is, on the server's disk.
+    /// Where Melete's database is, on the server's disk.
     #[serde(default)]
     pub database_path: Option<String>,
     /// The version of the database's schema.
@@ -36,7 +36,7 @@ pub struct SyncStatus {
     /// How many ops the server's log holds.
     #[serde(default)]
     pub op_count: Option<i64>,
-    /// The sidecar plugin's version, in four parts: `1.9.0.0`.
+    /// The server's version: `melete/0.1.0`, or the Jellyfin plugin's `1.9.0.0`.
     #[serde(default)]
     pub plugin_version: Option<String>,
     /// Absent on servers before 1.9.0.0 — which then accept only the original six.
@@ -175,7 +175,7 @@ impl NextFactors {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NextCandidate {
-    /// The track's Jellyfin item id.
+    /// The track's Melete id.
     pub id: String,
     /// The weighted sum the candidates are ranked by. Not bounded to 0…1: the
     /// freshness penalties take it below zero.
@@ -225,7 +225,7 @@ pub struct DiscoverFactors {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiscoverCandidate {
-    /// The track's Jellyfin item id.
+    /// The track's Melete id.
     pub id: String,
     /// What the list is ranked by: taste alone.
     pub score: f64,
@@ -305,7 +305,7 @@ pub struct SoundBounds {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SoundBoundsResponse {
-    /// Measured tracks by Jellyfin id; `None` for one measured with nothing to
+    /// Measured tracks by track id; `None` for one measured with nothing to
     /// trim.
     #[serde(default)]
     pub bounds: BTreeMap<String, Option<SoundBounds>>,
@@ -353,7 +353,7 @@ pub struct AudioAnalysis {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioAnalysisResponse {
-    /// Measured tracks by Jellyfin id; `None` for one measured with nothing to
+    /// Measured tracks by track id; `None` for one measured with nothing to
     /// report.
     #[serde(default)]
     pub analysis: BTreeMap<String, Option<AudioAnalysis>>,
@@ -433,7 +433,7 @@ pub struct QueueEntry {
     pub updated_at: Option<i64>,
     /// The name the device gave itself, shown as "Pick up from …".
     pub device_name: Option<String>,
-    /// The queue's tracks as Jellyfin ids, in play order.
+    /// The queue's tracks as track ids, in play order.
     pub track_ids: Vec<String>,
     /// The 0-based index into `track_ids` of the track playing.
     pub position: i64,
@@ -517,7 +517,7 @@ pub(crate) fn list_from<'a>(body: &'a serde_json::Value, keys: &[&str]) -> &'a [
 pub struct PlaylistShare {
     /// The Aoide playlist's id, as its sync ops carry it.
     pub playlist_id: String,
-    /// The Jellyfin user id the playlist is shared with.
+    /// The Melete user id the playlist is shared with.
     pub grantee_user_id: String,
     /// The grantee may edit, not only listen.
     #[serde(default)]
@@ -550,7 +550,7 @@ impl PlaylistShare {
 pub struct ShareRequest {
     /// The Aoide playlist to share.
     pub playlist_id: String,
-    /// The Jellyfin user id to share it with.
+    /// The Melete user id to share it with.
     pub grantee_user_id: String,
     /// Whether they may edit it, or only listen.
     pub can_edit: bool,

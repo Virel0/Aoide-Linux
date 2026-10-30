@@ -3,10 +3,10 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-light.svg">
-  <img src="docs/assets/banner-light.svg" width="100%" alt="Aoide for Linux: a native Jellyfin music player, written in Rust.">
+  <img src="docs/assets/banner-light.svg" width="100%" alt="Aoide for Linux: a native music player for Melete, written in Rust.">
 </picture>
 
-**A music player for your own Jellyfin server, native on the Linux desktop, in sync with Aoide on iPhone.**
+**A music player for your own Melete server, native on the Linux desktop, in sync with Aoide on iPhone.**
 
 [![CI](https://github.com/Virel0/Aoide-Linux/actions/workflows/ci.yml/badge.svg)](https://github.com/Virel0/Aoide-Linux/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/Virel0/Aoide-Linux?label=release&color=6244e5)](https://github.com/Virel0/Aoide-Linux/releases/latest)
@@ -23,11 +23,11 @@
 
 </div>
 
-Aoide plays the music on your Jellyfin server and keeps what is yours on your
-computer: playlists, likes, taste flags and a play history. With the
-[Aoide sidecar](https://github.com/Virel0/aoide-sidecar) plugin on the server,
-all of that syncs with the iPhone app, so a playlist made on the phone is on the
-desk, and a play at the desk counts on the phone.
+Aoide plays the music on your [Melete](https://github.com/Virel0/Melete) server
+and keeps what is yours on your computer: playlists, likes, taste flags and a
+play history. Melete keeps Aoide's sync log too, so all of that syncs with the
+iPhone app: a playlist made on the phone is on the desk, and a play at the desk
+counts on the phone.
 
 It is written from scratch in Rust with [iced](https://iced.rs). No code from
 Feishin or the Electron-based Aoide desktop app is copied here.
@@ -45,21 +45,21 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 
 ### Library
 - **Home**: jump back in to the last albums and playlists, or pick up what another device was playing; shelves of recently added, played and released, most played, random albums and genres
-- Albums, artists, songs, genres, favourites, and **collections**: saved filters by genre, year, tag and favourite
+- Albums, artists, songs, genres, liked songs, and **collections**: saved filters by genre, year and like
 - Search as you type; **search by description** through OpenRouter once you add a key
 - **Command palette** on Ctrl+K: every screen, the player's controls, and songs, albums and artists
-- Get info on any song: format, bit rate, sample rate, bit depth, size, plays
+- Get info on any song: format, bit rate, sample rate, bit depth, channels
 
 ### Playback
 - Native decoding with symphonia: FLAC, ALAC, MP3, AAC, Vorbis, WAV, AIFF
 - **Sample-exact gapless** joins for WAV, AIFF, FLAC and ALAC
 - Crossfade (8 s, or 4 s between songs at the same tempo) and Keep albums whole
-- Level volume to −18 LUFS from the sidecar's measurements, ReplayGain tags otherwise; Skip silence
+- Level volume to −18 LUFS from Melete's measurements, ReplayGain tags otherwise; Skip silence
 - Ten-band equaliser with 14 presets, a compressor, an output device picker, optional transcoding
 - Sleep timer, private listening, a full-screen player with a visualiser
 
 ### Lyrics
-- Synced lyrics from Jellyfin: follow along, click a line to seek, adjust the timing
+- Synced lyrics from Melete: follow along, click a line to seek, adjust the timing
 - Lyrics from LRCLIB when the server has none
 - Translation by your own LibreTranslate server
 - Romaji and furigana for Japanese lyrics
@@ -69,7 +69,6 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 
 ### Playlists and history
 - **Aoide playlists** in folders, with notes and covers, shared with other people on the server
-- Jellyfin playlists: create, edit, reorder, change the cover
 - **Smart playlists** evaluated when opened; Rediscover Mix and Heavy Rotation built in
 - Import a playlist from a Spotify link or a CSV file, and see what your library lacks
 - **Replay**: this month, this year or all time, from the local play history
@@ -82,7 +81,7 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 - Radio from any song, album, artist, genre or playlist
 - Mixes from a described mood, through OpenRouter
 
-### Sync with the sidecar
+### Sync through Melete
 - Playlists, folders, likes, taste flags and the play history, between the Linux app and the iPhone app
 - Hand the queue from one device to another
 
@@ -115,7 +114,7 @@ lyrics.
 
 - **[Aoide for iPhone](https://github.com/Virel0/Aoide)**: the iOS app, in SwiftUI, with CarPlay and Siri.
 - **Aoide for Linux** (this repository): the desktop app, in Rust.
-- **[Aoide sidecar](https://github.com/Virel0/aoide-sidecar)**: the Jellyfin plugin both apps sync through. Optional: without it, the apps still play music and keep playlists on the device.
+- **[Melete](https://github.com/Virel0/Melete)**: the media server both apps play from and sync through.
 
 Aoide was one of the three original Muses in Greek myth; the name means "song".
 
@@ -176,10 +175,10 @@ sudo apt install ./aoide-linux_*_amd64.deb
 ## Using it
 
 1. Open **Aoide** from the app menu, or run `aoide-linux`.
-2. Type your server's address, or press **Find servers on this network**. Home
-   addresses (`jellyfin.local`, a local network IP) connect over plain HTTP;
-   anything else uses HTTPS.
-3. Sign in with your Jellyfin username and password.
+2. Type your Melete server's address. Home addresses (`melete.local`, a local
+   network IP) connect over plain HTTP; anything else uses HTTPS.
+3. Sign in with your Melete username and password, or press **Sign in with
+   Quick Connect** and enter the code it shows in Melete's web UI.
 
 Ctrl+K opens the command palette from anywhere. Tab moves between fields and
 Escape closes what is on top.
@@ -191,12 +190,11 @@ to other services only for the features below.
 
 | Where | What is sent | When |
 |---|---|---|
-| Your Jellyfin server | Sign-in, library requests, streams, playback reports | Always; *Private listening* stops the reports |
-| The Aoide sidecar, on the same server | The sync log, the queue for handoff, requests for measurements, Infinity and Discover | When the plugin is installed |
+| Your Melete server | Sign-in, library requests, streams, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover | Always; *Private listening* keeps plays out of the sync log |
 | [LRCLIB](https://lrclib.net) | Title, first artist, album and length of a song your server has no lyrics for | On by default; Settings → Lyrics → *Find lyrics on the internet* |
 | Your LibreTranslate server | The lyric lines, your language and the key | Only when you set a server and turn on Translate |
 | [OpenRouter](https://openrouter.ai) | The phrase you typed, or a mix's description, with your library's genre names | Only with a key set, and only when you press the button |
-| Discord, through its local socket | The song and artist; the cover's address only if it is public HTTPS | Only while Rich Presence is on |
+| Discord, through its local socket | The song and artist | Only while Rich Presence is on |
 | GitHub's API | One unauthenticated request for the latest release, with a fixed user agent, at most once a day | On by default; Settings → System → Updates → *Check for updates* |
 | Spotify | A request for the public playlist page you paste | Only when you import a playlist |
 
@@ -232,9 +230,9 @@ and the packaging checks.
 
 | Crate | What it holds |
 |---|---|
-| `aoide-jellyfin` | Jellyfin HTTP client |
+| `aoide-melete` | Melete HTTP client: sign-in, the library, streams, lyrics, likes |
 | `aoide-lyrics` | Internet lyrics (LRCLIB) for tracks the server has none for, and LRC parsing |
-| `aoide-sidecar` | Aoide sidecar client: sync, Infinity, Discover, measurements |
+| `aoide-sidecar` | Client for Aoide's routes on Melete: sync, Infinity, Discover, measurements |
 | `aoide-store` | Local SQLite store: history, playlists, taste flags, op log |
 | `aoide-audio` | Decoding, output, gapless, crossfade, loudness |
 | `aoide-mpris` | The Linux desktop: MPRIS media controls, tray icon, single instance, sleep inhibit |

@@ -3,8 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use aoide_jellyfin::{Item, JellyfinClient, MixSeed};
-use aoide_sidecar::resumable_queues;
+use aoide_melete::{Item, MeleteClient};
+use aoide_sidecar::{SidecarClient, resumable_queues};
 use aoide_store::{
     Calendar, PlaySource, RESUME_GRID_LIMIT, RecentContext, RecentContextKind, ResumableQueue,
     ResumeTile, StationSeed, resume_tiles,
@@ -13,10 +13,8 @@ use aoide_store::{
 use super::PickedUp;
 use crate::artwork::ArtKey;
 use crate::playback::tracks::TrackMeta;
+use crate::radio::MixSeed;
 use crate::store_worker::StoreHandle;
-
-/// How many tracks a station resumed from the grid starts with.
-pub const STATION_LENGTH: u32 = 100;
 
 /// A tile of the grid, with the cover to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,12 +37,15 @@ pub struct Resumed {
     pub context: Option<RecentContext>,
 }
 
-/// The station to play for a station context: the seed's own Instant Mix
-/// when it says what it was, else the kind-blind one.
-pub fn station_seed(context: &RecentContext) -> Option<MixSeed> {
-    match context.seed? {
-        StationSeed::Album => Some(MixSeed::Album(context.id.clone())),
-        StationSeed::Artist => Some(MixSeed::Artist(context.id.clone())),
+/// What seeded a station context: an album or artist when it says so, else
+/// its song (Melete's ids are numbers) or its genre (by name).
+pub fn station_seed(context: &RecentContext) -> MixSeed {
+    let id = context.id.clone();
+    match context.seed {
+        Some(StationSeed::Album) => MixSeed::Album(id),
+        Some(StationSeed::Artist) => MixSeed::Artist(id),
+        None if !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()) => MixSeed::Track(id),
+        None => MixSeed::Genre(id),
     }
 }
 
@@ -73,9 +74,38 @@ pub fn plan_pick_up(queue: &ResumableQueue, found: &[Item]) -> Option<Resumed> {
     })
 }
 
-/// Each tile's cover, from the items its artwork ids name.
-pub fn cards(tiles: Vec<ResumeTile>, items: &[Item]) -> Vec<Card> {
-    let art: HashMap<&str, ArtKey> = items
+/// What a tile's artwork id names. Melete numbers albums and tracks apart, so
+/// the same number can be both: the tile's kind says which it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pictured {
+    /// An album, whose cover is drawn.
+    Album,
+    /// A track, whose album's cover is drawn once the track is found.
+    Track,
+    /// An artist or a genre, which have no cover.
+    Nothing,
+}
+
+fn pictured(tile: &ResumeTile) -> Pictured {
+    let ResumeTile::Context(context) = tile else {
+        return Pictured::Track;
+    };
+    match (context.kind, context.seed) {
+        (RecentContextKind::Album | RecentContextKind::LocalPlaylist, _)
+        | (RecentContextKind::Station, Some(StationSeed::Album)) => Pictured::Album,
+        (RecentContextKind::Station, None)
+            if matches!(station_seed(context), MixSeed::Track(_)) =>
+        {
+            Pictured::Track
+        }
+        _ => Pictured::Nothing,
+    }
+}
+
+/// Each tile's cover: an album's own, or the album's of the track it names
+/// (from `tracks`).
+pub fn cards(tiles: Vec<ResumeTile>, tracks: &[Item]) -> Vec<Card> {
+    let art: HashMap<&str, ArtKey> = tracks
         .iter()
         .filter_map(|item| {
             let (id, tag) = item.artwork_source()?;
@@ -85,7 +115,11 @@ pub fn cards(tiles: Vec<ResumeTile>, items: &[Item]) -> Vec<Card> {
     tiles
         .into_iter()
         .map(|tile| Card {
-            art: tile.artwork_item_id().and_then(|id| art.get(id).cloned()),
+            art: tile.artwork_item_id().and_then(|id| match pictured(&tile) {
+                Pictured::Album => Some(ArtKey::new(id, aoide_melete::COVER_TAG)),
+                Pictured::Track => art.get(id).cloned(),
+                Pictured::Nothing => None,
+            }),
             tile,
         })
         .collect()
@@ -94,7 +128,7 @@ pub fn cards(tiles: Vec<ResumeTile>, items: &[Item]) -> Vec<Card> {
 /// The grid's tiles: the newest queue another device put down, then this
 /// device's contexts, with each tile's cover.
 pub async fn load_cards(
-    client: JellyfinClient,
+    client: MeleteClient,
     sidecar: Option<aoide_sidecar::SidecarClient>,
     store: std::sync::Arc<aoide_store::Store>,
     contexts: Vec<RecentContext>,
@@ -110,6 +144,7 @@ pub async fn load_cards(
     let tiles = resume_tiles(&contexts, newest, RESUME_GRID_LIMIT);
     let ids: Vec<String> = tiles
         .iter()
+        .filter(|t| pictured(t) == Pictured::Track)
         .filter_map(|t| t.artwork_item_id().map(str::to_owned))
         .collect::<HashSet<_>>()
         .into_iter()
@@ -124,7 +159,8 @@ pub async fn load_cards(
 
 /// A tile's tracks, from wherever its kind keeps them.
 pub async fn resume(
-    client: JellyfinClient,
+    client: MeleteClient,
+    sidecar: Option<SidecarClient>,
     store: StoreHandle,
     tile: ResumeTile,
 ) -> Result<Resumed, String> {
@@ -145,12 +181,16 @@ pub async fn resume(
     };
     let (items, source) = match context.kind {
         RecentContextKind::Album => return album(&client, context).await,
-        RecentContextKind::JellyfinPlaylist => (
-            client.playlist_items(&context.id).await.map_err(describe)?,
-            PlaySource::Playlist,
-        ),
+        RecentContextKind::JellyfinPlaylist => {
+            return Err(
+                "That playlist was on the Jellyfin server, which Melete replaced.".to_owned(),
+            );
+        }
         RecentContextKind::LocalPlaylist => local_playlist(&client, &store, &context).await?,
-        RecentContextKind::Station => station(&client, &store, &context).await?,
+        RecentContextKind::Station => (
+            crate::radio::tune(client, sidecar, store, station_seed(&context)).await?,
+            PlaySource::Unknown,
+        ),
         RecentContextKind::Mix => {
             return Err(
                 "A mix is made again from the Mixes screen, which this build doesn't have yet."
@@ -168,12 +208,12 @@ pub async fn resume(
     })
 }
 
-fn describe(e: aoide_jellyfin::Error) -> String {
+fn describe(e: aoide_melete::Error) -> String {
     crate::failure::describe(&e).to_string()
 }
 
 /// An album's tracks, in the album's order.
-async fn album(client: &JellyfinClient, context: RecentContext) -> Result<Resumed, String> {
+async fn album(client: &MeleteClient, context: RecentContext) -> Result<Resumed, String> {
     let mut tracks: Vec<TrackMeta> = client
         .album_tracks(&context.id)
         .await
@@ -194,7 +234,7 @@ async fn album(client: &JellyfinClient, context: RecentContext) -> Result<Resume
 
 /// An Aoide playlist's songs in its order (a smart one's evaluated now).
 async fn local_playlist(
-    client: &JellyfinClient,
+    client: &MeleteClient,
     store: &StoreHandle,
     context: &RecentContext,
 ) -> Result<(Vec<Item>, PlaySource), String> {
@@ -216,32 +256,6 @@ async fn local_playlist(
         PlaySource::Playlist
     };
     Ok((items, source))
-}
-
-/// A station's Instant Mix, made again, without the songs marked Not
-/// Interested.
-async fn station(
-    client: &JellyfinClient,
-    store: &StoreHandle,
-    context: &RecentContext,
-) -> Result<(Vec<Item>, PlaySource), String> {
-    let items = match station_seed(context) {
-        Some(seed) => client.instant_mix_from(&seed, STATION_LENGTH).await,
-        None => client.instant_mix(&context.id, STATION_LENGTH).await,
-    }
-    .map_err(describe)?;
-    let ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
-    let hidden = store
-        .call(move |w| w.store.not_interested(&ids).unwrap_or_default())
-        .await
-        .unwrap_or_default();
-    Ok((
-        items
-            .into_iter()
-            .filter(|i| !hidden.contains(&i.id))
-            .collect(),
-        PlaySource::Unknown,
-    ))
 }
 
 /// An Aoide playlist's track ids in play order, smart ones evaluated now, and

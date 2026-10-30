@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use aoide_jellyfin::SearchResults;
+use aoide_melete::SearchResults;
 use aoide_store::PlaySource;
 use iced::widget::{button, column, text, text_input};
 use iced::{Element, Task};
@@ -163,11 +163,10 @@ impl State {
         self.searched = term.clone();
         self.results = Some(Load::Loading);
         let client = ctx.client.clone();
-        let library = ctx.library.map(str::to_owned);
         let asked = term.clone();
         fetch(
             ctx.key,
-            async move { client.search(&asked, library.as_deref(), LIMIT).await },
+            async move { client.search(&asked, LIMIT).await },
             move |r| PageMsg::Search(Message::Found(term.clone(), r)),
         )
     }

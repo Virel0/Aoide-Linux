@@ -3,9 +3,9 @@ contact_links:
   - name: Report a security problem
     url: https://github.com/Virel0/Aoide-Linux/security/advisories/new
     about: Report it privately, not in a public issue.
-  - name: Sync or plugin problem
-    url: https://github.com/Virel0/aoide-sidecar/issues
-    about: Problems in the Aoide sidecar Jellyfin plugin.
+  - name: Server or sync problem
+    url: https://github.com/Virel0/Melete/issues
+    about: Problems in Melete, the server, including sync.
   - name: iPhone app
     url: https://github.com/Virel0/Aoide/issues
     about: Problems in Aoide for iPhone.

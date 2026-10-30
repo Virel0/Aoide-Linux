@@ -1,4 +1,4 @@
-//! Keeping entries linked to their tracks across a Jellyfin rescan.
+//! Keeping entries linked to their tracks across a rescan.
 
 use std::collections::{HashMap, HashSet};
 
@@ -8,11 +8,11 @@ use crate::models::{PlaylistItem, TrackRef};
 use crate::record::Record;
 use crate::store::Store;
 
-/// The pair an entry stores for every track: the id Jellyfin answers to today, and
+/// The pair an entry stores for every track: the id Melete answers to today, and
 /// the fingerprint that outlives it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TrackLink {
-    /// The id Jellyfin answers to today.
+    /// The id Melete answers to today.
     pub jellyfin_id: String,
     /// The track's [`ContentKey`](crate::ContentKey).
     pub content_key: String,
@@ -40,7 +40,7 @@ impl From<&TrackRef> for TrackLink {
 pub struct RelinkReport {
     /// Entries examined — every live playlist row.
     pub checked: usize,
-    /// Rewritten to a new Jellyfin id found by content key.
+    /// Rewritten to a new id found by content key.
     pub relinked: usize,
     /// Previously marked unresolved and resolving again.
     pub recovered: usize,
@@ -59,7 +59,8 @@ impl RelinkReport {
 ///
 /// Inside a column that already syncs, so it travels for free, and a build that has
 /// never heard of it simply fails to resolve the id — which is the situation the entry
-/// is in. Jellyfin ids are hex, so a colon cannot occur in a real one.
+/// is in. Melete ids are integers and Jellyfin's were hex, so a colon cannot occur in a
+/// real one.
 pub const UNRESOLVED_PREFIX: &str = "unresolved:";
 
 impl PlaylistItem {
@@ -78,7 +79,7 @@ impl PlaylistItem {
 }
 
 impl Store {
-    /// Repairs entries whose Jellyfin id stopped resolving, by content key.
+    /// Repairs entries whose id stopped resolving, by content key.
     ///
     /// `live` answers "does this id still exist", `resolve` "what id does this
     /// fingerprint have now". An entry that matches nothing is *marked*, never deleted —

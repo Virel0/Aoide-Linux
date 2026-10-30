@@ -12,7 +12,7 @@
 //!
 //! Search by description ([`search_by_description`]) sends the phrase and
 //! the library's genre names, only when the listener presses the button,
-//! never on a keystroke; the model's filters then go to Jellyfin as an
+//! never on a keystroke; the model's filters then go to Melete as an
 //! ordinary query, so the songs are always the server's.
 
 use std::fmt;
@@ -334,11 +334,11 @@ impl App {
                 Arc::clone(&self.keyring),
                 self.config.system.smart_search.model().to_owned(),
                 signed.connection.client.clone(),
-                signed.library.clone(),
+                self.store.clone(),
                 phrase,
             ),
             move |result| match result {
-                Err(Failure::Server(aoide_jellyfin::Error::Unauthorized)) => {
+                Err(Failure::Server(aoide_melete::Error::Unauthorized)) => {
                     AppMessage::TokenRejected
                 }
                 result => AppMessage::Page(

@@ -1,18 +1,15 @@
-//! An Aoide playlist's cover: which picture to draw, choosing one from a file, and the
-//! repair that borrows a Jellyfin playlist's picture by name.
+//! An Aoide playlist's cover: which picture to draw, and choosing one from a file.
 //!
 //! **Which picture**, in the order both other clients use (`PlaylistArtwork.swift`,
 //! `use-playlist-cover.ts`):
 //!
 //! 1. `imageHash` — a picture somebody chose. Drawn from this device's
-//!    [`BlobDirectory`] when it holds the bytes, otherwise fetched from the sidecar's
+//!    [`BlobDirectory`] when it holds the bytes, otherwise fetched from Melete's
 //!    `GET /aoide/images/{sha}` **at the moment it is about to be drawn** (see
 //!    `aoide_sidecar::cover_bytes`), never during sync: a device joining an account
 //!    would otherwise download every cover in the library first.
-//! 2. `artworkItemId` — a Jellyfin item chosen as the cover.
-//! 3. `sourceJellyfinId` — the Jellyfin playlist it was imported from, which keeps the
-//!    picture it had there.
-//! 4. The first track's album art, as a stand-in (nothing is written).
+//! 2. `artworkItemId` — an album chosen as the cover.
+//! 3. The first track's album art, as a stand-in (nothing is written).
 //!
 //! **Bytes never enter the op log.** The row carries the hash and the MIME type; the
 //! bytes travel through `/aoide/images`, uploaded by the sync engine before the op
@@ -32,22 +29,22 @@ use crate::playlists::{PlaylistError, UNRESOLVED_PREFIX};
 use crate::record::placeholders;
 use crate::store::Store;
 
-/// The sidecar refuses anything larger (its default; configurable on the server).
+/// The server refuses anything larger (its default; configurable on the server).
 pub const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 
 /// What a playlist's cover is drawn from. See the module documentation for the order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlaylistCover {
     /// Bytes named by their SHA-256: from the [`BlobDirectory`] if held, otherwise
-    /// from the sidecar when about to be drawn.
+    /// from the server when about to be drawn.
     Image {
         /// The bytes' SHA-256, lower-case hex.
         hash: String,
         /// Their media type, when the row records it.
         mime: Option<String>,
     },
-    /// A Jellyfin item's primary image: a chosen item, or the playlist it came from.
-    JellyfinItem(String),
+    /// An album chosen as the cover, by its id.
+    Album(String),
     /// The first track's album (or the track itself when its album is unknown) — a
     /// stand-in until somebody chooses a cover.
     FirstTrack(String),
@@ -73,7 +70,7 @@ pub enum CoverError {
     BadHash(String),
 }
 
-/// The picture formats the sidecar accepts, told from the bytes rather than the file
+/// The picture formats the server accepts, told from the bytes rather than the file
 /// name.
 pub fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
@@ -87,7 +84,7 @@ pub fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// Whether `hash` is a lower-case hex SHA-256 — the only shape the sidecar addresses.
+/// Whether `hash` is a lower-case hex SHA-256 — the only shape the server addresses.
 pub fn is_image_hash(hash: &str) -> bool {
     hash.len() == 64
         && hash
@@ -337,7 +334,7 @@ impl Store {
     }
 }
 
-/// The cover somebody chose, or the one an import brought, before any stand-in.
+/// The cover somebody chose, before any stand-in.
 fn chosen_cover(list: &Playlist) -> Option<PlaylistCover> {
     if let Some(hash) = list
         .image_hash
@@ -351,94 +348,6 @@ fn chosen_cover(list: &Playlist) -> Option<PlaylistCover> {
     }
     list.artwork_item_id
         .as_deref()
-        .or(list.source_jellyfin_id.as_deref())
         .filter(|id| !id.is_empty())
-        .map(|id| PlaylistCover::JellyfinItem(id.to_owned()))
-}
-
-// MARK: - Repair
-
-/// A Jellyfin playlist, as the repair needs it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NamedJellyfinPlaylist {
-    /// Its Jellyfin id.
-    pub id: String,
-    /// Its name.
-    pub name: String,
-}
-
-/// One write the repair makes. `artwork_item_id` is the only field, by design.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CoverRepair {
-    /// The playlist written to.
-    pub playlist_id: String,
-    /// The Jellyfin item whose cover it now uses.
-    pub artwork_item_id: String,
-}
-
-/// Nothing at all to draw from: no picture, no chosen item, no source playlist.
-pub fn is_coverless(list: &Playlist) -> bool {
-    list.image_hash.is_none() && list.artwork_item_id.is_none() && list.source_jellyfin_id.is_none()
-}
-
-/// Which coverless playlists can borrow a Jellyfin playlist's picture: those whose
-/// name (trimmed, case-sensitive) matches **exactly one** Jellyfin playlist. None and
-/// several are both skipped — a wrong guess puts the wrong picture on every device.
-///
-/// A name match is written as `artworkItemId`, **never** `sourceJellyfinId`: a name
-/// cannot prove where a playlist came from, and imports dedupe on that field. The
-/// desktop's `cover-repair.ts`.
-pub fn plan_cover_repairs(
-    playlists: &[Playlist],
-    jellyfin: &[NamedJellyfinPlaylist],
-) -> Vec<CoverRepair> {
-    let mut by_name: HashMap<&str, Vec<&NamedJellyfinPlaylist>> = HashMap::new();
-    for candidate in jellyfin {
-        by_name
-            .entry(candidate.name.trim())
-            .or_default()
-            .push(candidate);
-    }
-    playlists
-        .iter()
-        .filter(|list| !list.deleted && is_coverless(list))
-        .filter_map(
-            |list| match by_name.get(list.name.trim()).map(Vec::as_slice) {
-                Some([only]) => Some(CoverRepair {
-                    playlist_id: list.id.clone(),
-                    artwork_item_id: only.id.clone(),
-                }),
-                _ => None,
-            },
-        )
-        .collect()
-}
-
-impl Store {
-    /// "Repair covers": plans against every live playlist and writes each repair as an
-    /// ordinary synced change of `artworkItemId`. Returns what it wrote.
-    ///
-    /// # Errors
-    ///
-    /// Fails when the database does; repairs written before the failure stay.
-    pub fn repair_covers(
-        &self,
-        jellyfin: &[NamedJellyfinPlaylist],
-        now: Millis,
-    ) -> Result<Vec<CoverRepair>> {
-        let repairs = plan_cover_repairs(&self.playlists()?, jellyfin);
-        let mut written = Vec::with_capacity(repairs.len());
-        for repair in repairs {
-            let Some(mut list) = self.playlist(&repair.playlist_id)? else {
-                continue;
-            };
-            if !is_coverless(&list) {
-                continue;
-            }
-            list.artwork_item_id = Some(repair.artwork_item_id.clone());
-            self.record(list, false, now)?;
-            written.push(repair);
-        }
-        Ok(written)
-    }
+        .map(|id| PlaylistCover::Album(id.to_owned()))
 }

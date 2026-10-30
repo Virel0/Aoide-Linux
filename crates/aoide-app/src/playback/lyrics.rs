@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use aoide_jellyfin::{LyricLine, Lyrics};
+use aoide_melete::{LyricLine, Lyrics};
 
 /// The time in the lyrics that matches `position_ms` in the track. A positive
 /// offset shows the words later, as the phone's slider does: the lyrics read

@@ -301,7 +301,7 @@ impl Store {
 // MARK: - Aggregates
 
 impl Store {
-    /// Counts only events that qualify as plays — unlike Jellyfin's PlayCount.
+    /// Counts only events that qualify as plays — unlike a server's play count.
     ///
     /// # Errors
     ///

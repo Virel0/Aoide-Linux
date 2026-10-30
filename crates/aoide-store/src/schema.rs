@@ -12,7 +12,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "v1",
         r#"
-        -- Local cache of what Jellyfin knows. Deliberately not synced: every device
+        -- Local cache of what Melete knows. Deliberately not synced: every device
         -- rebuilds it from its own connection to the same server.
         CREATE TABLE "track" (
             "jellyfinId" TEXT PRIMARY KEY NOT NULL,
@@ -77,7 +77,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
             "originDevice" TEXT NOT NULL
         );
 
-        -- Append-only, and the only honest source of play counts: Jellyfin counts a
+        -- Append-only, and the only honest source of play counts: a server may count a
         -- play at playback start, so a four-second skip counts there as a full listen.
         CREATE TABLE "playEvent" (
             "id" TEXT PRIMARY KEY NOT NULL,
@@ -173,7 +173,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "v6",
         r#"
-        -- A Jellyfin item whose image is this playlist's cover — never image bytes.
+        -- A Melete album whose cover is this playlist's — never image bytes.
         ALTER TABLE "playlist" ADD COLUMN "artworkItemId" TEXT;
         -- The album a cached track belongs to, for drawing a cover from a playlist.
         ALTER TABLE "track" ADD COLUMN "albumId" TEXT;

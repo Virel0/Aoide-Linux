@@ -3,7 +3,7 @@
 //! computer, never sent anywhere); the top songs are fetched from the server
 //! in rank order so they can play. The iOS `ReplayView`.
 
-use aoide_jellyfin::Item;
+use aoide_melete::Item;
 use aoide_store::{Calendar, PlaySource, Recap, ReplayPeriod};
 use iced::widget::{Column, button, column, container, grid, row, text};
 use iced::{Element, Fill, Task};

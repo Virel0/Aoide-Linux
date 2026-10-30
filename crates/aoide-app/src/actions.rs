@@ -3,7 +3,7 @@
 //! artist or a playlist whose songs are fetched when asked, and the requests
 //! they send.
 
-use aoide_jellyfin::{Item, JellyfinClient};
+use aoide_melete::{Item, ListQuery, MeleteClient};
 use aoide_store::PlaySource;
 
 use crate::playback::Enqueue;
@@ -53,8 +53,6 @@ pub enum Collection {
     Artist(String),
     /// An Aoide playlist.
     Playlist(String),
-    /// A Jellyfin playlist.
-    JellyfinPlaylist(String),
 }
 
 impl Collection {
@@ -62,7 +60,7 @@ impl Collection {
         match self {
             Collection::Album(_) => PlaySource::Album,
             Collection::Artist(_) => PlaySource::Unknown,
-            Collection::Playlist(_) | Collection::JellyfinPlaylist(_) => PlaySource::Playlist,
+            Collection::Playlist(_) => PlaySource::Playlist,
         }
     }
 }
@@ -70,32 +68,27 @@ impl Collection {
 /// Why a collection's songs could not be had.
 #[derive(Debug)]
 pub enum Failure {
-    Server(aoide_jellyfin::Error),
+    Server(aoide_melete::Error),
     Store(String),
 }
 
 /// The songs of a collection, in the order they play: an album's in disc and
-/// track order, an artist's album by album (newest first), a playlist's in
-/// its order without the entries the server no longer has.
+/// track order, an artist's album by album (their own albums' and the ones
+/// crediting them elsewhere), a playlist's in its order without the entries
+/// the server no longer has.
 pub async fn collection_tracks(
-    client: JellyfinClient,
+    client: MeleteClient,
     store: StoreHandle,
     collection: Collection,
 ) -> Result<Vec<Item>, Failure> {
     match collection {
         Collection::Album(id) => client.album_tracks(&id).await.map_err(Failure::Server),
         Collection::Artist(id) => {
-            let albums = client.artist_albums(&id).await.map_err(Failure::Server)?;
-            let mut tracks = Vec::new();
-            for album in albums {
-                tracks.extend(
-                    client
-                        .album_tracks(&album.id)
-                        .await
-                        .map_err(Failure::Server)?,
-                );
-            }
-            Ok(tracks)
+            let query = ListQuery {
+                artist_ids: vec![id],
+                ..ListQuery::default()
+            };
+            Ok(client.songs(&query).await.map_err(Failure::Server)?.items)
         }
         Collection::Playlist(id) => {
             let ids = store
@@ -112,9 +105,6 @@ pub async fn collection_tracks(
                 .ok_or_else(|| Failure::Store("the library is closing".into()))?
                 .map_err(|e| Failure::Store(e.to_string()))?;
             client.items_by_ids(&ids).await.map_err(Failure::Server)
-        }
-        Collection::JellyfinPlaylist(id) => {
-            client.playlist_items(&id).await.map_err(Failure::Server)
         }
     }
 }
@@ -143,9 +133,6 @@ pub struct Menu {
     pub collection: Option<(Collection, String)>,
     pub loading: bool,
     pub error: Option<String>,
-    /// The server's own playlists, fetched when Add to Playlist opens:
-    /// `(id, name)`.
-    pub jellyfin: Option<Result<Vec<(String, String)>, String>>,
 }
 
 impl Menu {
@@ -160,7 +147,6 @@ impl Menu {
             collection: None,
             loading: false,
             error: None,
-            jellyfin: None,
         }
     }
 
@@ -223,11 +209,7 @@ pub enum RowAction {
     FlagsLoaded(String, Flags),
     GoToAlbum,
     GoToArtist,
-    /// The Jellyfin playlists to offer arrived.
-    JellyfinPlaylists(Result<Vec<(String, String)>, String>),
-    /// Add the menu's songs to this Jellyfin playlist.
-    AddToJellyfin(String),
-    /// Instant Mix from the menu's song, album, artist or playlist.
+    /// A station from the menu's song, album, artist or playlist.
     StartRadio,
     /// The song's file, as the server knows it.
     GetInfo,
@@ -262,9 +244,11 @@ mod tests {
             "Low Tide Radio".into(),
         );
         assert!(menu.loading && menu.tracks.is_empty());
-        menu.tracks = vec![crate::playback::tracks::TrackMeta::from_item(
-            &serde_json::from_str(r#"{"Id":"t1","Name":"One","Type":"Audio"}"#).unwrap(),
-        )];
+        menu.tracks = vec![crate::playback::tracks::TrackMeta::from_item(&Item {
+            id: "t1".into(),
+            name: "One".into(),
+            ..Item::default()
+        })];
         assert!(menu.single().is_none(), "a one-song album is not a song");
         assert_eq!(menu.source(), PlaySource::Album);
         let playlist =
@@ -278,22 +262,24 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn a_playlists_songs_come_from_the_store_in_its_order() {
-        use aoide_jellyfin::{Credentials, Device, ServerAddress};
+        use aoide_melete::{Credentials, Device, ServerAddress};
         use wiremock::matchers::{method, path, query_param};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/Items"))
-            .and(query_param("ids", "b,a"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "Items": [{"Id": "a", "Name": "A", "Type": "Audio"}, {"Id": "b", "Name": "B", "Type": "Audio"}],
-                "TotalRecordCount": 2
-            })))
+            .and(path("/api/v1/music/tracks"))
+            .and(query_param("id", "2,1"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(crate::test_json::page(vec![
+                    crate::test_json::track(1, "A"),
+                    crate::test_json::track(2, "B"),
+                ])),
+            )
             .expect(1)
             .mount(&server)
             .await;
-        let client = JellyfinClient::new(
+        let client = MeleteClient::new(
             ServerAddress::parse(&server.uri()).unwrap(),
             Device::new("Test", "device-1"),
         )
@@ -309,7 +295,7 @@ mod tests {
                 let list = w.store.create_playlist("Mix", None, None, 1).unwrap();
                 let link = |id: &str| aoide_store::TrackLink::new(id.to_owned(), format!("k-{id}"));
                 w.store
-                    .add_tracks(&[link("b"), link("a")], &list.id, 2)
+                    .add_tracks(&[link("2"), link("1")], &list.id, 2)
                     .unwrap();
                 list.id
             })

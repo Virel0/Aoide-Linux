@@ -24,7 +24,7 @@ pub enum SortDirection {
     Desc,
 }
 
-/// What a rule set is ordered by. Ties are broken by Jellyfin id, so a limit always
+/// What a rule set is ordered by. Ties are broken by track id, so a limit always
 /// takes the same tracks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Sort {

@@ -4,7 +4,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
-use aoide_jellyfin::{Item, Lyrics};
+use aoide_melete::{Item, Lyrics};
 
 /// A boxed future, so providers can sit side by side as trait objects.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -42,7 +42,7 @@ pub struct TrackQuery {
 }
 
 impl TrackQuery {
-    /// The query for a Jellyfin track: its name, first artist (else album artist),
+    /// The query for a Melete track: its name, first artist (else album artist),
     /// album and duration.
     pub fn from_item(item: &Item) -> Self {
         let artist = item
@@ -84,7 +84,7 @@ pub struct Candidate {
 }
 
 /// Why one provider gave no answer. `Clone` and `Eq` so it can travel inside UI
-/// messages, like aoide-jellyfin's errors.
+/// messages, like aoide-melete's errors.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ProviderError {
     /// No HTTP answer: DNS, refused connection, TLS.

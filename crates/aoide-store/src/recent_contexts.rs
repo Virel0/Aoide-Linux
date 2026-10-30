@@ -25,9 +25,9 @@ use crate::handoff::ResumableQueue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RecentContextKind {
-    /// A Jellyfin album.
+    /// A Melete album.
     Album,
-    /// A Jellyfin playlist.
+    /// A Jellyfin playlist, from before Melete.
     JellyfinPlaylist,
     /// An Aoide playlist. Spelled as the phone spells it; the desktop's
     /// `aoidePlaylist` is read as the same thing.
@@ -35,7 +35,7 @@ pub enum RecentContextKind {
     LocalPlaylist,
     /// A described mix; its `id` and `name` are the description that was typed.
     Mix,
-    /// Jellyfin's instant mix from an item; see [`RecentContext::seed`].
+    /// A station from an item, chosen by `/aoide/next`; see [`RecentContext::seed`].
     Station,
 }
 
@@ -86,7 +86,7 @@ pub struct RecentContext {
     /// A second line to show instead of the kind's label, such as an album's artist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
-    /// A Jellyfin item whose primary image stands for this context. Leave unset for
+    /// The Melete item whose cover stands for this context. Leave unset for
     /// an album or Jellyfin playlist: its own id draws it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artwork_item_id: Option<String>,
@@ -299,7 +299,7 @@ impl ResumeTile {
         }
     }
 
-    /// The Jellyfin item whose image the tile draws, when there is one.
+    /// The Melete item whose cover the tile draws, when there is one.
     pub fn artwork_item_id(&self) -> Option<&str> {
         match self {
             Self::Handoff(queue) => queue.current_track_id(),

@@ -1,5 +1,5 @@
-//! Sharing one Aoide playlist with other people on the server, through the
-//! sidecar's `/aoide/shares`: who it is shared with (or who shared it with
+//! Sharing one Aoide playlist with other people on the server, through
+//! Melete's `/aoide/shares`: who it is shared with (or who shared it with
 //! you), sharing it with someone else, stopping a share after asking, and the
 //! edits held back because a share was revoked.
 //!
@@ -55,7 +55,7 @@ pub enum Message {
     Done(Result<String, String>),
 }
 
-/// The app's side: the sidecar calls.
+/// The app's side: the server calls.
 #[derive(Debug, Clone)]
 pub enum Msg {
     Load {
@@ -111,11 +111,11 @@ pub enum Call {
 
 /// What a refused share call means, in the server's words where it gave any.
 /// The client keeps no body for a 404 or a 403, so those are said here from
-/// what the sidecar's contract means by them.
+/// what the `/aoide/shares` contract means by them.
 pub fn refusal(error: &SidecarError, call: Call) -> String {
     match (error, call) {
         (SidecarError::Absent { .. }, Call::List) => {
-            "This server's Aoide sidecar doesn't share playlists yet.".to_owned()
+            "This server doesn't share playlists yet.".to_owned()
         }
         (SidecarError::Absent { .. }, Call::Share) => {
             "This playlist hasn't reached the server yet. Sync, then share it.".to_owned()
@@ -163,7 +163,7 @@ impl App {
                 return Task::done(AppMessage::Page(
                     key,
                     PageMsg::Share(Message::Loaded(Err(
-                        "Sharing needs the Aoide sidecar on your server.".to_owned(),
+                        "Your server doesn't share playlists yet.".to_owned(),
                     ))),
                 ));
             }
@@ -211,7 +211,7 @@ impl App {
 /// the page with this key.
 fn load(
     engine: crate::sync::Engine,
-    client: aoide_jellyfin::JellyfinClient,
+    client: aoide_melete::MeleteClient,
     me: String,
     key: u64,
     playlist: String,
@@ -382,9 +382,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/aoide/shares"))
             .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
-                "title": "Unknown user",
-                "detail": "granteeUserId must be an existing Jellyfin user on this server.",
-                "status": 400
+                "error": "granteeUserId must be an existing user on this server."
             })))
             .mount(&server)
             .await;
@@ -392,7 +390,7 @@ mod tests {
         let error = sidecar.share_playlist("p1", "u2", true).await.unwrap_err();
         assert_eq!(
             refusal(&error, Call::Share),
-            "Unknown user: granteeUserId must be an existing Jellyfin user on this server."
+            "granteeUserId must be an existing user on this server."
         );
         let absent = SidecarError::Absent {
             path: "aoide/shares".into(),

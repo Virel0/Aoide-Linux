@@ -2,7 +2,7 @@
 //! the listener's timing offset), the current one lit; a click on a line
 //! seeks to it. Unsynced lyrics are shown as text.
 
-use aoide_jellyfin::Lyrics;
+use aoide_melete::Lyrics;
 use iced::widget::{Column, button, scrollable, text};
 use iced::{Element, Fill};
 
@@ -84,7 +84,7 @@ fn synced_line<'a>(
     app: &'a App,
     item: &str,
     index: usize,
-    line: &'a aoide_jellyfin::LyricLine,
+    line: &'a aoide_melete::LyricLine,
     is_lit: bool,
     offset: i32,
 ) -> Element<'a, Message> {

@@ -94,17 +94,17 @@ async fn sidecar(accepted: serde_json::Value) -> (MockServer, LogSidecar) {
     let server = MockServer::start().await;
     let log = LogSidecar::default();
     Mock::given(method("POST"))
-        .and(path("/jellyfin/aoide/sync/push"))
+        .and(path("/melete/aoide/sync/push"))
         .respond_with(PushEndpoint(log.clone()))
         .mount(&server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/jellyfin/aoide/sync/pull"))
+        .and(path("/melete/aoide/sync/pull"))
         .respond_with(PullEndpoint(log.clone()))
         .mount(&server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/jellyfin/aoide/sync/status"))
+        .and(path("/melete/aoide/sync/status"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(json!({"acceptedEntities": accepted})),
         )
@@ -115,7 +115,7 @@ async fn sidecar(accepted: serde_json::Value) -> (MockServer, LogSidecar) {
 
 fn engine(server: &MockServer, store: &Arc<Store>) -> SyncEngine<SidecarClient> {
     // Behind a reverse-proxy subpath, as a real install may be.
-    let client = SidecarClient::new(&format!("{}/jellyfin", server.uri()), "tok-123").unwrap();
+    let client = SidecarClient::new(&format!("{}/melete", server.uri()), "tok-123").unwrap();
     SyncEngine::new(Arc::clone(store), client).with_clock(|| 2_000_000_000_000)
 }
 
@@ -206,12 +206,12 @@ impl ImageByteSource for Bytes {
 async fn a_cover_is_uploaded_before_the_op_that_names_it() {
     let (server, _log) = sidecar(json!(["playlists"])).await;
     Mock::given(method("HEAD"))
-        .and(path_regex("^/jellyfin/aoide/images/[0-9a-f]+$"))
+        .and(path_regex("^/melete/aoide/images/[0-9a-f]+$"))
         .respond_with(ResponseTemplate::new(404))
         .mount(&server)
         .await;
     Mock::given(method("PUT"))
-        .and(path_regex("^/jellyfin/aoide/images/[0-9a-f]+$"))
+        .and(path_regex("^/melete/aoide/images/[0-9a-f]+$"))
         .respond_with(ResponseTemplate::new(200))
         .mount(&server)
         .await;
@@ -260,9 +260,6 @@ async fn a_cover_is_uploaded_before_the_op_that_names_it() {
         .into_iter()
         .find(|r| r.method.as_str() == "PUT")
         .unwrap();
-    assert_eq!(
-        uploaded.url.path(),
-        format!("/jellyfin/aoide/images/{hash}")
-    );
+    assert_eq!(uploaded.url.path(), format!("/melete/aoide/images/{hash}"));
     assert_eq!(uploaded.body, bytes);
 }

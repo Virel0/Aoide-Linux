@@ -7,6 +7,38 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+Aoide for Linux now plays from [Melete](https://github.com/Virel0/Melete), the
+server that replaces Jellyfin and keeps Aoide's sync itself. Sign in again
+after updating; the local library belongs to the old server and is cleared at
+sign-in, and playlists, likes and history come back from Melete.
+
+### Added
+- Quick Connect: sign in by approving a code in Melete's web UI.
+- Home's recently played, recently added and most played shelves come from
+  Melete's history of every device, not this computer's alone.
+
+### Changed
+- Everything the app asked of Jellyfin it asks of Melete: the library, search,
+  streams, lyrics, likes, rescans and the user list for sharing. The
+  `aoide-jellyfin` crate is now `aoide-melete`.
+- A stream's link is asked for when the player starts the track, so a long
+  queue starts at once.
+- Favourites are your liked songs, with their albums and artists.
+- Covers are fetched with your sign-in, and kept a day.
+- A playlist cover chosen as an album, on this computer or the iPhone, is
+  drawn as that album's cover.
+- A song in a format this player can't decode (Opus, WavPack, Monkey's Audio)
+  is streamed as FLAC instead, so it plays.
+- Radio and Infinity's albums mode start from what `/aoide/next` picks after
+  the seed song, in place of Jellyfin's Instant Mix and similar albums.
+
+### Removed
+- Jellyfin playlists and Repair Covers: Melete's playlists are Aoide's own.
+- Find servers on this network, the playback reports Jellyfin needed, and
+  Discord's cover image (Melete's covers need a sign-in).
+- Collections' tag filter, artist pictures, and Get Info's file path, size,
+  date added and play counts: Melete has none of them.
+
 ## [0.1.1] - 2026-10-26
 
 No change in what the app does; the code underneath is reorganised to the

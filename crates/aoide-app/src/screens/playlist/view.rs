@@ -177,8 +177,8 @@ impl State {
         )
     }
 
-    /// On a line of its own, as on a Jellyfin playlist: beside the other
-    /// buttons the question runs off a narrow window.
+    /// On a line of its own: beside the other buttons the question runs off
+    /// a narrow window.
     fn confirm<'a>(&'a self, key: u64) -> Element<'a, App> {
         let message = move |m: Message| App::Page(key, PageMsg::Playlist(m));
         let name = self.name();

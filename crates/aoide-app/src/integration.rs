@@ -52,7 +52,7 @@ pub enum Command {
 /// What is playing, as a desktop controller shows it.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NowPlaying {
-    /// The Jellyfin id of the current track.
+    /// The id of the current track.
     pub track_id: Option<String>,
     pub title: String,
     pub artist: String,
@@ -273,12 +273,12 @@ pub fn art_url(cached: &Path) -> Option<String> {
     if !cached.is_file() {
         return None;
     }
-    aoide_jellyfin::Url::from_file_path(cached)
+    aoide_melete::Url::from_file_path(cached)
         .ok()
         .map(String::from)
 }
 
-/// A desktop request as an app command. `current` is the Jellyfin id of what
+/// A desktop request as an app command. `current` is the id of what
 /// plays now: a position for another track is dropped.
 pub fn from_mpris(command: aoide_mpris::Command, current: Option<&str>) -> Option<Command> {
     use aoide_mpris::Command as M;
@@ -325,7 +325,7 @@ pub fn loop_status(mode: RepeatMode) -> LoopStatus {
 /// What is playing, as MPRIS sees it.
 pub fn player_state(now: &NowPlaying) -> aoide_mpris::PlayerState {
     let metadata = now.track_id.as_ref().map(|id| Metadata {
-        jellyfin_id: id.clone(),
+        track_id: id.clone(),
         title: now.title.clone(),
         artists: non_empty(&now.artist).into_iter().collect(),
         album: non_empty(&now.album),
@@ -408,7 +408,7 @@ mod tests {
     fn metadata_carries_the_track_and_its_id() {
         let state = player_state(&playing());
         let metadata = state.metadata.unwrap();
-        assert_eq!(metadata.jellyfin_id, "t1");
+        assert_eq!(metadata.track_id, "t1");
         assert_eq!(state.position, Duration::from_millis(61_250));
         assert_eq!(metadata.length, Some(Duration::from_millis(243_500)));
         assert_eq!(metadata.artists, ["The Quiet Engines"]);

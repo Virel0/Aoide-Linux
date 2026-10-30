@@ -1,0 +1,70 @@
+//! Against a real Melete, when one is named: `MELETE_TEST_URL`, `MELETE_TEST_USER`
+//! and `MELETE_TEST_PASSWORD` for a throwaway server with a music library (never
+//! one with anyone's real account). Skipped, passing, when they aren't set.
+//!
+//! ```sh
+//! MELETE_TEST_URL=http://127.0.0.1:8100 MELETE_TEST_USER=… MELETE_TEST_PASSWORD=… \
+//!     cargo test -p aoide-melete --test live -- --nocapture
+//! ```
+
+use aoide_melete::{Device, ListQuery, MeleteClient, ServerAddress, StreamFormat};
+
+fn server() -> Option<(MeleteClient, String, String)> {
+    let url = std::env::var("MELETE_TEST_URL").ok()?;
+    let user = std::env::var("MELETE_TEST_USER").ok()?;
+    let password = std::env::var("MELETE_TEST_PASSWORD").ok()?;
+    let client = MeleteClient::new(
+        ServerAddress::parse(&url).unwrap(),
+        Device::new("aoide-melete live test", "live-test"),
+    )
+    .unwrap();
+    Some((client, user, password))
+}
+
+#[tokio::test]
+async fn signs_in_lists_plays_and_signs_out() {
+    let Some((client, user, password)) = server() else {
+        eprintln!("MELETE_TEST_URL not set: skipped");
+        return;
+    };
+    client.server_info().await.unwrap();
+    let client = client
+        .clone()
+        .with_credentials(client.sign_in(&user, &password).await.unwrap());
+
+    let albums = client.albums(&ListQuery::default()).await.unwrap();
+    assert!(albums.total > 0, "the test server needs a music library");
+    let album = &albums.items[0];
+    let tracks = client.album_tracks(&album.id).await.unwrap();
+    assert!(!tracks.is_empty());
+
+    let found = client.items_by_ids(&[tracks[0].id.as_str()]).await.unwrap();
+    assert_eq!(found[0].id, tracks[0].id);
+    client.item_details(&tracks[0].id).await.unwrap();
+    client.lyrics(&tracks[0].id).await.unwrap();
+    client.genres().await.unwrap();
+    client.home().await.unwrap();
+    client.search(&album.name, 5).await.unwrap();
+
+    let stream = client
+        .play(&tracks[0].id, StreamFormat::Original)
+        .await
+        .unwrap();
+    let response = reqwest::get(stream.url).await.unwrap();
+    assert!(response.status().is_success(), "{}", response.status());
+
+    let cover = reqwest::Client::new()
+        .get(client.cover_url(&album.id))
+        .header("authorization", client.authorization().unwrap())
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        cover.status().is_success() || cover.status() == 404,
+        "{}",
+        cover.status()
+    );
+
+    client.sign_out().await.unwrap();
+    assert!(client.genres().await.is_err(), "the token is revoked");
+}

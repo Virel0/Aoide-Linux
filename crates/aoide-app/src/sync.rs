@@ -1,4 +1,4 @@
-//! When to sync with the sidecar: at launch, when the window gains focus, and
+//! When to sync with Melete: at launch, when the window gains focus, and
 //! at most once a minute; or straight away when the listener asks (Sync Now
 //! in Settings). One sync at a time. A sync is an abortable Task, so
 //! signing out drops it at whatever await it is on; the engine is built to be
@@ -105,7 +105,7 @@ pub type Engine = Arc<SyncEngine<SidecarClient>>;
 pub async fn run(engine: Engine) -> Result<SyncReport, String> {
     engine.sync().await.map_err(|error| {
         if error.is_sidecar_absent() {
-            "This server has no Aoide sidecar; playlists and history stay on this computer."
+            "This server doesn't sync Aoide's playlists and history, so they stay on this computer."
                 .to_owned()
         } else if let aoide_sidecar::SyncError::Transport(error) = &error {
             format!("Sync didn't finish. {}", crate::failure::sidecar(error))

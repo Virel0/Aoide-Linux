@@ -1,13 +1,13 @@
 //! Importing a playlist from elsewhere: a pasted Spotify link (its public
 //! embed page, the first 100 tracks, no account) or a CSV export (Exportify's
 //! columns and the other tools' names for them). The tracks are matched
-//! against the library by the sidecar's `POST /aoide/match`, or by the shared
-//! rules over Jellyfin search where there is no sidecar; then what was found
+//! against the library by Melete's `POST /aoide/match`, or by the shared
+//! rules over its search when that can't be reached; then what was found
 //! is saved as an Aoide playlist, and what was not can be copied as text.
 
-use aoide_jellyfin::{Item, JellyfinClient, ListQuery};
+use aoide_melete::{Item, ListQuery, MeleteClient};
 use aoide_sidecar::{
-    ImportResult, ImportedPlaylist, ImportedTrack, JellyfinSearch, LibraryTrack, MatchedBy,
+    ImportResult, ImportedPlaylist, ImportedTrack, LibrarySearch, LibraryTrack, MatchedBy,
     SidecarClient, fetch_spotify_playlist, fetch_spotify_playlist_from, match_playlist,
     parse_playlist_csv,
 };
@@ -20,11 +20,11 @@ use crate::playback::tracks::TrackMeta;
 
 mod view;
 
-/// Jellyfin's song search, for the matching rules when there is no sidecar.
+/// Melete's song search, for the matching rules when `/aoide/match` can't
+/// be reached.
 #[derive(Clone)]
-pub struct LibrarySearch {
-    pub client: JellyfinClient,
-    pub library: Option<String>,
+pub struct MeleteSearch {
+    pub client: MeleteClient,
 }
 
 /// A song as the matcher compares it: its artists with the album artist
@@ -48,7 +48,7 @@ pub fn library_track(item: &Item) -> LibraryTrack {
     }
 }
 
-impl JellyfinSearch for LibrarySearch {
+impl LibrarySearch for MeleteSearch {
     fn search_songs(
         &self,
         term: &str,
@@ -56,7 +56,6 @@ impl JellyfinSearch for LibrarySearch {
     ) -> impl Future<Output = Result<Vec<LibraryTrack>, String>> + Send {
         let client = self.client.clone();
         let query = ListQuery {
-            parent_id: self.library.clone(),
             search_term: Some(term.to_owned()),
             limit: Some(u32::try_from(limit).unwrap_or(u32::MAX)),
             ..ListQuery::default()
@@ -175,7 +174,7 @@ pub fn open(_ctx: &Ctx<'_>) -> (State, Task<App>) {
 fn matching(
     playlist: ImportedPlaylist,
     sidecar: Option<SidecarClient>,
-    library: LibrarySearch,
+    library: MeleteSearch,
 ) -> impl Stream<Item = Message> {
     iced::stream::channel(64, async move |mut output| {
         let mut progress = output.clone();
@@ -217,14 +216,13 @@ async fn pick_csv() -> Option<Result<(String, String), String>> {
 
 impl crate::app::App {
     /// Matches an imported playlist for the import page with `key`: the
-    /// sidecar first, the library's search where there is none.
+    /// server's matching first, the library's search where there is none.
     pub(crate) fn import_match(&mut self, key: u64, playlist: ImportedPlaylist) -> Task<App> {
         let Some(signed) = self.session.as_ref() else {
             return Task::none();
         };
-        let library = LibrarySearch {
+        let library = MeleteSearch {
             client: signed.connection.client.clone(),
-            library: signed.library.clone(),
         };
         let sidecar = signed.sidecar.clone();
         Task::run(matching(playlist, sidecar, library), move |m| {
@@ -376,7 +374,7 @@ fn parse_csv(read: Result<(String, String), String>) -> Result<ImportedPlaylist,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aoide_jellyfin::{Credentials, Device, ServerAddress};
+    use aoide_melete::{Credentials, Device, ServerAddress};
     use aoide_sidecar::{ImportMatch, MatchedTrack};
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -423,11 +421,14 @@ mod tests {
 
     #[test]
     fn a_library_song_offers_its_album_artist_too() {
-        let item: Item = serde_json::from_value(serde_json::json!({
-            "Id": "t1", "Name": "Lantern", "Type": "Audio", "Artists": ["Mara Vey feat. Robin"],
-            "AlbumArtist": "Mara Vey", "RunTimeTicks": 2_000_000_000_i64
-        }))
-        .unwrap();
+        let item = Item {
+            id: "t1".into(),
+            name: "Lantern".into(),
+            artists: vec!["Mara Vey feat. Robin".into()],
+            album_artist: Some("Mara Vey".into()),
+            duration: Some(std::time::Duration::from_secs(200)),
+            ..Item::default()
+        };
         let song = library_track(&item);
         assert_eq!(song.artists, ["Mara Vey feat. Robin", "Mara Vey"]);
         assert_eq!(song.duration_ms, Some(200_000));
@@ -436,24 +437,22 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn without_a_sidecar_the_library_is_searched_and_matched_by_the_rules() {
         let server = MockServer::start().await;
+        let mut lantern = crate::test_json::track(1, "Lantern");
+        lantern["artists"] = serde_json::json!([{"id": 3, "name": "Mara Vey"}]);
         Mock::given(method("GET"))
-            .and(path("/Items"))
-            .and(query_param("searchTerm", "Lantern"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "Items": [{"Id": "t1", "Name": "Lantern", "Type": "Audio",
-                           "Artists": ["Mara Vey"], "RunTimeTicks": 2_000_000_000_i64}],
-                "TotalRecordCount": 1
-            })))
+            .and(path("/api/v1/music/tracks"))
+            .and(query_param("q", "Lantern"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(crate::test_json::page(vec![lantern])),
+            )
             .mount(&server)
             .await;
         Mock::given(method("GET"))
-            .and(path("/Items"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "Items": [], "TotalRecordCount": 0
-            })))
+            .and(path("/api/v1/music/tracks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(crate::test_json::page(vec![])))
             .mount(&server)
             .await;
-        let client = JellyfinClient::new(
+        let client = MeleteClient::new(
             ServerAddress::parse(&server.uri()).unwrap(),
             Device::new("Test", "device-1"),
         )
@@ -463,17 +462,14 @@ mod tests {
             access_token: "tok".into(),
             username: "alice".into(),
         });
-        let library = LibrarySearch {
-            client,
-            library: Some("lib1".into()),
-        };
+        let library = MeleteSearch { client };
         let tracks = [track("Lantern", "Mara Vey"), track("Undertow", "Odd Hours")];
         let mut seen = Vec::new();
         let result = match_playlist(None, &library, &tracks, |done, total| {
             seen.push((done, total))
         })
         .await;
-        assert_eq!(result.found_ids(), ["t1"]);
+        assert_eq!(result.found_ids(), ["1"]);
         assert_eq!(result.by, MatchedBy::Library);
         assert_eq!(seen.last(), Some(&(2, 2)));
     }

@@ -14,7 +14,7 @@ pub struct TrackSpec {
     pub source: MediaSource,
     /// Play only this span of the file.
     pub bounds: Option<SoundBounds>,
-    /// Loudness levelling from the sidecar, in dB; only a negative gain has
+    /// Loudness levelling from Melete, in dB; only a negative gain has
     /// any effect.
     pub gain_db: Option<f64>,
     /// Level volume over the file's own ReplayGain tags: when set, a file

@@ -8,7 +8,7 @@ pub enum SidecarError {
         /// The request path, relative to the server address: `aoide/next`.
         path: String,
     },
-    /// HTTP 401: the Jellyfin token was revoked or never valid. Sign in again.
+    /// HTTP 401: the session token was revoked or never valid. Sign in again.
     #[error("the token was not accepted")]
     Unauthorized,
     /// HTTP 403: the token is fine but this user may not do this, such as sharing
@@ -66,9 +66,9 @@ impl SidecarError {
         matches!(self, Self::Status { status, .. } if (500..=599).contains(status) && !matches!(status, 502..=504))
     }
 
-    /// What the server itself said, for a person to read: a `ProblemDetails`
-    /// body's `title` and `detail` (the sidecar's 503 names the real cause there),
-    /// or the start of any other body. `None` when the server said nothing.
+    /// What the server itself said, for a person to read: Melete's `{"error"}`
+    /// body, a `ProblemDetails` body's `title` and `detail` (the Jellyfin sidecar's
+    /// shape), or the start of any other body. `None` when the server said nothing.
     pub fn server_text(&self) -> Option<String> {
         let Self::Status {
             detail: Some(detail),
@@ -84,6 +84,9 @@ impl SidecarError {
             return Some(detail.clone());
         };
         let field = |key: &str| problem.get(key).and_then(serde_json::Value::as_str);
+        if let Some(error) = field("error") {
+            return Some(error.to_owned());
+        }
         match (field("title"), field("detail")) {
             (Some(title), Some(detail)) => Some(format!("{title}: {detail}")),
             (Some(only), None) | (None, Some(only)) => Some(only.to_owned()),

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use aoide_integrations::translate::libre::LibreTranslate;
-use aoide_jellyfin::ServerAddress;
+use aoide_melete::ServerAddress;
 use iced::widget::{button, column, row, text, text_input};
 use iced::{Center, Element, Fill, Task};
 

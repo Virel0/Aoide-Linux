@@ -1,7 +1,7 @@
 //! What a play is, and what a skip is — in one place, in both languages the store
 //! needs them in.
 //!
-//! Jellyfin counts a play the moment playback starts, so a four-second skip counts
+//! A server may count a play the moment playback starts, so a four-second skip counts
 //! there exactly as much as a full listen. The classifier that *writes* the flags and
 //! the SQL that *recomputes* them are derived from the same constants below, so the
 //! count printed beside a track and the membership of "played more than five times"

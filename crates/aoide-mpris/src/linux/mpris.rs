@@ -230,7 +230,7 @@ impl Root {
         DESKTOP_ENTRY.to_owned()
     }
 
-    /// Aoide plays its Jellyfin library, not URIs handed to it.
+    /// Aoide plays its Melete library, not URIs handed to it.
     #[zbus(property(emits_changed_signal = "const"))]
     fn supported_uri_schemes(&self) -> Vec<String> {
         Vec::new()
@@ -291,7 +291,7 @@ impl Player {
 
     fn open_uri(&self, _uri: String) -> fdo::Result<()> {
         Err(fdo::Error::NotSupported(
-            "Aoide plays from its Jellyfin library only".into(),
+            "Aoide plays from its Melete library only".into(),
         ))
     }
 

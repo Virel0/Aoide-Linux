@@ -128,16 +128,14 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         .into()
 }
 
-/// One sidebar line; the section shown is lit (Playlists also while its
-/// Jellyfin half is).
+/// One sidebar line; the section shown is lit.
 fn sidebar_item<'a>(
     signed: &Signed,
     label: String,
     glyph: Icon,
     section: Section,
 ) -> button::Button<'a, Message> {
-    let selected = signed.section == section
-        || (section == Section::Playlists && signed.section == Section::JellyfinPlaylists);
+    let selected = signed.section == section;
     button(
         row![
             icon(
@@ -171,7 +169,7 @@ fn section_glyph(section: &Section) -> Icon {
         Section::Artists => Icon::Artist,
         Section::Songs => Icon::Song,
         Section::Genres => Icon::Genre,
-        Section::Playlists | Section::Playlist(_) | Section::JellyfinPlaylists => Icon::Playlist,
+        Section::Playlists | Section::Playlist(_) => Icon::Playlist,
         Section::Search => Icon::Search,
         Section::Settings => Icon::Settings,
         Section::Mixes => Icon::Mix,

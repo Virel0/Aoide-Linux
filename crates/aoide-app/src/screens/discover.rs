@@ -1,11 +1,11 @@
-//! Discover: this week's 30 songs from the sidecar's `GET /aoide/discover`,
+//! Discover: this week's 30 songs from Melete's `GET /aoide/discover`,
 //! songs in the library not yet heard all the way through, chosen by what is
 //! listened to. The list holds still for the ISO week (UTC), so it is fetched
 //! when Home opens and again only once the week has turned. A 404 is an older
-//! sidecar: the tile stays hidden for the session. The iOS app's
+//! server: the tile stays hidden for the session. The iOS app's
 //! `DiscoverStore` and `DiscoverView`.
 
-use aoide_jellyfin::JellyfinClient;
+use aoide_melete::MeleteClient;
 use aoide_sidecar::{DiscoverResponse, SidecarClient, SidecarError, iso_week};
 use aoide_store::PlaySource;
 use iced::widget::{button, column, container, row, text};
@@ -69,7 +69,7 @@ pub enum Msg {
 }
 
 /// The week's list with its songs, in the server's order.
-pub async fn fetch(client: JellyfinClient, sidecar: SidecarClient) -> Result<Week, String> {
+pub async fn fetch(client: MeleteClient, sidecar: SidecarClient) -> Result<Week, String> {
     let response = match sidecar.discover(DiscoverResponse::DEFAULT_LIMIT).await {
         Ok(response) => response,
         Err(SidecarError::Absent { .. }) => return Ok(Week::Unavailable),
@@ -142,7 +142,7 @@ impl App {
             Msg::Show(key) => {
                 let tracks = match &signed.discover.week {
                     Week::Loaded { tracks, .. } => Ok(tracks.clone()),
-                    Week::Unavailable => Err("This server's Aoide sidecar has no Discover.".into()),
+                    Week::Unavailable => Err("This server has no Discover.".into()),
                     Week::Unknown => Err("This week's list hasn't arrived yet.".into()),
                 };
                 Task::done(AppMessage::Page(
@@ -262,7 +262,7 @@ pub fn tile<'a>(count: usize) -> Element<'a, AppMessage> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aoide_jellyfin::{Credentials, Device, ServerAddress};
+    use aoide_melete::{Credentials, Device, ServerAddress};
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -272,10 +272,11 @@ mod tests {
     const NEXT_MONDAY: i64 = WEDNESDAY + 5 * 24 * 60 * 60 * 1000;
 
     fn loaded(week: &str, n: usize) -> Week {
-        let track = TrackMeta::from_item(
-            &serde_json::from_value(serde_json::json!({"Id": "t", "Name": "t", "Type": "Audio"}))
-                .unwrap(),
-        );
+        let track = TrackMeta::from_item(&aoide_melete::Item {
+            id: "t".into(),
+            name: "t".into(),
+            ..aoide_melete::Item::default()
+        });
         Week::Loaded {
             week: week.into(),
             tracks: vec![track; n],
@@ -300,8 +301,8 @@ mod tests {
         assert_eq!(Week::Unknown.count(), None);
     }
 
-    fn client(server: &MockServer) -> JellyfinClient {
-        JellyfinClient::new(
+    fn client(server: &MockServer) -> MeleteClient {
+        MeleteClient::new(
             ServerAddress::parse(&server.uri()).unwrap(),
             Device::new("Test", "device-1"),
         )
@@ -322,19 +323,21 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "week": "2026-W43",
                 "candidates": [
-                    {"id": "b", "score": 0.9, "factors": {"taste": 0.6, "kinship": null}},
-                    {"id": "a", "score": 0.8, "factors": {"taste": 0.4}}
+                    {"id": "2", "score": 0.9, "factors": {"taste": 0.6, "kinship": null}},
+                    {"id": "1", "score": 0.8, "factors": {"taste": 0.4}}
                 ],
                 "profile": {"events": 12, "since": 0}
             })))
             .mount(&server)
             .await;
         Mock::given(method("GET"))
-            .and(path("/Items"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "Items": [{"Id": "a", "Name": "A", "Type": "Audio"}, {"Id": "b", "Name": "B", "Type": "Audio"}],
-                "TotalRecordCount": 2
-            })))
+            .and(path("/api/v1/music/tracks"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(crate::test_json::page(vec![
+                    crate::test_json::track(1, "A"),
+                    crate::test_json::track(2, "B"),
+                ])),
+            )
             .mount(&server)
             .await;
         let sidecar = SidecarClient::new(&server.uri(), "tok").unwrap();
@@ -344,7 +347,7 @@ mod tests {
         };
         assert_eq!(week, "2026-W43");
         let ids: Vec<&str> = tracks.iter().map(|t| t.id.as_str()).collect();
-        assert_eq!(ids, ["b", "a"]);
+        assert_eq!(ids, ["2", "1"]);
     }
 
     #[tokio::test(flavor = "multi_thread")]

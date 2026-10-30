@@ -1,4 +1,4 @@
-//! The rules behind a mix that are neither the model's nor Jellyfin's: which
+//! The rules behind a mix that are neither the model's nor Melete's: which
 //! library genres a described genre means, which candidates go first,
 //! whether the library as a whole is worth asking, and the one line that
 //! says what was understood. That line is the diagnostic: a mix that comes
@@ -87,7 +87,7 @@ pub fn names_first(chosen: &[String], name_ids: &HashSet<String>) -> Vec<String>
     named.into_iter().chain(rest).collect()
 }
 
-/// Whether to ask Jellyfin for candidates by the rules at all. "All of
+/// Whether to ask Melete for candidates by the rules at all. "All of
 /// nothing" is the whole library, a real mix when the description said
 /// nothing more specific, and noise beside a name.
 pub fn wants_rule_candidates(rules: Option<&SmartRules>, names: &[String]) -> bool {

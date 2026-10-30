@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use aoide_jellyfin::Item;
+use aoide_melete::Item;
 use aoide_store::{Playlist, PlaylistItem};
 use iced::Task;
 use iced::widget::text_editor;

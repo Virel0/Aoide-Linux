@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use aoide_jellyfin::{JellyfinClient, LyricLine, LyricWord, Lyrics};
 use aoide_lyrics::{LyricsFinder, TrackQuery};
+use aoide_melete::{LyricLine, LyricWord, Lyrics, MeleteClient};
 use iced::Element;
 use iced::widget::column;
 use serde::{Deserialize, Serialize};
@@ -117,7 +117,7 @@ impl Cached {
     }
 }
 
-/// The track's file: its Jellyfin id, kept to letters, digits and dashes.
+/// The track's file: its id, kept to letters, digits and dashes.
 pub fn cache_file(dir: &Path, item: &str) -> Option<PathBuf> {
     let name: String = item
         .chars()
@@ -183,11 +183,11 @@ pub struct Online {
 /// A track's lyrics: the server's, else (when on) the internet's through
 /// the cache.
 pub async fn find(
-    client: JellyfinClient,
+    client: MeleteClient,
     online: Option<Online>,
     meta: TrackMeta,
     now_ms: i64,
-) -> Result<Option<Found>, aoide_jellyfin::Error> {
+) -> Result<Option<Found>, aoide_melete::Error> {
     if let Some(lyrics) = client.lyrics(&meta.id).await? {
         return Ok(Some(Found {
             lyrics,
@@ -240,7 +240,7 @@ pub fn finder() -> Option<Arc<LyricsFinder>> {
     if cfg!(debug_assertions)
         && let Some(url) = std::env::var_os("AOIDE_DEV_LRCLIB_URL")
             .and_then(|u| u.into_string().ok())
-            .and_then(|u| aoide_jellyfin::Url::parse(&u).ok())
+            .and_then(|u| aoide_melete::Url::parse(&u).ok())
     {
         let lrclib = aoide_lyrics::Lrclib::with_base_url(url).ok()?;
         return Some(Arc::new(LyricsFinder::new(vec![Arc::new(lrclib)])));
@@ -275,7 +275,7 @@ pub fn settings_row<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aoide_jellyfin::{Credentials, Device, ServerAddress};
+    use aoide_melete::{Credentials, Device, ServerAddress};
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -298,8 +298,8 @@ mod tests {
         }
     }
 
-    fn client(server: &MockServer) -> JellyfinClient {
-        JellyfinClient::new(
+    fn client(server: &MockServer) -> MeleteClient {
+        MeleteClient::new(
             ServerAddress::parse(&server.uri()).unwrap(),
             Device::new("Test", "device-1"),
         )
@@ -313,7 +313,7 @@ mod tests {
 
     fn online(server: &MockServer, dir: &Path) -> Option<Online> {
         let lrclib =
-            aoide_lyrics::Lrclib::with_base_url(aoide_jellyfin::Url::parse(&server.uri()).unwrap())
+            aoide_lyrics::Lrclib::with_base_url(aoide_melete::Url::parse(&server.uri()).unwrap())
                 .unwrap();
         Some(Online {
             finder: Arc::new(LyricsFinder::new(vec![Arc::new(lrclib)])),
@@ -388,9 +388,10 @@ mod tests {
     async fn the_servers_lyrics_come_first_and_lrclib_is_not_asked() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/Audio/t1/Lyrics"))
+            .and(path("/api/v1/music/tracks/t1/lyrics"))
             .respond_with(ResponseTemplate::new(200).set_body_json(
-                serde_json::json!({"Lyrics": [{"Text": "from the server", "Start": 0}]}),
+                serde_json::json!({"track_id": 1, "source": "file", "synced": true,
+                    "lines": [{"start_seconds": 0.0, "text": "from the server"}]}),
             ))
             .mount(&server)
             .await;
@@ -413,7 +414,7 @@ mod tests {
     async fn lrclib_fills_in_and_is_asked_once_a_month() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/Audio/t1/Lyrics"))
+            .and(path("/api/v1/music/tracks/t1/lyrics"))
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
@@ -508,7 +509,7 @@ mod tests {
     async fn switched_off_only_the_server_is_asked() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/Audio/t1/Lyrics"))
+            .and(path("/api/v1/music/tracks/t1/lyrics"))
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;

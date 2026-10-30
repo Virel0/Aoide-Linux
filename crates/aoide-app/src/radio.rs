@@ -1,8 +1,11 @@
-//! Start Radio: Jellyfin's Instant Mix seeded by a song, an album, an artist,
-//! a genre or a playlist (`instant_mix_from`), without the songs marked Not
-//! Interested, played at once and remembered as a station for the resume grid.
+//! Start Radio: a station seeded by a song, an album, an artist, a genre or a
+//! playlist. The seed song (an album's, artist's or genre's first) leads, and
+//! Melete's `/aoide/next` chooses what follows it, as Infinity does; the songs
+//! marked Not Interested are left out. Played at once and remembered as a
+//! station for the resume grid.
 
-use aoide_jellyfin::{Item, JellyfinClient, MixSeed};
+use aoide_melete::{Item, ListQuery, MeleteClient};
+use aoide_sidecar::{NextMode, NextRequest, SidecarClient};
 use aoide_store::{PlaySource, RecentContext, RecentContextKind, StationSeed};
 use iced::widget::{button, row, text};
 use iced::{Center, Element, Task};
@@ -16,6 +19,16 @@ use crate::theme;
 
 /// How many songs a station starts with.
 pub const LENGTH: u32 = 100;
+
+/// What seeds a station.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MixSeed {
+    Track(String),
+    Album(String),
+    Artist(String),
+    /// A genre, by its name.
+    Genre(String),
+}
 
 /// A station to start: what seeds it and what to call it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,8 +47,7 @@ impl Station {
     }
 
     /// The station a menu stands for: its song, or its album, artist or
-    /// playlist. An Aoide playlist is not a Jellyfin item, so its first song
-    /// seeds it.
+    /// playlist. A playlist is seeded by its first song.
     pub fn of_menu(menu: &Menu) -> Option<Self> {
         if let Some(track) = menu.single() {
             return Some(Self::new(MixSeed::Track(track.id.clone()), &track.title));
@@ -44,7 +56,6 @@ impl Station {
         let seed = match collection {
             Collection::Album(id) => MixSeed::Album(id.clone()),
             Collection::Artist(id) => MixSeed::Artist(id.clone()),
-            Collection::JellyfinPlaylist(id) => MixSeed::Playlist(id.clone()),
             Collection::Playlist(_) => MixSeed::Track(menu.tracks.first()?.id.clone()),
         };
         Some(Self::new(seed, title))
@@ -52,17 +63,15 @@ impl Station {
 
     fn id(&self) -> &str {
         match &self.seed {
-            MixSeed::Track(id)
-            | MixSeed::Album(id)
-            | MixSeed::Artist(id)
-            | MixSeed::Genre(id)
-            | MixSeed::Playlist(id) => id,
+            MixSeed::Track(id) | MixSeed::Album(id) | MixSeed::Artist(id) | MixSeed::Genre(id) => {
+                id
+            }
         }
     }
 
     /// What the resume grid keeps: an album's or artist's station says what
     /// seeded it so it is seeded the same way again; the others are resumed
-    /// with the kind-blind Instant Mix of the same item.
+    /// from the same song or genre.
     pub fn context(&self) -> RecentContext {
         let name = format!("{} Radio", self.name);
         let now = aoide_store::now_millis();
@@ -78,16 +87,61 @@ impl Station {
     }
 }
 
-/// The station's songs in the server's order, Not Interested ones left out.
+/// The song a seed starts from: itself, or the first of its album, artist or
+/// genre.
+async fn seed_track(client: &MeleteClient, seed: &MixSeed) -> aoide_melete::Result<Option<Item>> {
+    let first = |query: ListQuery| async move {
+        let query = ListQuery {
+            limit: Some(1),
+            ..query
+        };
+        Ok(client.songs(&query).await?.items.into_iter().next())
+    };
+    match seed {
+        MixSeed::Track(id) => Ok(client.items_by_ids(&[id]).await?.into_iter().next()),
+        MixSeed::Album(id) => Ok(client.album_tracks(id).await?.into_iter().next()),
+        MixSeed::Artist(id) => {
+            first(ListQuery {
+                artist_ids: vec![id.clone()],
+                ..ListQuery::default()
+            })
+            .await
+        }
+        MixSeed::Genre(name) => {
+            first(ListQuery {
+                genre: Some(name.clone()),
+                ..ListQuery::default()
+            })
+            .await
+        }
+    }
+}
+
+/// The station's songs: the seed song, then Melete's choices in its order,
+/// Not Interested ones left out.
 pub async fn tune(
-    client: JellyfinClient,
+    client: MeleteClient,
+    sidecar: Option<SidecarClient>,
     store: StoreHandle,
     seed: MixSeed,
 ) -> Result<Vec<Item>, String> {
-    let items = client
-        .instant_mix_from(&seed, LENGTH)
+    let describe = |e: aoide_melete::Error| crate::failure::describe(&e).to_string();
+    let Some(first) = seed_track(&client, &seed).await.map_err(describe)? else {
+        return Ok(Vec::new());
+    };
+    let sidecar = sidecar.ok_or_else(|| "this server can't choose songs".to_owned())?;
+    let request = NextRequest::new(&first.id, &[], &[], NextMode::Infinity, LENGTH - 1);
+    let chosen = sidecar
+        .next(&request)
         .await
-        .map_err(|e| crate::failure::describe(&e).to_string())?;
+        .map_err(|e| e.to_string())?
+        .candidates
+        .into_iter()
+        .map(|candidate| candidate.id)
+        .filter(|id| *id != first.id)
+        .collect::<Vec<_>>();
+    let mut items = vec![first];
+    items.extend(client.items_by_ids(&chosen).await.map_err(describe)?);
     let ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
     let hidden = store
         .call(move |w| w.store.not_interested(&ids).unwrap_or_default())
@@ -131,8 +185,9 @@ impl App {
             Msg::Start(station) => {
                 signed.menu = None;
                 let client = signed.connection.client.clone();
+                let sidecar = signed.sidecar.clone();
                 let seed = station.seed.clone();
-                Task::perform(tune(client, store, seed), move |result| {
+                Task::perform(tune(client, sidecar, store, seed), move |result| {
                     Message::Radio(Msg::Tuned(station.clone(), result))
                 })
             }
@@ -163,17 +218,17 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aoide_jellyfin::{Credentials, Device, ServerAddress};
-    use wiremock::matchers::{method, path};
+    use crate::test_json::{page, track as json_track};
+    use aoide_melete::{Credentials, Device, ServerAddress};
+    use wiremock::matchers::{body_partial_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn track(id: &str) -> TrackMeta {
-        TrackMeta::from_item(
-            &serde_json::from_value(
-                serde_json::json!({"Id": id, "Name": "Lantern", "Type": "Audio"}),
-            )
-            .unwrap(),
-        )
+        TrackMeta::from_item(&Item {
+            id: id.into(),
+            name: "Lantern".into(),
+            ..Item::default()
+        })
     }
 
     #[test]
@@ -209,45 +264,61 @@ mod tests {
         assert_eq!(album.name, "Low Tide Radio");
         assert_eq!(album.seed, Some(StationSeed::Album));
         assert_eq!(album.artwork_item_id.as_deref(), Some("al1"));
-        let genre = Station::new(MixSeed::Genre("g1".into()), "Folk").context();
-        assert_eq!((genre.id.as_str(), genre.seed), ("g1", None));
+        let genre = Station::new(MixSeed::Genre("Folk".into()), "Folk").context();
+        assert_eq!((genre.id.as_str(), genre.seed), ("Folk", None));
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn not_interested_songs_stay_off_the_station() {
+    async fn a_genre_station_leads_with_its_seed_and_leaves_out_not_interested() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/MusicGenres/InstantMix"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "Items": [
-                    {"Id": "a", "Name": "A", "Type": "Audio"},
-                    {"Id": "b", "Name": "B", "Type": "Audio"},
-                    {"Id": "c", "Name": "C", "Type": "Audio"}
-                ],
-                "TotalRecordCount": 3
-            })))
+            .and(path("/api/v1/music/tracks"))
+            .and(query_param("genre", "Folk"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(page(vec![json_track(1, "A")])))
             .expect(1)
             .mount(&server)
             .await;
-        let client = JellyfinClient::new(
+        Mock::given(method("POST"))
+            .and(path("/aoide/next"))
+            .and(body_partial_json(serde_json::json!({"seed": "1"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "candidates": [
+                    {"id": "2", "score": 0.9, "factors": {"taste": 0.5, "freshness": 1.0, "similarity": 0.8, "arc": 0.4}},
+                    {"id": "3", "score": 0.8, "factors": {"taste": 0.5, "freshness": 1.0, "similarity": 0.8, "arc": 0.4}}
+                ],
+                "profile": {"events": 0, "since": 0}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/music/tracks"))
+            .and(query_param("id", "2,3"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(page(vec![json_track(2, "B"), json_track(3, "C")])),
+            )
+            .mount(&server)
+            .await;
+        let client = MeleteClient::new(
             ServerAddress::parse(&server.uri()).unwrap(),
             Device::new("Test", "device-1"),
         )
         .unwrap()
         .with_credentials(Credentials {
-            user_id: "u1".into(),
+            user_id: "1".into(),
             access_token: "tok".into(),
             username: "alice".into(),
         });
+        let sidecar = SidecarClient::new(&server.uri(), "tok").unwrap();
         let store = StoreHandle::in_memory("desk").unwrap();
         store
-            .call(|w| w.store.set_not_interested(true, "b", "k", 1).unwrap())
+            .call(|w| w.store.set_not_interested(true, "2", "k", 1).unwrap())
             .await
             .unwrap();
-        let songs = tune(client, store, MixSeed::Genre("g1".into()))
+        let songs = tune(client, Some(sidecar), store, MixSeed::Genre("Folk".into()))
             .await
             .unwrap();
         let ids: Vec<&str> = songs.iter().map(|i| i.id.as_str()).collect();
-        assert_eq!(ids, ["a", "c"]);
+        assert_eq!(ids, ["1", "3"]);
     }
 }

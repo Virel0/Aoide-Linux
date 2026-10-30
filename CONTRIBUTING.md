@@ -56,7 +56,7 @@ updates for the crates and the pinned actions.
 - Keep a pull request to one change. Tests come with the code they cover.
 - When a feature's state changes, update its row in [TRACKER.md](TRACKER.md),
   including how it was checked (a test, the app against a stand-in server, a
-  real Jellyfin, a Linux desktop).
+  real Melete, a Linux desktop).
 - Interface text is in sentence case, buttons say what they do, and errors say
   what happened and what to do next.
 - Screenshots and test data use made-up artists, albums and accounts: never a

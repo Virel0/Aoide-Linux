@@ -141,8 +141,8 @@ version = "0.1.1"
 dependencies = [
  "aoide-audio",
  "aoide-integrations",
- "aoide-jellyfin",
  "aoide-lyrics",
+ "aoide-melete",
  "aoide-mpris",
  "aoide-sidecar",
  "aoide-store",
@@ -200,10 +200,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "aoide-jellyfin"
+name = "aoide-lyrics"
 version = "0.1.1"
 dependencies = [
- "base64 0.23.1",
+ "aoide-melete",
+ "futures-util",
+ "lindera",
  "reqwest",
  "rustls",
  "serde",
@@ -214,12 +216,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "aoide-lyrics"
+name = "aoide-melete"
 version = "0.1.1"
 dependencies = [
- "aoide-jellyfin",
- "futures-util",
- "lindera",
  "reqwest",
  "rustls",
  "serde",

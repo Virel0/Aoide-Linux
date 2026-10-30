@@ -1,7 +1,8 @@
-//! Favourites: the songs, albums and artists marked as favourites on the
-//! server (Jellyfin's `isFavorite`), one tab each.
+//! Favourites: the songs this listener likes (Melete's likes, the sync log's
+//! own), and the albums and artists of those songs, one tab each. Melete keeps
+//! likes on songs only.
 
-use aoide_jellyfin::{Item, ListQuery, Sort, SortOrder};
+use aoide_melete::{Item, ItemKind};
 use aoide_store::PlaySource;
 use iced::widget::{button, column, row, text};
 use iced::{Element, Task};
@@ -44,45 +45,32 @@ pub struct State {
 #[derive(Debug, Clone)]
 pub enum Message {
     Tab(Tab),
-    Songs(Result<Vec<Item>, Failure>),
-    Albums(Result<Vec<Item>, Failure>),
-    Artists(Result<Vec<Item>, Failure>),
+    Liked(Result<Vec<Item>, Failure>),
 }
 
-/// Only favourites, by name, everything at once: a favourites list is short.
-pub fn favourites(parent_id: Option<String>) -> ListQuery {
-    ListQuery {
-        parent_id,
-        favorites_only: true,
-        sort: Sort::Name,
-        order: SortOrder::Ascending,
-        ..ListQuery::default()
-    }
+/// The artists credited on `songs`, each once, in the order first met.
+fn artists_of(songs: &[Item]) -> Vec<Tile> {
+    let mut seen = std::collections::HashSet::new();
+    songs
+        .iter()
+        .flat_map(|song| song.artist_items.iter())
+        .filter(|artist| seen.insert(artist.id.clone()))
+        .map(|artist| {
+            Tile::artist(&Item {
+                id: artist.id.clone(),
+                name: artist.name.clone(),
+                kind: ItemKind::Artist,
+                ..Item::default()
+            })
+        })
+        .collect()
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
-    let library = ctx.library.map(str::to_owned);
-    let (a, b, c) = (ctx.client.clone(), ctx.client.clone(), ctx.client.clone());
-    let (songs, albums) = (favourites(library.clone()), favourites(library));
-    // Artists have no library parent: asked for without one.
-    let artists = favourites(None);
-    let task = Task::batch([
-        fetch(
-            ctx.key,
-            async move { a.songs(&songs).await.map(|p| p.items) },
-            |r| PageMsg::Favourites(Message::Songs(r)),
-        ),
-        fetch(
-            ctx.key,
-            async move { b.albums(&albums).await.map(|p| p.items) },
-            |r| PageMsg::Favourites(Message::Albums(r)),
-        ),
-        fetch(
-            ctx.key,
-            async move { c.album_artists(&artists).await.map(|p| p.items) },
-            |r| PageMsg::Favourites(Message::Artists(r)),
-        ),
-    ]);
+    let client = ctx.client.clone();
+    let task = fetch(ctx.key, async move { client.liked_songs().await }, |r| {
+        PageMsg::Favourites(Message::Liked(r))
+    });
     (
         State {
             tab: Tab::Songs,
@@ -98,18 +86,15 @@ impl State {
     pub fn update(&mut self, message: Message) -> Task<App> {
         match message {
             Message::Tab(tab) => self.tab = tab,
-            Message::Songs(result) => {
-                self.songs = Load::from(
-                    result.map(|items| items.iter().map(TrackMeta::from_item).collect()),
-                );
+            Message::Liked(Ok(songs)) => {
+                self.albums = Load::Ready(crate::library::albums_of_tracks(&songs, usize::MAX));
+                self.artists = Load::Ready(artists_of(&songs));
+                self.songs = Load::Ready(songs.iter().map(TrackMeta::from_item).collect());
             }
-            Message::Albums(result) => {
-                self.albums =
-                    Load::from(result.map(|items| items.iter().map(Tile::album).collect()));
-            }
-            Message::Artists(result) => {
-                self.artists =
-                    Load::from(result.map(|items| items.iter().map(Tile::artist).collect()));
+            Message::Liked(Err(error)) => {
+                self.albums = Load::Failed(error.clone());
+                self.artists = Load::Failed(error.clone());
+                self.songs = Load::Failed(error);
             }
         }
         Task::none()
@@ -160,7 +145,7 @@ impl State {
                 Load::Loading => widgets::loading(),
                 Load::Failed(error) => view.failure(error),
                 Load::Ready(songs) if songs.is_empty() => {
-                    widgets::empty("No favourite songs yet. Mark one from any song's … menu.")
+                    widgets::empty("No liked songs yet. Like one from any song's … menu.")
                 }
                 Load::Ready(songs) => column![
                     widgets::play_buttons(songs, format!("{key}:favourites"), PlaySource::Unknown),
@@ -181,7 +166,7 @@ impl State {
                 Load::Loading => widgets::loading(),
                 Load::Failed(error) => view.failure(error),
                 Load::Ready(tiles) if tiles.is_empty() => {
-                    widgets::empty("No favourite albums yet.")
+                    widgets::empty("No albums yet: they're the ones with a song you like.")
                 }
                 Load::Ready(tiles) => {
                     widgets::tile_grid(tiles, view.artwork, super::home::open_album)
@@ -191,7 +176,7 @@ impl State {
                 Load::Loading => widgets::loading(),
                 Load::Failed(error) => view.failure(error),
                 Load::Ready(tiles) if tiles.is_empty() => {
-                    widgets::empty("No favourite artists yet.")
+                    widgets::empty("No artists yet: they're the ones with a song you like.")
                 }
                 Load::Ready(tiles) => {
                     widgets::tile_grid(tiles, view.artwork, |tile| Route::Artist {
@@ -216,12 +201,24 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aoide_melete::NameId;
 
     #[test]
-    fn the_lists_ask_for_favourites_only() {
-        let query = favourites(Some("lib1".into()));
-        assert!(query.favorites_only);
-        assert_eq!(query.parent_id.as_deref(), Some("lib1"));
-        assert_eq!(query.limit, None, "the whole list");
+    fn the_artists_tab_is_the_liked_songs_artists_once_each() {
+        let credit = |id: &str, name: &str| NameId {
+            id: id.into(),
+            name: name.into(),
+        };
+        let song = |id: &str, artists: Vec<NameId>| Item {
+            id: id.into(),
+            artist_items: artists,
+            ..Item::default()
+        };
+        let songs = [
+            song("1", vec![credit("7", "Mara Vey")]),
+            song("2", vec![credit("8", "Odd Hours"), credit("7", "Mara Vey")]),
+        ];
+        let names: Vec<String> = artists_of(&songs).into_iter().map(|t| t.title).collect();
+        assert_eq!(names, ["Mara Vey", "Odd Hours"]);
     }
 }

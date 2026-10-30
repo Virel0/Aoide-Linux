@@ -148,12 +148,6 @@ pub fn collection_context(collection: &Collection, title: &str) -> Option<Recent
             title,
             now,
         )),
-        Collection::JellyfinPlaylist(id) => Some(RecentContext::new(
-            RecentContextKind::JellyfinPlaylist,
-            id.clone(),
-            title,
-            now,
-        )),
         // An artist's songs album by album are not something to resume.
         Collection::Artist(_) => None,
     }
@@ -212,10 +206,14 @@ impl App {
             Msg::LoadResume(key) => self.load_resume(key),
             Msg::Resume(tile) => {
                 let client = signed.connection.client.clone();
-                Task::perform(resume(client, store, tile), |result| match result {
-                    Ok(found) => Message::Handoff(Msg::Resumed(Box::new(found))),
-                    Err(error) => Message::Handoff(Msg::ResumeFailed(error)),
-                })
+                let sidecar = signed.sidecar.clone();
+                Task::perform(
+                    resume(client, sidecar, store, tile),
+                    |result| match result {
+                        Ok(found) => Message::Handoff(Msg::Resumed(Box::new(found))),
+                        Err(error) => Message::Handoff(Msg::ResumeFailed(error)),
+                    },
+                )
             }
             Msg::Resumed(found) => self.resumed(*found),
             Msg::ResumeFailed(error) => {
@@ -386,7 +384,8 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use aoide_jellyfin::{Item, MixSeed};
+    use crate::radio::MixSeed;
+    use aoide_melete::Item;
     use aoide_store::{PlaySource, StationSeed};
 
     use super::resume::{cards, plan_pick_up, station_seed};
@@ -397,11 +396,13 @@ mod tests {
     use aoide_store::QueueFreshness;
 
     fn item(id: &str, album: &str) -> Item {
-        serde_json::from_value(serde_json::json!({
-            "Id": id, "Name": id, "Type": "Audio", "AlbumId": album,
-            "AlbumPrimaryImageTag": format!("tag-{album}")
-        }))
-        .unwrap()
+        Item {
+            id: id.into(),
+            name: id.into(),
+            album_id: Some(album.into()),
+            has_cover: true,
+            ..Item::default()
+        }
     }
 
     fn queue(ids: &[&str], position: usize, elapsed_ms: i64) -> ResumableQueue {
@@ -441,22 +442,23 @@ mod tests {
 
     #[test]
     fn tiles_draw_the_cover_of_the_item_they_name() {
-        let album = RecentContext::new(RecentContextKind::Album, "al1", "Low Tide", 5);
-        let mut station = RecentContext::new(RecentContextKind::Station, "t9", "Radio", 4);
-        station.artwork_item_id = Some("t9".into());
+        let album = RecentContext::new(RecentContextKind::Album, "5", "Low Tide", 5);
+        let mut station = RecentContext::new(RecentContextKind::Station, "9", "Radio", 4);
+        station.artwork_item_id = Some("9".into());
+        let mut artist = RecentContext::station(StationSeed::Artist, "1", "Quiet Radio", 3);
+        artist.artwork_item_id = Some("1".into());
         let tiles = vec![
-            ResumeTile::Handoff(queue(&["t1"], 0, 0)),
+            ResumeTile::Handoff(queue(&["1"], 0, 0)),
             ResumeTile::Context(album),
             ResumeTile::Context(station),
+            ResumeTile::Context(artist),
         ];
-        let album_item: Item = serde_json::from_value(serde_json::json!({
-            "Id": "al1", "Name": "Low Tide", "Type": "MusicAlbum", "ImageTags": {"Primary": "p"}
-        }))
-        .unwrap();
-        let cards = cards(tiles, &[item("t1", "al2"), album_item]);
-        assert_eq!(cards[0].art, Some(ArtKey::new("al2", "tag-al2")));
-        assert_eq!(cards[1].art, Some(ArtKey::new("al1", "p")));
-        assert_eq!(cards[2].art, None, "t9 was not found");
+        let cards = cards(tiles, &[item("1", "7")]);
+        let cover = |album: &str| Some(ArtKey::new(album, aoide_melete::COVER_TAG));
+        assert_eq!(cards[0].art, cover("7"), "the track's album");
+        assert_eq!(cards[1].art, cover("5"), "the album's own, never track 5's");
+        assert_eq!(cards[2].art, None, "track 9 was not found");
+        assert_eq!(cards[3].art, None, "artist 1 is not track 1");
     }
 
     #[test]
@@ -491,11 +493,13 @@ mod tests {
     }
 
     #[test]
-    fn a_station_resumes_from_its_seeds_own_mix() {
+    fn a_station_resumes_from_its_seed() {
         let album = RecentContext::station(StationSeed::Album, "al1", "Low Tide Radio", 1);
-        assert_eq!(station_seed(&album), Some(MixSeed::Album("al1".into())));
-        let song = RecentContext::new(RecentContextKind::Station, "t1", "Lantern Radio", 1);
-        assert_eq!(station_seed(&song), None, "kind-blind Instant Mix");
+        assert_eq!(station_seed(&album), MixSeed::Album("al1".into()));
+        let song = RecentContext::new(RecentContextKind::Station, "41", "Lantern Radio", 1);
+        assert_eq!(station_seed(&song), MixSeed::Track("41".into()));
+        let genre = RecentContext::new(RecentContextKind::Station, "Folk", "Folk Radio", 1);
+        assert_eq!(station_seed(&genre), MixSeed::Genre("Folk".into()));
     }
 
     #[test]

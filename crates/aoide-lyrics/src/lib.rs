@@ -1,11 +1,11 @@
-//! Lyrics from the internet, for tracks the Jellyfin server has none for.
+//! Lyrics from the internet, for tracks the Melete server has none for.
 //!
-//! The lyrics come out as aoide-jellyfin's [`Lyrics`] (lines, optional line
+//! The lyrics come out as aoide-melete's [`Lyrics`] (lines, optional line
 //! times, optional word times), the same shape the server's own lyrics have, so
 //! the lyrics panel needn't know where they came from.
 //!
 //! ```no_run
-//! # async fn example(client: aoide_jellyfin::JellyfinClient, item: aoide_jellyfin::Item)
+//! # async fn example(client: aoide_melete::MeleteClient, item: aoide_melete::Item)
 //! # -> Result<(), Box<dyn std::error::Error>> {
 //! use aoide_lyrics::{LyricsFinder, TrackQuery};
 //!
@@ -42,7 +42,7 @@
 //! - **SimpMusic Lyrics** has a generated OpenAPI description but no terms of
 //!   use, labels itself educational and non-commercial, says part of its data
 //!   is crawled from other services, and keys lyrics by YouTube video id, which
-//!   a Jellyfin track doesn't have.
+//!   a Melete track doesn't have.
 //!
 //! # LRC
 //!
@@ -87,7 +87,7 @@ mod lrclib;
 mod provider;
 mod romaji;
 
-pub use aoide_jellyfin::{LyricLine, LyricWord, Lyrics};
+pub use aoide_melete::{LyricLine, LyricWord, Lyrics};
 pub use finder::{AllFailed, DEFAULT_MAX_DURATION_GAP, DEFAULT_TIMEOUT, Found, LyricsFinder};
 #[cfg(feature = "furigana")]
 pub use furigana::{JapaneseReader, ReaderError, Ruby};

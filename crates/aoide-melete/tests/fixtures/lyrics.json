@@ -1,0 +1,15 @@
+{
+  "lines": [
+    {
+      "start_seconds": 1.0,
+      "text": "First line"
+    },
+    {
+      "start_seconds": 5.0,
+      "text": "Second line"
+    }
+  ],
+  "source": "file",
+  "synced": true,
+  "track_id": 2
+}

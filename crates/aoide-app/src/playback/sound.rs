@@ -12,7 +12,7 @@ use crate::config::Settings;
 
 impl Playback {
     /// The Level volume switch, handed to the player (which weighs a file's
-    /// ReplayGain tags against the sidecar's measurement, as
+    /// ReplayGain tags against Melete's measurement, as
     /// `aoide_audio::loudness::level_gain` does), and the queued tracks'
     /// measured gains brought in line with it: so switching it on mid-queue
     /// levels the tracks already queued, not only the ones queued later.
@@ -95,8 +95,6 @@ mod tests {
     use crate::playback::tracks::{BuiltTrack, TrackMeta};
 
     fn built(id: &str, measures: &Measures, settings: &Settings) -> BuiltTrack {
-        let url =
-            aoide_jellyfin::Url::parse(&format!("https://music.example.net/Audio/{id}")).unwrap();
         let (sound, gain_db) = tracks::applied(id, measures, settings);
         BuiltTrack {
             meta: TrackMeta {
@@ -117,14 +115,14 @@ mod tests {
             },
             track: aoide_audio::PlayerTrack {
                 key: id.into(),
-                source: aoide_audio::MediaSource::http(url.as_str()),
+                source: aoide_audio::MediaSource::http(format!("https://music.example.net/{id}")),
                 mix: aoide_audio::MixTrack {
                     sound,
                     ..aoide_audio::MixTrack::default()
                 },
                 gain_db,
             },
-            url,
+            format: aoide_melete::StreamFormat::Original,
         }
     }
 

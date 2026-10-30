@@ -15,7 +15,7 @@ pub struct QueueState {
     pub device_id: String,
     /// That device's name, for "continue from …".
     pub device_name: String,
-    /// A JSON array of Jellyfin ids, as text inside the payload.
+    /// A JSON array of track ids, as text inside the payload.
     pub track_ids: String,
     /// The index into `track_ids` of the track playing.
     pub position: i64,
@@ -50,7 +50,7 @@ impl QueueState {
         }
     }
 
-    /// The Jellyfin ids, read back from `track_ids`; empty if it does not parse.
+    /// The track ids, read back from `track_ids`; empty if it does not parse.
     pub fn track_id_list(&self) -> Vec<String> {
         serde_json::from_str(&self.track_ids).unwrap_or_default()
     }

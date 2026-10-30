@@ -1,0 +1,161 @@
+{
+  "items": [
+    {
+      "album": "Second Album",
+      "album_artist": "Other Artist",
+      "album_id": 1,
+      "artist": "Other Artist",
+      "artists": [
+        {
+          "id": 1,
+          "mb_artist_id": null,
+          "name": "Other Artist"
+        }
+      ],
+      "bit_depth": 16,
+      "bitrate_kbps": 124,
+      "channels": 2,
+      "codec": "flac",
+      "disc_number": 1,
+      "duration_seconds": 22.0,
+      "gapless": {
+        "encoder_delay": 0,
+        "padding": 0
+      },
+      "genres": [
+        "Jazz"
+      ],
+      "id": 4,
+      "isrc": null,
+      "liked": false,
+      "mb_artist_id": null,
+      "mb_recording_id": null,
+      "mb_release_group_id": null,
+      "mb_release_id": null,
+      "mb_track_id": null,
+      "sample_rate": 44100,
+      "spatial": null,
+      "title": "Caf\u00e9 Song",
+      "track_number": 1,
+      "year": 2020
+    },
+    {
+      "album": "First Album",
+      "album_artist": "Test Artist",
+      "album_id": 2,
+      "artist": "Test Artist",
+      "artists": [
+        {
+          "id": 2,
+          "mb_artist_id": null,
+          "name": "Test Artist"
+        }
+      ],
+      "bit_depth": 16,
+      "bitrate_kbps": 123,
+      "channels": 2,
+      "codec": "flac",
+      "disc_number": 1,
+      "duration_seconds": 20.0,
+      "gapless": {
+        "encoder_delay": 0,
+        "padding": 0
+      },
+      "genres": [
+        "Rock"
+      ],
+      "id": 2,
+      "isrc": null,
+      "liked": false,
+      "mb_artist_id": null,
+      "mb_recording_id": null,
+      "mb_release_group_id": null,
+      "mb_release_id": null,
+      "mb_track_id": null,
+      "sample_rate": 44100,
+      "spatial": null,
+      "title": "Opening",
+      "track_number": 1,
+      "year": 2020
+    },
+    {
+      "album": "First Album",
+      "album_artist": "Test Artist",
+      "album_id": 2,
+      "artist": "Test Artist",
+      "artists": [
+        {
+          "id": 2,
+          "mb_artist_id": null,
+          "name": "Test Artist"
+        }
+      ],
+      "bit_depth": 16,
+      "bitrate_kbps": 124,
+      "channels": 2,
+      "codec": "flac",
+      "disc_number": 1,
+      "duration_seconds": 25.0,
+      "gapless": {
+        "encoder_delay": 0,
+        "padding": 0
+      },
+      "genres": [
+        "Rock"
+      ],
+      "id": 3,
+      "isrc": null,
+      "liked": false,
+      "mb_artist_id": null,
+      "mb_recording_id": null,
+      "mb_release_group_id": null,
+      "mb_release_id": null,
+      "mb_track_id": null,
+      "sample_rate": 44100,
+      "spatial": null,
+      "title": "Middle",
+      "track_number": 2,
+      "year": 2020
+    },
+    {
+      "album": "First Album",
+      "album_artist": "Test Artist",
+      "album_id": 2,
+      "artist": "Test Artist",
+      "artists": [
+        {
+          "id": 2,
+          "mb_artist_id": null,
+          "name": "Test Artist"
+        }
+      ],
+      "bit_depth": 16,
+      "bitrate_kbps": 131,
+      "channels": 2,
+      "codec": "flac",
+      "disc_number": 1,
+      "duration_seconds": 18.0,
+      "gapless": {
+        "encoder_delay": 0,
+        "padding": 0
+      },
+      "genres": [
+        "Rock"
+      ],
+      "id": 1,
+      "isrc": null,
+      "liked": false,
+      "mb_artist_id": null,
+      "mb_recording_id": null,
+      "mb_release_group_id": null,
+      "mb_release_id": null,
+      "mb_track_id": null,
+      "sample_rate": 44100,
+      "spatial": null,
+      "title": "Closing",
+      "track_number": 3,
+      "year": 2020
+    }
+  ],
+  "total": 4
+}

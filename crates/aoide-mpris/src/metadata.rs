@@ -26,7 +26,7 @@ pub enum Entry {
 pub fn entries(metadata: &Metadata) -> Vec<(&'static str, Entry)> {
     let mut out = vec![(
         "mpris:trackid",
-        Entry::ObjectPath(track_object_path(&metadata.jellyfin_id)),
+        Entry::ObjectPath(track_object_path(&metadata.track_id)),
     )];
     if let Some(length) = metadata.length {
         out.push(("mpris:length", Entry::I64(micros(length))));
@@ -71,7 +71,7 @@ fn clean_all(texts: &[String]) -> Vec<String> {
     texts.iter().map(|t| clean(t)).collect()
 }
 
-/// Query parameter names that carry a Jellyfin (or Emby) credential.
+/// Query parameter names that carry a Jellyfin- or Emby-style credential.
 const CREDENTIAL_PARAMS: &[&str] = &[
     "api_key",
     "apikey",
@@ -110,13 +110,13 @@ mod tests {
 
     fn track() -> Metadata {
         Metadata {
-            jellyfin_id: "0123abcd".into(),
+            track_id: "0123abcd".into(),
             title: "Song".into(),
             artists: vec!["One".into(), "Two".into()],
             album: Some("Album".into()),
             album_artists: vec!["One".into()],
             length: Some(Duration::from_millis(215_250)),
-            art_url: Some("https://jellyfin.example.org/Items/0123abcd/Images/Primary".into()),
+            art_url: Some("https://melete.example.org/api/v1/music/albums/7/cover".into()),
             track_number: Some(7),
         }
     }
@@ -138,7 +138,7 @@ mod tests {
         assert_eq!(
             get(&e, "mpris:artUrl"),
             Some(&Entry::Str(
-                "https://jellyfin.example.org/Items/0123abcd/Images/Primary".into()
+                "https://melete.example.org/api/v1/music/albums/7/cover".into()
             ))
         );
         assert_eq!(get(&e, "xesam:title"), Some(&Entry::Str("Song".into())));
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn empty_fields_are_left_out_but_the_track_id_never_is() {
         let e = entries(&Metadata {
-            jellyfin_id: "x".into(),
+            track_id: "x".into(),
             ..Metadata::default()
         });
         assert_eq!(e.len(), 1);
@@ -193,13 +193,15 @@ mod tests {
     #[test]
     fn art_urls_must_be_https_or_file() {
         assert!(safe_art_url("file:///var/cache/aoide/art/abc.jpg").is_some());
-        assert!(safe_art_url("https://jellyfin.example.org/Items/a/Images/Primary").is_some());
+        assert!(safe_art_url("https://melete.example.org/api/v1/music/albums/7/cover").is_some());
         assert!(
-            safe_art_url("HTTPS://jellyfin.example.org/Items/a/Images/Primary?tag=x&maxWidth=512")
-                .is_some()
+            safe_art_url(
+                "HTTPS://melete.example.org/api/v1/music/albums/7/cover?tag=x&maxWidth=512"
+            )
+            .is_some()
         );
         for bad in [
-            "http://jellyfin.example.org/Items/a/Images/Primary",
+            "http://melete.example.org/api/v1/music/albums/7/cover",
             "ftp://example.org/a.jpg",
             "data:image/png;base64,AAAA",
             "/var/cache/a.jpg",
@@ -213,24 +215,24 @@ mod tests {
     #[test]
     fn art_urls_with_credentials_are_not_published() {
         for bad in [
-            "https://user:secret@jellyfin.example.org/Items/a/Images/Primary",
-            "https://jellyfin.example.org/Items/a/Images/Primary?api_key=x",
-            "https://jellyfin.example.org/Items/a/Images/Primary?tag=1&ApiKey=x",
-            "https://jellyfin.example.org/Items/a/Images/Primary?X-Emby-Token=x#frag",
-            "https://jellyfin.example.org/Items/a/Images/Primary?token=x",
+            "https://user:secret@melete.example.org/api/v1/music/albums/7/cover",
+            "https://melete.example.org/api/v1/music/albums/7/cover?api_key=x",
+            "https://melete.example.org/api/v1/music/albums/7/cover?tag=1&ApiKey=x",
+            "https://melete.example.org/api/v1/music/albums/7/cover?X-Emby-Token=x#frag",
+            "https://melete.example.org/api/v1/music/albums/7/cover?token=x",
         ] {
             assert_eq!(safe_art_url(bad), None, "{bad}");
         }
         // A parameter that merely contains the word is fine.
-        assert!(safe_art_url("https://jellyfin.example.org/a?tokenized=1").is_some());
+        assert!(safe_art_url("https://melete.example.org/a?tokenized=1").is_some());
         // An `@` in the path is not user info.
-        assert!(safe_art_url("https://jellyfin.example.org/a@2x.png").is_some());
+        assert!(safe_art_url("https://melete.example.org/a@2x.png").is_some());
     }
 
     #[test]
     fn disallowed_art_urls_are_left_out_of_the_map() {
         let mut t = track();
-        t.art_url = Some("http://jellyfin.example.org/a.jpg".into());
+        t.art_url = Some("http://melete.example.org/a.jpg".into());
         assert_eq!(get(&entries(&t), "mpris:artUrl"), None);
     }
 }

@@ -7,16 +7,16 @@
 //!    page, so no account and no key, and at most the first 100 tracks —
 //!    [`ImportedPlaylist::is_truncated`] says when there may be more), or
 //!    [`parse_playlist_csv`] for an Exportify-style file.
-//! 2. Match it: [`match_playlist`] asks the sidecar's `POST /aoide/match` first — one
+//! 2. Match it: [`match_playlist`] asks the server's `POST /aoide/match` first — one
 //!    request, answered from inside the library — and when that is unreachable falls
-//!    back to the same rules here ([`TrackMatcher`]) over Jellyfin search results,
-//!    which the app supplies through [`JellyfinSearch`] so this crate does not depend
-//!    on a Jellyfin client.
+//!    back to the same rules here ([`TrackMatcher`]) over the library's search,
+//!    which the app supplies through [`LibrarySearch`] so this crate does not depend
+//!    on a library client.
 //! 3. Show what was found and what was not, and save the found ones as an Aoide
 //!    playlist (`Store::create_playlist` and `Store::add_tracks`).
 //!
 //! The matching rules are a specification shared by the phone (`TrackMatcher.swift`),
-//! the desktop (`playlist-import.ts`) and the sidecar, all held to one table of cases
+//! the desktop (`playlist-import.ts`) and the server, all held to one table of cases
 //! (`tests/match-table.json` here, a copy of the desktop's `docs/match-table.json`):
 //! a track that matches on one must match on all, or two devices would disagree about
 //! what is missing from the same playlist.
@@ -80,10 +80,10 @@ impl ImportedTrack {
     }
 }
 
-/// A library track, as Jellyfin search returned it.
+/// A library track, as the library's search returned it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryTrack {
-    /// The track's Jellyfin item id.
+    /// The track's id in the library.
     pub jellyfin_id: String,
     /// The track's title, as tagged.
     pub title: String,
@@ -375,9 +375,9 @@ fn strip_noisy_suffix(text: &str) -> String {
 
 // MARK: - Matching a list
 
-/// Jellyfin's song search, as the importer needs it. The app implements it over its
-/// Jellyfin client (songs whose name matches `term`, at most `limit`).
-pub trait JellyfinSearch: Send + Sync {
+/// The library's song search, as the importer needs it. The app implements it over
+/// its Melete client (songs whose title matches `term`, at most `limit`).
+pub trait LibrarySearch: Send + Sync {
     /// Library tracks whose names match `term`, at most `limit`. `Err` carries
     /// a message; the importer treats it as no results for that term.
     fn search_songs(
@@ -387,13 +387,13 @@ pub trait JellyfinSearch: Send + Sync {
     ) -> impl Future<Output = Result<Vec<LibraryTrack>, String>> + Send;
 }
 
-/// The sidecar's answer for one imported track.
+/// The server's answer for one imported track.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SidecarMatch {
     /// The library track chosen.
     pub jellyfin_id: String,
-    /// How sure the sidecar is of the match: its ranking score.
+    /// How sure the server is of the match: its ranking score.
     pub confidence: f64,
     /// As [`Verdict::title`].
     #[serde(default)]
@@ -418,7 +418,7 @@ pub struct SidecarMatch {
     pub duration_ms: Option<i64>,
 }
 
-/// The sidecar refuses more than this many rows in one call.
+/// At most this many rows go in one call.
 pub const MATCH_ROWS_PER_REQUEST: usize = 5000;
 
 impl SidecarClient {
@@ -459,14 +459,14 @@ impl SidecarClient {
 pub enum MatchedBy {
     /// `POST /aoide/match`.
     Sidecar,
-    /// This device's rules over Jellyfin search.
+    /// This device's rules over the library's search.
     Library,
 }
 
 /// The library track chosen for an imported one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchedTrack {
-    /// The library track's Jellyfin item id: what goes in the saved playlist.
+    /// The library track's id: what goes in the saved playlist.
     pub jellyfin_id: String,
     /// The chosen track's own tags, so the screen can show what was picked.
     pub title: Option<String>,
@@ -476,7 +476,7 @@ pub struct MatchedTrack {
     pub album: Option<String>,
     /// The chosen track's length in milliseconds.
     pub duration_ms: Option<i64>,
-    /// The ranking score: the sidecar's confidence, or [`Verdict::overall`].
+    /// The ranking score: the server's confidence, or [`Verdict::overall`].
     pub score: f64,
 }
 
@@ -499,7 +499,7 @@ pub struct ImportResult {
 }
 
 impl ImportResult {
-    /// The Jellyfin ids to save, in order.
+    /// The track ids to save, in order.
     pub fn found_ids(&self) -> Vec<String> {
         self.matches
             .iter()
@@ -522,12 +522,12 @@ pub const SEARCH_LIMIT: usize = 40;
 /// A search term is cut to this many characters.
 pub const SEARCH_TERM_CHARS: usize = 60;
 
-/// Matches `tracks` against the library: `POST /aoide/match` when there is a sidecar
+/// Matches `tracks` against the library: `POST /aoide/match` when the server has it
 /// and it answers, otherwise [`TrackMatcher`] over `library`'s search results — the
 /// two follow the same rules, so the result is the same either way, only slower.
 /// `progress(done, total)` is called as the local path goes. A search that fails is a
 /// track reported missing, which is the honest answer from here.
-pub async fn match_playlist<S: JellyfinSearch>(
+pub async fn match_playlist<S: LibrarySearch>(
     sidecar: Option<&SidecarClient>,
     library: &S,
     tracks: &[ImportedTrack],
@@ -572,7 +572,7 @@ pub async fn match_playlist<S: JellyfinSearch>(
     }
 }
 
-async fn look_up<S: JellyfinSearch>(library: &S, track: &ImportedTrack) -> Option<MatchedTrack> {
+async fn look_up<S: LibrarySearch>(library: &S, track: &ImportedTrack) -> Option<MatchedTrack> {
     for term in TrackMatcher::search_terms(&track.title) {
         let term: String = term.chars().take(SEARCH_TERM_CHARS).collect();
         let Ok(candidates) = library.search_songs(&term, SEARCH_LIMIT).await else {

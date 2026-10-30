@@ -53,7 +53,7 @@ impl PlaySource {
 pub struct PlayEvent {
     /// The row id.
     pub id: String,
-    /// The track's Jellyfin id when it was played.
+    /// The track's id when it was played.
     pub jellyfin_id: String,
     /// The track's [`ContentKey`](crate::ContentKey), which still finds it after a rescan.
     pub content_key: String,

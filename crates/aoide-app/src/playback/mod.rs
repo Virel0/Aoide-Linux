@@ -8,9 +8,9 @@
 
 pub mod infinity;
 pub mod lyrics;
+pub mod playable;
 pub mod queue;
 pub mod recorder;
-pub mod report;
 pub mod sleep_timer;
 pub mod sound;
 pub mod tracks;
@@ -211,7 +211,7 @@ impl Playback {
         self.queue().map_or(0, |q| q.up_next().len())
     }
 
-    /// The queue as Jellyfin ids, and the current position, for saving.
+    /// The queue as track ids, and the current position, for saving.
     pub fn saved_form(&self) -> (Vec<String>, i64) {
         let Some(queue) = self.queue() else {
             return (Vec::new(), 0);
@@ -224,7 +224,7 @@ impl Playback {
         (ids, queue.position().map_or(0, |p| p as i64))
     }
 
-    /// Every Jellyfin id in the queue.
+    /// Every track id in the queue.
     pub fn known_ids(&self) -> HashSet<String> {
         self.meta.values().map(|q| q.meta.id.clone()).collect()
     }
@@ -241,7 +241,7 @@ impl Playback {
             .unwrap_or_default()
     }
 
-    /// Every queued Jellyfin id, in queue order, each once.
+    /// Every queued track id, in queue order, each once.
     pub fn queued_ids(&self) -> Vec<String> {
         let mut seen = HashSet::new();
         self.queue()
@@ -544,8 +544,6 @@ mod tests {
     use super::*;
 
     fn built(id: &str) -> BuiltTrack {
-        let url =
-            aoide_jellyfin::Url::parse(&format!("https://music.example.net/Audio/{id}")).unwrap();
         BuiltTrack {
             meta: TrackMeta {
                 id: id.into(),
@@ -565,11 +563,11 @@ mod tests {
             },
             track: PlayerTrack {
                 key: id.into(),
-                source: aoide_audio::MediaSource::http(url.as_str()),
+                source: aoide_audio::MediaSource::http(format!("https://music.example.net/{id}")),
                 mix: aoide_audio::MixTrack::default(),
                 gain_db: None,
             },
-            url,
+            format: aoide_melete::StreamFormat::Original,
         }
     }
 

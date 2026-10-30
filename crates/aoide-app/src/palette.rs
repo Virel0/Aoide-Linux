@@ -2,12 +2,12 @@
 //! playlist, drive the player, and find songs, albums and artists, all from
 //! the keyboard. Up and Down choose, Enter runs, Escape closes.
 //!
-//! The commands are matched as typed; the library is searched (Jellyfin's
+//! The commands are matched as typed; the library is searched (Melete's
 //! plain search, the same as the Search screen's) once typing pauses.
 
 use std::time::Duration;
 
-use aoide_jellyfin::SearchResults;
+use aoide_melete::SearchResults;
 use aoide_store::PlaySource;
 use iced::keyboard::{self, Key, key::Named};
 use iced::widget::{Column, button, column, container, row, scrollable, text, text_input};
@@ -344,12 +344,11 @@ impl App {
             return Task::none();
         }
         let client = signed.connection.client.clone();
-        let library = signed.library.clone();
         let asked = query.clone();
         Task::perform(
-            async move { client.search(&asked, library.as_deref(), RESULTS).await },
+            async move { client.search(&asked, RESULTS).await },
             move |result| match result {
-                Err(aoide_jellyfin::Error::Unauthorized) => AppMessage::TokenRejected,
+                Err(aoide_melete::Error::Unauthorized) => AppMessage::TokenRejected,
                 result => AppMessage::Palette(Message::Found(
                     query.clone(),
                     result.map_err(|e| crate::failure::describe(&e).to_string()),
@@ -492,16 +491,18 @@ mod tests {
 
     #[test]
     fn results_play_songs_and_open_albums_and_artists() {
-        let item = |id: &str, name: &str, kind: &str| {
-            serde_json::from_value::<aoide_jellyfin::Item>(serde_json::json!({
-                "Id": id, "Name": name, "Type": kind, "Artists": ["Mara Vey"]
-            }))
-            .unwrap()
+        use aoide_melete::ItemKind;
+        let item = |id: &str, name: &str, kind: ItemKind| aoide_melete::Item {
+            id: id.into(),
+            name: name.into(),
+            kind,
+            artists: vec!["Mara Vey".into()],
+            ..aoide_melete::Item::default()
         };
         let found = SearchResults {
-            songs: vec![item("t1", "Harbour Lights", "Audio")],
-            albums: vec![item("a1", "Saltwater", "MusicAlbum")],
-            artists: vec![item("ar1", "Mara Vey", "MusicArtist")],
+            songs: vec![item("t1", "Harbour Lights", ItemKind::Track)],
+            albums: vec![item("a1", "Saltwater", ItemKind::Album)],
+            artists: vec![item("ar1", "Mara Vey", ItemKind::Artist)],
         };
         let entries = results(&found);
         assert_eq!(

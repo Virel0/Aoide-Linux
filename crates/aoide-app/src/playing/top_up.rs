@@ -50,10 +50,9 @@ impl App {
         };
         let client = signed.connection.client.clone();
         let sidecar = signed.sidecar.clone();
-        Task::perform(
-            infinity::top_up(client, sidecar, store, ask, aoide_store::now_millis()),
-            |found| Message::ToppedUp(Box::new(found)),
-        )
+        Task::perform(infinity::top_up(client, sidecar, store, ask), |found| {
+            Message::ToppedUp(Box::new(found))
+        })
     }
 
     pub(crate) fn topped_up(&mut self, found: TopUp) -> Task<Message> {

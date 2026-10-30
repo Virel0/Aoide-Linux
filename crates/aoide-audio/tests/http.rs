@@ -338,3 +338,37 @@ fn the_last_reader_closing_ends_the_download_at_once() {
     assert!(!source.is_active());
     assert!(source.downloaded().is_empty());
 }
+
+#[test]
+fn a_resolved_source_asks_for_its_url_only_when_a_download_starts() {
+    let body: Vec<u8> = (0..64 * 1024u32).map(|i| (i % 251) as u8).collect();
+    let body = Arc::new(body);
+    let (url, _) = trickling_server(Arc::clone(&body));
+    let asked = Arc::new(Mutex::new(0usize));
+    let counter = Arc::clone(&asked);
+    let source = HttpSource::resolved(Arc::new(move || {
+        *counter.lock().unwrap() += 1;
+        Ok(url.clone())
+    }));
+    assert_eq!(*asked.lock().unwrap(), 0, "nothing asked before an open");
+
+    let mut reader = source.open().unwrap();
+    let mut all = Vec::new();
+    reader.read_to_end(&mut all).unwrap();
+    assert!(all == *body);
+    let second = source.open().unwrap();
+    assert_eq!(*asked.lock().unwrap(), 1, "readers open together share one");
+
+    drop((reader, second));
+    let _again = source.open().unwrap();
+    assert_eq!(*asked.lock().unwrap(), 2, "a new download asks again");
+}
+
+#[test]
+fn a_url_that_cant_be_had_fails_the_open_with_its_reason() {
+    let source = HttpSource::resolved(Arc::new(|| Err("the server has no such track".to_owned())));
+    let Err(error) = source.open() else {
+        panic!("opened without a URL");
+    };
+    assert_eq!(error.to_string(), "the server has no such track");
+}
