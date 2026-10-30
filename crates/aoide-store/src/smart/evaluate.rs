@@ -12,7 +12,7 @@ use crate::models::Playlist;
 use crate::store::Store;
 
 impl Store {
-    /// The Jellyfin ids matching `rules`, in the rule set's own order, as of `now`.
+    /// The track ids matching `rules`, in the rule set's own order, as of `now`.
     ///
     /// # Errors
     ///

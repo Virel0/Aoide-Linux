@@ -168,7 +168,7 @@ fn last_outcome(overview: &SyncOverview) -> Option<Line> {
     )))
 }
 
-/// Changes the server's sidecar doesn't accept yet.
+/// Changes the server doesn't accept yet.
 fn held_back(overview: &SyncOverview) -> Option<Line> {
     if overview.held_back <= 0 {
         return None;

@@ -29,14 +29,14 @@ use crate::playlists::{PlaylistError, UNRESOLVED_PREFIX};
 use crate::record::placeholders;
 use crate::store::Store;
 
-/// The sidecar refuses anything larger (its default; configurable on the server).
+/// The server refuses anything larger (its default; configurable on the server).
 pub const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
 
 /// What a playlist's cover is drawn from. See the module documentation for the order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlaylistCover {
     /// Bytes named by their SHA-256: from the [`BlobDirectory`] if held, otherwise
-    /// from the sidecar when about to be drawn.
+    /// from the server when about to be drawn.
     Image {
         /// The bytes' SHA-256, lower-case hex.
         hash: String,
@@ -70,7 +70,7 @@ pub enum CoverError {
     BadHash(String),
 }
 
-/// The picture formats the sidecar accepts, told from the bytes rather than the file
+/// The picture formats the server accepts, told from the bytes rather than the file
 /// name.
 pub fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
@@ -84,7 +84,7 @@ pub fn sniff_image_mime(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// Whether `hash` is a lower-case hex SHA-256 — the only shape the sidecar addresses.
+/// Whether `hash` is a lower-case hex SHA-256 — the only shape the server addresses.
 pub fn is_image_hash(hash: &str) -> bool {
     hash.len() == 64
         && hash

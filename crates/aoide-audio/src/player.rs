@@ -21,7 +21,7 @@ pub const RESTART_THRESHOLD_MS: u64 = 3_000;
 #[derive(Clone, Debug)]
 pub struct PlayerTrack {
     /// The caller's own name for this track, opaque to the player: the
-    /// Jellyfin id and a per-entry counter, say. It goes wherever the track
+    /// track id and a per-entry counter, say. It goes wherever the track
     /// goes (shuffle, moves, Play Next, a replaced queue keeping its lane), so
     /// the caller finds what it knows about an entry from `entry.track.key`
     /// rather than by working out which entries an edit created.
@@ -124,7 +124,7 @@ impl Player {
     }
 
     /// The Level volume switch, over both of its sources: a file's own
-    /// ReplayGain tags and the sidecar's measurement in each track's
+    /// ReplayGain tags and Melete's measurement in each track's
     /// `gain_db`. On, a file with tags plays by them and the measurement
     /// stands down for it (the desktop's rule); a file without plays by the
     /// measurement. Off, neither applies. Like [`Player::set_measurements`],

@@ -24,10 +24,10 @@ pub use report::leave_server;
 /// How often the saved queue follows the playhead while a track plays.
 const SAVE_QUEUE_EVERY_MS: u64 = 10_000;
 
-/// How long queueing waits for the sidecar's measurements before playing
+/// How long queueing waits for Melete's measurements before playing
 /// without them.
 pub const MEASURE_WAIT: Duration = Duration::from_secs(2);
-/// How many tracks are measured ahead of being queued: one sidecar call.
+/// How many tracks are measured ahead of being queued: one server call.
 /// The rest of the queue is measured afterwards in batches of this size.
 pub const MEASURE_AHEAD: usize = aoide_sidecar::MAX_IDS_PER_CALL;
 /// How long one of those later batches waits: nothing is held up by it.
@@ -53,7 +53,7 @@ pub enum Destination {
     Restore { position: usize, elapsed_ms: u64 },
 }
 
-/// The sidecar's answers for one batch.
+/// The server's answers for one batch.
 #[derive(Debug, Clone, Default)]
 pub struct Measured {
     pub ids: Vec<String>,
@@ -92,7 +92,7 @@ pub async fn measure_within(sidecar: SidecarClient, ids: Vec<String>, wait: Dura
     }
 }
 
-/// The next tracks of the queue to ask the sidecar about: not yet measured,
+/// The next tracks of the queue to ask Melete about: not yet measured,
 /// not asked about already this session (a track still being analysed is
 /// asked again only when it is queued again), at most one call's worth.
 pub fn next_batch(
@@ -109,7 +109,7 @@ pub fn next_batch(
 }
 
 impl App {
-    /// Queues tracks: measured first where the sidecar can say, then built
+    /// Queues tracks: measured first where the server can say, then built
     /// and handed to the player.
     pub(crate) fn play(&mut self, request: PlayRequest) -> Task<Message> {
         let Some(signed) = self.session.as_mut() else {

@@ -18,7 +18,7 @@ use crate::record::SyncRecord;
 /// fields individually lets both survive.
 ///
 /// Carried *inside* the payload, which is why this needed no server change: the
-/// sidecar stores payloads verbatim. Rows written before this existed carry no stamps
+/// server stores payloads verbatim. Rows written before this existed carry no stamps
 /// and fall back to the row's `updatedAt`, so older ops keep working.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

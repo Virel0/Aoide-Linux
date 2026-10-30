@@ -312,9 +312,8 @@ fn read_replay_gain(format: &mut dyn FormatReader, track_id: u32) -> ReplayGainT
 }
 
 /// The name of a codec a music library can hold that this build has no
-/// decoder for. symphonia has no Opus decoder; Jellyfin transcodes Opus for
-/// us (the stream URL never offers it), so one only reaches here from a
-/// local file or a server that ignored the list.
+/// decoder for. symphonia has no Opus decoder; the server sends a file as it
+/// is unless a format is asked for, so an Opus file can reach here.
 fn missing_codec(codec: AudioCodecId) -> Option<&'static str> {
     (codec == CODEC_ID_OPUS).then_some("Opus")
 }

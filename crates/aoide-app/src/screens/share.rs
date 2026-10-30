@@ -1,5 +1,5 @@
-//! Sharing one Aoide playlist with other people on the server, through the
-//! sidecar's `/aoide/shares`: who it is shared with (or who shared it with
+//! Sharing one Aoide playlist with other people on the server, through
+//! Melete's `/aoide/shares`: who it is shared with (or who shared it with
 //! you), sharing it with someone else, stopping a share after asking, and the
 //! edits held back because a share was revoked.
 //!
@@ -55,7 +55,7 @@ pub enum Message {
     Done(Result<String, String>),
 }
 
-/// The app's side: the sidecar calls.
+/// The app's side: the server calls.
 #[derive(Debug, Clone)]
 pub enum Msg {
     Load {
@@ -111,7 +111,7 @@ pub enum Call {
 
 /// What a refused share call means, in the server's words where it gave any.
 /// The client keeps no body for a 404 or a 403, so those are said here from
-/// what the sidecar's contract means by them.
+/// what the `/aoide/shares` contract means by them.
 pub fn refusal(error: &SidecarError, call: Call) -> String {
     match (error, call) {
         (SidecarError::Absent { .. }, Call::List) => {

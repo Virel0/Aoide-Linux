@@ -36,7 +36,7 @@ impl TasteProfile {
 /// One song being considered, described by the little that matters here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TasteCandidate {
-    /// The track's Jellyfin id.
+    /// The track's id.
     pub id: String,
     /// The track's artist.
     pub artist: String,

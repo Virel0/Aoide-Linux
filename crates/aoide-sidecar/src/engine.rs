@@ -212,7 +212,7 @@ pub enum SyncError {
         unmatched_rejections: usize,
     },
     /// A round trip failed as a whole: the network, the server's refusal of the
-    /// token, a missing sidecar ([`is_sidecar_absent`](Self::is_sidecar_absent)),
+    /// token, missing routes ([`is_sidecar_absent`](Self::is_sidecar_absent)),
     /// or a server fault no single op explains.
     #[error("transport: {0}")]
     Transport(#[from] SidecarError),
@@ -222,7 +222,7 @@ pub enum SyncError {
 }
 
 impl SyncError {
-    /// Whether the server simply has no sidecar — "your server can't do this yet"
+    /// Whether the server simply lacks the routes — "your server can't do this yet"
     /// rather than "not right now".
     pub fn is_sidecar_absent(&self) -> bool {
         matches!(self, Self::Transport(error) if error.is_absent())
@@ -255,7 +255,7 @@ pub struct SyncOverview {
     /// Of those, the server faults worth offering a retry for.
     pub retryable: usize,
     /// Changes kept here because the server does not accept their kind yet
-    /// (`track_flags` on an older sidecar). They go once it does.
+    /// (`track_flags` on an older server). They go once it does.
     pub held_back: i64,
     /// Those kinds, by local table name.
     pub held_entities: Vec<String>,
@@ -268,7 +268,7 @@ pub struct SyncOverview {
     pub error: Option<String>,
     /// Why the last read of the share list failed.
     pub share_error: Option<String>,
-    /// The last failure was the server having no sidecar at all: say "your server
+    /// The last failure was the server having no sync routes at all: say "your server
     /// can't sync yet", not "try again".
     pub sidecar_absent: bool,
     /// The last clean sync's whole report, for a detail view.

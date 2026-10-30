@@ -61,8 +61,8 @@ For `x` in `a` and `b`:
 | `mp3_x.mp3` | `ffmpeg -i clicks_x.wav -c:a libmp3lame -b:a 128k mp3_x.mp3` |
 | `vorbis_x.ogg` | `oggenc -Q -q 4 -o vorbis_x.ogg clicks_x.wav` |
 
-`adts_x.aac` uses ffmpeg's own AAC encoder because that is what Jellyfin
-transcodes with.
+`adts_x.aac` uses ffmpeg's own AAC encoder because Melete converts with
+ffmpeg.
 
 `opus.opus`, the first quarter second of the clicks, is only there to fail
 (symphonia has no Opus decoder); libopus 1.6.1:

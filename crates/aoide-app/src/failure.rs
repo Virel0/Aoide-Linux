@@ -67,7 +67,7 @@ fn shown_address(server: &str) -> String {
     bare.trim_end_matches('/').to_owned()
 }
 
-/// The Aoide sidecar's error in words, naming the signed-in server.
+/// An `/aoide/*` error in words, naming the signed-in server.
 pub fn sidecar(error: &aoide_sidecar::SidecarError) -> Failure {
     let server = SERVER.read().ok().and_then(|s| s.clone());
     sidecar_at(error, server.as_deref())
@@ -97,7 +97,7 @@ pub fn sidecar_at(error: &aoide_sidecar::SidecarError, server: Option<&str>) -> 
         E::Unauthorized => "Your server didn't accept this sign-in.".into(),
         E::Forbidden => "Your server doesn't allow this account to do that.".into(),
         E::InvalidUrl(_) | E::Unsupported(_) => Failure::new(
-            "Aoide couldn't talk to your server's sidecar.",
+            "Aoide couldn't talk to your server.",
             Some(error.to_string()),
         ),
     }

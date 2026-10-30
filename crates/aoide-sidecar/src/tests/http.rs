@@ -1,5 +1,5 @@
 //! The HTTP client against a local mock server. Includes the applicable cases of
-//! JellyfinKit's `SyncEndpointTests.swift` ("Sidecar requests").
+//! MeleteKit's `SyncEndpointTests.swift` ("Sidecar requests").
 
 use std::collections::BTreeMap;
 
@@ -204,7 +204,7 @@ async fn a_push_sends_the_contracts_envelope_and_reads_the_answer() {
     assert!(sent.contains(r#""Notes":"kept as written""#), "{sent}");
 }
 
-// MARK: - Telling "no sidecar" from "not right now"
+// MARK: - Telling "no such route" from "not right now"
 
 #[tokio::test]
 async fn a_missing_plugin_is_absent_not_a_failure_to_retry() {
@@ -442,7 +442,7 @@ async fn covers_are_asked_for_uploaded_and_fetched_by_hash() {
     assert_eq!(put.body, b"png bytes");
 }
 
-/// An older sidecar without the image endpoints.
+/// An older server without the image endpoints.
 #[tokio::test]
 async fn uploading_to_a_sidecar_without_covers_is_absent() {
     let (_server, client) = mock().await;

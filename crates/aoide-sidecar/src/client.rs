@@ -20,11 +20,11 @@ use crate::types::{
 /// How many ids the measurement endpoints take per call.
 pub const MAX_IDS_PER_CALL: usize = 200;
 
-/// How much of an error body is kept: an ASP.NET exception page runs to kilobytes, and
+/// How much of an error body is kept: an HTML error page runs to kilobytes, and
 /// the first line names the fault.
 const DETAIL_LIMIT: usize = 400;
 
-/// A connection to one user's sidecar.
+/// A connection to one user's `/aoide/*` routes.
 ///
 /// Paths are joined onto the server URL segment by segment, so a Melete behind a
 /// reverse-proxy subpath (`https://host/melete`) keeps its prefix. Bodies are read
@@ -40,8 +40,8 @@ const DETAIL_LIMIT: usize = 400;
 ///   60-second timeout).
 /// - [`SidecarError::Unauthorized`] and [`SidecarError::Forbidden`]: HTTP 401
 ///   and 403.
-/// - [`SidecarError::Absent`]: HTTP 404, 405 or 501, an older sidecar or none.
-/// - [`SidecarError::Status`]: any other non-2xx status; 503 is the sidecar's
+/// - [`SidecarError::Absent`]: HTTP 404, 405 or 501, an older server or none.
+/// - [`SidecarError::Status`]: any other non-2xx status; 503 is the server's
 ///   "storage unavailable".
 /// - [`SidecarError::Decode`]: a 2xx answer that isn't the JSON expected.
 #[derive(Clone)]
@@ -125,7 +125,7 @@ impl SidecarClient {
     /// # Errors
     ///
     /// The [request errors](SidecarClient#errors); [`SidecarError::Absent`] means
-    /// no sidecar.
+    /// no such routes.
     pub async fn status(&self) -> Result<SyncStatus, SidecarError> {
         self.get_json("aoide/sync/status", &[]).await
     }
@@ -309,12 +309,12 @@ impl SidecarClient {
 
     // MARK: - Infinity and Discover
 
-    /// `POST /aoide/next`. A 404 here is an older sidecar — or a seed this user cannot
+    /// `POST /aoide/next`. A 404 here is an older server — or a seed this user cannot
     /// see; the caller tells them apart by whether the seed is a track it just played.
     ///
     /// # Errors
     ///
-    /// [`SidecarError::Absent`] for an older sidecar or a seed this user can't see;
+    /// [`SidecarError::Absent`] for an older server or a seed this user can't see;
     /// [`SidecarError::Status`] with 503 when the server's storage is down;
     /// otherwise the [request errors](SidecarClient#errors).
     pub async fn next(&self, request: &NextRequest) -> Result<NextResponse, SidecarError> {
@@ -322,12 +322,12 @@ impl SidecarClient {
             .await
     }
 
-    /// `GET /aoide/discover`. `limit` is held to 1…100. A 404 is an older sidecar: hide
+    /// `GET /aoide/discover`. `limit` is held to 1…100. A 404 is an older server: hide
     /// the tile.
     ///
     /// # Errors
     ///
-    /// [`SidecarError::Absent`] for a sidecar without Discover; otherwise the
+    /// [`SidecarError::Absent`] for a server without Discover; otherwise the
     /// [request errors](SidecarClient#errors).
     pub async fn discover(&self, limit: u32) -> Result<DiscoverResponse, SidecarError> {
         let limit = limit.clamp(1, DiscoverResponse::MAX_LIMIT);
@@ -478,7 +478,7 @@ fn check(status: u16, body: &[u8], path: &str) -> Result<(), SidecarError> {
         200..=299 => Ok(()),
         401 => Err(SidecarError::Unauthorized),
         403 => Err(SidecarError::Forbidden),
-        // The endpoint itself is missing: an older sidecar, or a proxy answering the
+        // The endpoint itself is missing: an older server, or a proxy answering the
         // path. One is "your server can't do this yet", never "try again".
         404 | 405 | 501 => Err(SidecarError::Absent {
             path: path.to_owned(),

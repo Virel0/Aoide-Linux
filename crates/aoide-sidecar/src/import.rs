@@ -7,7 +7,7 @@
 //!    page, so no account and no key, and at most the first 100 tracks —
 //!    [`ImportedPlaylist::is_truncated`] says when there may be more), or
 //!    [`parse_playlist_csv`] for an Exportify-style file.
-//! 2. Match it: [`match_playlist`] asks the sidecar's `POST /aoide/match` first — one
+//! 2. Match it: [`match_playlist`] asks the server's `POST /aoide/match` first — one
 //!    request, answered from inside the library — and when that is unreachable falls
 //!    back to the same rules here ([`TrackMatcher`]) over the library's search,
 //!    which the app supplies through [`LibrarySearch`] so this crate does not depend
@@ -16,7 +16,7 @@
 //!    playlist (`Store::create_playlist` and `Store::add_tracks`).
 //!
 //! The matching rules are a specification shared by the phone (`TrackMatcher.swift`),
-//! the desktop (`playlist-import.ts`) and the sidecar, all held to one table of cases
+//! the desktop (`playlist-import.ts`) and the server, all held to one table of cases
 //! (`tests/match-table.json` here, a copy of the desktop's `docs/match-table.json`):
 //! a track that matches on one must match on all, or two devices would disagree about
 //! what is missing from the same playlist.
@@ -387,13 +387,13 @@ pub trait LibrarySearch: Send + Sync {
     ) -> impl Future<Output = Result<Vec<LibraryTrack>, String>> + Send;
 }
 
-/// The sidecar's answer for one imported track.
+/// The server's answer for one imported track.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SidecarMatch {
     /// The library track chosen.
     pub jellyfin_id: String,
-    /// How sure the sidecar is of the match: its ranking score.
+    /// How sure the server is of the match: its ranking score.
     pub confidence: f64,
     /// As [`Verdict::title`].
     #[serde(default)]
@@ -418,7 +418,7 @@ pub struct SidecarMatch {
     pub duration_ms: Option<i64>,
 }
 
-/// The sidecar refuses more than this many rows in one call.
+/// At most this many rows go in one call.
 pub const MATCH_ROWS_PER_REQUEST: usize = 5000;
 
 impl SidecarClient {
@@ -476,7 +476,7 @@ pub struct MatchedTrack {
     pub album: Option<String>,
     /// The chosen track's length in milliseconds.
     pub duration_ms: Option<i64>,
-    /// The ranking score: the sidecar's confidence, or [`Verdict::overall`].
+    /// The ranking score: the server's confidence, or [`Verdict::overall`].
     pub score: f64,
 }
 
@@ -522,7 +522,7 @@ pub const SEARCH_LIMIT: usize = 40;
 /// A search term is cut to this many characters.
 pub const SEARCH_TERM_CHARS: usize = 60;
 
-/// Matches `tracks` against the library: `POST /aoide/match` when there is a sidecar
+/// Matches `tracks` against the library: `POST /aoide/match` when the server has it
 /// and it answers, otherwise [`TrackMatcher`] over `library`'s search results — the
 /// two follow the same rules, so the result is the same either way, only slower.
 /// `progress(done, total)` is called as the local path goes. A search that fails is a

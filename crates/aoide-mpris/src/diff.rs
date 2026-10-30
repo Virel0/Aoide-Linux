@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::track_id::jellyfin_id_from_track_path;
+use crate::track_id::id_from_track_path;
 use crate::types::{Command, PlaybackStatus, PlayerState};
 
 /// How far the reported position may drift from the predicted one before it
@@ -191,7 +191,7 @@ pub fn admit(command: Command, state: &PlayerState) -> Admit {
         Command::SetPosition(id, position) => {
             state.can_seek
                 && state.metadata.as_ref().is_some_and(|m| {
-                    m.jellyfin_id == *id && m.length.is_none_or(|length| *position <= length)
+                    m.track_id == *id && m.length.is_none_or(|length| *position <= length)
                 })
         }
         Command::SetVolume(volume) => {
@@ -216,7 +216,7 @@ pub fn admit(command: Command, state: &PlayerState) -> Admit {
 /// Turns MPRIS `SetPosition` arguments into a command: the track path must be
 /// one of ours and the position not negative (the spec says to ignore those).
 pub fn set_position_command(track_path: &str, position_micros: i64) -> Option<Command> {
-    let id = jellyfin_id_from_track_path(track_path)?;
+    let id = id_from_track_path(track_path)?;
     let micros = u64::try_from(position_micros).ok()?;
     Some(Command::SetPosition(id, Duration::from_micros(micros)))
 }
@@ -235,7 +235,7 @@ mod tests {
         PlayerState {
             status: PlaybackStatus::Playing,
             metadata: Some(Metadata {
-                jellyfin_id: id.into(),
+                track_id: id.into(),
                 title: format!("Track {id}"),
                 length: Some(secs(240.0)),
                 ..Metadata::default()

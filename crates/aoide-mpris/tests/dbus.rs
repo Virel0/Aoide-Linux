@@ -71,14 +71,14 @@ async fn next_command(rx: &mut Receiver<Command>) -> Command {
 
 fn track(id: &str) -> Metadata {
     Metadata {
-        jellyfin_id: id.into(),
+        track_id: id.into(),
         title: format!("Track {id}"),
         artists: vec!["Artist".into()],
         album: Some("Album".into()),
         album_artists: vec!["Artist".into()],
         length: Some(Duration::from_secs(240)),
         art_url: Some(format!(
-            "https://jellyfin.example.org/Items/{id}/Images/Primary"
+            "https://melete.example.org/api/v1/music/albums/{id}/cover"
         )),
         track_number: Some(3),
     }

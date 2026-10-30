@@ -1,7 +1,7 @@
-//! Jellyfin item id <-> MPRIS track id.
+//! Track id <-> MPRIS track id.
 //!
 //! MPRIS track ids are D-Bus object paths, whose elements may only hold
-//! `[A-Za-z0-9_]`. Jellyfin ids are 32 hex digits today, but they come from the
+//! `[A-Za-z0-9_]`. Melete ids are integers today, but they come from the
 //! server, so any string is mapped safely: ASCII letters and digits are kept,
 //! every other byte (including `_`, the escape character itself) becomes `_`
 //! and two upper-case hex digits. A leading `t` keeps the element non-empty for
@@ -17,12 +17,12 @@ pub const NO_TRACK: &str = "/org/mpris/MediaPlayer2/TrackList/NoTrack";
 
 const HEX: &[u8; 16] = b"0123456789ABCDEF";
 
-/// The MPRIS track id (a D-Bus object path) for a Jellyfin item id.
-pub fn track_object_path(jellyfin_id: &str) -> String {
-    let mut path = String::with_capacity(TRACK_PATH_PREFIX.len() + 1 + jellyfin_id.len());
+/// The MPRIS track id (a D-Bus object path) for a track id.
+pub fn track_object_path(track_id: &str) -> String {
+    let mut path = String::with_capacity(TRACK_PATH_PREFIX.len() + 1 + track_id.len());
     path.push_str(TRACK_PATH_PREFIX);
     path.push('t');
-    for &byte in jellyfin_id.as_bytes() {
+    for &byte in track_id.as_bytes() {
         if byte.is_ascii_alphanumeric() {
             path.push(char::from(byte));
         } else {
@@ -34,9 +34,9 @@ pub fn track_object_path(jellyfin_id: &str) -> String {
     path
 }
 
-/// The Jellyfin item id a track path was made from, or `None` if the path did
+/// The track id a track path was made from, or `None` if the path did
 /// not come from [`track_object_path`].
-pub fn jellyfin_id_from_track_path(path: &str) -> Option<String> {
+pub fn id_from_track_path(path: &str) -> Option<String> {
     let encoded = path.strip_prefix(TRACK_PATH_PREFIX)?.strip_prefix('t')?;
     let mut bytes = Vec::with_capacity(encoded.len());
     let mut input = encoded.bytes();
@@ -93,7 +93,7 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn a_normal_jellyfin_id_is_kept_readable() {
+    fn a_normal_track_id_is_kept_readable() {
         let id = "5f1c0a3e9b2d4c8f8a6e1b7d3c9f0e2a";
         assert_eq!(track_object_path(id), format!("{TRACK_PATH_PREFIX}t{id}"));
     }
@@ -140,11 +140,7 @@ mod tests {
         ];
         for id in ids {
             let path = track_object_path(id);
-            assert_eq!(
-                jellyfin_id_from_track_path(&path).as_deref(),
-                Some(id),
-                "{path}"
-            );
+            assert_eq!(id_from_track_path(&path).as_deref(), Some(id), "{path}");
         }
     }
 
@@ -163,10 +159,7 @@ mod tests {
                     if let Some(other) = seen.insert(path.clone(), id.clone()) {
                         assert_eq!(other, id, "collision on {path}");
                     }
-                    assert_eq!(
-                        jellyfin_id_from_track_path(&path).as_deref(),
-                        Some(id.as_str())
-                    );
+                    assert_eq!(id_from_track_path(&path).as_deref(), Some(id.as_str()));
                 }
             }
         }
@@ -194,7 +187,7 @@ mod tests {
             "/io/github/Virel0/Aoide/Track/ta/b",
         ];
         for path in paths {
-            assert_eq!(jellyfin_id_from_track_path(path), None, "{path}");
+            assert_eq!(id_from_track_path(path), None, "{path}");
         }
     }
 

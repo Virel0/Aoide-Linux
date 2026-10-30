@@ -2,8 +2,8 @@
 
 use reqwest::Url;
 
-/// Query parameters that carry a credential (Jellyfin, Emby, generic OAuth).
-/// Compared case-insensitively.
+/// Query parameters that carry a credential (Jellyfin- and Emby-style, generic
+/// OAuth). Compared case-insensitively.
 const CREDENTIAL_PARAMS: &[&str] = &[
     "api_key",
     "apikey",

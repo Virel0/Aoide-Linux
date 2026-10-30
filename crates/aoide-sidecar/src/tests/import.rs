@@ -1,5 +1,5 @@
 //! Playlist import: the shared match table, the iOS `ImportTests.swift` suites, the
-//! sidecar's `POST /aoide/match` with the local fallback, and fetching the Spotify
+//! server's `POST /aoide/match` with the local fallback, and fetching the Spotify
 //! embed page from a stand-in server.
 
 use std::sync::Mutex;
@@ -148,7 +148,7 @@ fn the_thresholds_are_the_agreed_ones() {
     assert_eq!(unknown.duration, 0.9);
 }
 
-/// Rare in Jellyfin tags, certain when present.
+/// Rare in a library's tags, certain when present.
 #[test]
 fn an_isrc_on_both_sides_is_decisive_on_its_own() {
     let mut track = ImportedTrack::new("Totally Different Title", &["Nobody"], Some(1_000));
@@ -331,7 +331,7 @@ fn a_file_with_no_title_column_or_nothing_in_it_is_refused() {
     assert_eq!(parse_playlist_csv("", "x"), Err(ImportError::EmptyCsv));
 }
 
-// MARK: - Matching: the sidecar first, the library after
+// MARK: - Matching: the server first, the library after
 
 struct Library {
     tracks: Vec<LibraryTrack>,

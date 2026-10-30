@@ -1,5 +1,5 @@
 //! Ports of CurationKit's engine suites (`SyncEngineTests`, `SyncIntegrationTests`,
-//! `TrackFlagsTests` "Holding entities…"), of JellyfinKit's `SyncEndpointTests` where
+//! `TrackFlagsTests` "Holding entities…"), of MeleteKit's `SyncEndpointTests` where
 //! they apply, and of `NextChooserTests` / `DiscoverTests`, plus the HTTP client
 //! against a local mock server. Nothing here touches the network.
 

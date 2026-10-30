@@ -18,7 +18,7 @@ use crate::client::SidecarClient;
 use crate::error::SidecarError;
 use crate::types::QueueEntry;
 
-/// Where the server's view of every device's queue comes from — the sidecar, or a
+/// Where the server's view of every device's queue comes from — Melete, or a
 /// stand-in in tests.
 pub trait QueueSource: Send + Sync {
     /// Every device's latest queue row, as `GET /aoide/queue` lists them.
@@ -36,7 +36,7 @@ impl QueueSource for SidecarClient {
 ///
 /// From `source` when it answers — even with nothing, since the server holds the
 /// latest row of every device — and from the store's rows when it fails or there is
-/// no `source` (signed in to a server without a sidecar).
+/// no `source` (signed in to a server without these routes).
 ///
 /// # Errors
 ///

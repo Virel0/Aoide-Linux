@@ -9,7 +9,7 @@
 //! exactly when somebody reaches for their other device.
 //!
 //! **Reading.** [`ResumableQueue`] is another device's queue as something to offer.
-//! The sidecar's `GET /aoide/queue` is the better source (its freshness is the
+//! Melete's `GET /aoide/queue` is the better source (its freshness is the
 //! server's clock); this module holds the fallback built from the rows the op log
 //! already brought, [`Store::local_resumable_queues`].
 //!

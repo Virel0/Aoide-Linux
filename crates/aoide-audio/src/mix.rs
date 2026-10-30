@@ -5,7 +5,7 @@
 //! together by one parity table (`tests/parity.rs` here), so a change to any
 //! side breaks its own copy.
 //!
-//! **This is not beat-matching.** The tempo the sidecar measures is one BPM
+//! **This is not beat-matching.** The tempo Melete measures is one BPM
 //! figure with no downbeat and no grid, so tempo does one job here: deciding
 //! whether a long blend is worth attempting. The crossfade itself is a
 //! crossfade.
@@ -13,7 +13,7 @@
 use std::f64::consts::FRAC_PI_2;
 
 /// Where the sound in a file starts and stops, in milliseconds from the top of
-/// the file. Measured by the sidecar; the engine plays only this span.
+/// the file. Measured by Melete; the engine plays only this span.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SoundBounds {
     /// Where the sound starts.

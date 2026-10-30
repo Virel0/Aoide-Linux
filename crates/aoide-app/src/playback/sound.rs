@@ -12,7 +12,7 @@ use crate::config::Settings;
 
 impl Playback {
     /// The Level volume switch, handed to the player (which weighs a file's
-    /// ReplayGain tags against the sidecar's measurement, as
+    /// ReplayGain tags against Melete's measurement, as
     /// `aoide_audio::loudness::level_gain` does), and the queued tracks'
     /// measured gains brought in line with it: so switching it on mid-queue
     /// levels the tracks already queued, not only the ones queued later.

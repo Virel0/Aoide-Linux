@@ -1,5 +1,5 @@
 //! ReplayGain from file tags, and Level volume over the tags and the
-//! sidecar's measurement, measured on offline renders of tagged fixtures
+//! server's measurement, measured on offline renders of tagged fixtures
 //! (tests/fixtures/README.md says how they were made).
 
 mod common;
@@ -105,10 +105,10 @@ fn level_volume_is_one_switch_and_the_sidecar_wins_over_tags() {
     let untagged = ReplayGainTags::default();
     let measured = Some(-6.0);
     let in_db = |factor: f32| db(f64::from(factor));
-    // Off: nothing, whatever the file or the sidecar says.
+    // Off: nothing, whatever the file or the server says.
     assert_eq!(level_gain(false, Some(&tagged), measured), 1.0);
     assert_eq!(level_gain(false, Some(&untagged), measured), 1.0);
-    // On: the sidecar's measurement wins over the file's tags...
+    // On: the server's measurement wins over the file's tags...
     assert!((in_db(level_gain(true, Some(&tagged), measured)) - -6.0).abs() < 1e-5);
     assert!((in_db(level_gain(true, Some(&untagged), measured)) - -6.0).abs() < 1e-5);
     assert!((in_db(level_gain(true, None, measured)) - -6.0).abs() < 1e-5);
@@ -158,7 +158,7 @@ fn the_render_applies_the_tags() {
 
 #[test]
 fn the_sidecar_wins_over_a_tagged_file() {
-    // The album fixture (tags say −7 dB) with a sidecar gain of −6 dB:
+    // The album fixture (tags say −7 dB) with a measured gain of −6 dB:
     // −6, neither −7 nor both (−13).
     let (got, _) = rendered("rg_album.flac", Some(-6.0));
     println!("tagged, with a sidecar gain of -6 dB: {got:+.4} dB");
@@ -229,12 +229,12 @@ fn the_players_switch_governs_both_sources() {
     let unity_untagged = level(Some(false), &untagged, None);
 
     let cases = [
-        // On: the sidecar wins over the file's −7 dB tags.
+        // On: the measurement wins over the file's −7 dB tags.
         ("on, tagged", Some(true), &tagged, unity_tagged, -6.0),
         ("on, untagged", Some(true), &untagged, unity_untagged, -6.0),
         ("off, tagged", Some(false), &tagged, unity_tagged, 0.0),
         ("off, untagged", Some(false), &untagged, unity_untagged, 0.0),
-        // Before the app says: the sidecar's gain as given, tags ignored.
+        // Before the app says: the measured gain as given, tags ignored.
         ("unset, tagged", None, &tagged, unity_tagged, -6.0),
     ];
     for (name, on, path, unity, want) in cases {

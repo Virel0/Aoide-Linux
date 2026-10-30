@@ -66,7 +66,7 @@ use stub as platform;
 
 pub use diff::SEEK_TOLERANCE;
 pub use platform::{Inhibitor, InstanceGuard, Mpris, Tray};
-pub use track_id::{NO_TRACK, TRACK_PATH_PREFIX, jellyfin_id_from_track_path, track_object_path};
+pub use track_id::{NO_TRACK, TRACK_PATH_PREFIX, id_from_track_path, track_object_path};
 pub use tray::{Pixmap, TOOLTIP_TITLE, TrayCommand, TrayIcon, TrayState};
 pub use types::{Command, LoopStatus, Metadata, PlaybackStatus, PlayerState};
 

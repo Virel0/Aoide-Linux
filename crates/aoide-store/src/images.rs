@@ -57,7 +57,7 @@ impl Record for ImageBlob {
 }
 
 /// How long a blob nothing references is kept before it is even considered for
-/// removal, matching the sidecar's own sweep: "nothing references this" is only ever
+/// removal, as the Jellyfin sidecar's sweep was: "nothing references this" is only ever
 /// true *here*, and a phone in a drawer may still name it.
 pub const IMAGE_GRACE_DAYS: i64 = 30;
 

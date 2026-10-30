@@ -16,7 +16,7 @@ use crate::record::{Record, SyncRecord, flag, int, opt_text, text};
 pub struct Like {
     /// The row id.
     pub id: String,
-    /// The track's Jellyfin id.
+    /// The track's id.
     pub jellyfin_id: String,
     /// The track's [`ContentKey`](crate::ContentKey).
     pub content_key: String,
@@ -111,7 +111,7 @@ impl SyncRecord for Like {
 pub struct TrackFlags {
     /// The row id.
     pub id: String,
-    /// The track's Jellyfin id; unique among the rows.
+    /// The track's id; unique among the rows.
     pub jellyfin_id: String,
     /// The track's [`ContentKey`](crate::ContentKey).
     pub content_key: String,

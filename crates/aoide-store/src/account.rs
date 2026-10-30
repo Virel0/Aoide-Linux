@@ -121,7 +121,7 @@ fn erase_everything(tx: &Transaction<'_>) -> rusqlite::Result<()> {
 }
 
 /// Whether there is anything worth asking about. The track cache is excluded: it is a
-/// rebuildable copy of what Jellyfin knows and says nothing about anyone's listening.
+/// rebuildable copy of what Melete knows and says nothing about anyone's listening.
 fn holds_data(tx: &Transaction<'_>) -> rusqlite::Result<bool> {
     for table in [
         "playlist",

@@ -5,7 +5,7 @@
 //! songs for a named genre, the on-device model was right 2–5 times out of 8,
 //! worse than useless when the server can answer the same question exactly.
 //! Mapping a phrase onto a genre and a year range is the part a model is good
-//! at; Jellyfin does the selecting afterwards.
+//! at; Melete does the selecting afterwards.
 //!
 //! Ported from the Electron app's `src/shared/aoide/smart-search.ts`, with the
 //! iOS app's sort directions (`SmartSearch.swift`).
@@ -60,8 +60,8 @@ impl Ordering {
 
     /// Whether the largest value comes first, as the iOS app sorts:
     /// "newest", "most played" and "recently played" all mean descending;
-    /// by name and random ascend. The sort field itself is the obvious
-    /// Jellyfin one (name, release date, play count, date played, random).
+    /// by name and random ascend. Melete sorts by name; the rest are put
+    /// in order in the app (year, this device's history, or shuffled).
     pub fn descending(self) -> bool {
         matches!(
             self,

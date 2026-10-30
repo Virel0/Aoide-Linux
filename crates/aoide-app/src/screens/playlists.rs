@@ -1,5 +1,5 @@
-//! Aoide playlists: the ones kept on this computer and synced through the
-//! sidecar, filed in folders. The page shows one folder at a time (the top
+//! Aoide playlists: the ones kept on this computer and synced through
+//! Melete, filed in folders. The page shows one folder at a time (the top
 //! level first), with its folders above its playlists; a folder can be made,
 //! renamed and deleted (its contents move up a level, nothing is lost), and a
 //! playlist moved into another folder.

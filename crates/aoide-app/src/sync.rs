@@ -1,4 +1,4 @@
-//! When to sync with the sidecar: at launch, when the window gains focus, and
+//! When to sync with Melete: at launch, when the window gains focus, and
 //! at most once a minute; or straight away when the listener asks (Sync Now
 //! in Settings). One sync at a time. A sync is an abortable Task, so
 //! signing out drops it at whatever await it is on; the engine is built to be

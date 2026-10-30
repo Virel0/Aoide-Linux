@@ -1,4 +1,4 @@
-//! What the sidecar's endpoints send and answer, field for field as the client
+//! What the `/aoide/*` endpoints send and answer, field for field as the client
 //! contract documents them. Every response field is `camelCase` on the wire.
 
 use std::collections::BTreeMap;
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
-    /// Where the sidecar's SQLite database is, on the server's disk.
+    /// Where Melete's database is, on the server's disk.
     #[serde(default)]
     pub database_path: Option<String>,
     /// The version of the database's schema.
@@ -36,7 +36,7 @@ pub struct SyncStatus {
     /// How many ops the server's log holds.
     #[serde(default)]
     pub op_count: Option<i64>,
-    /// The sidecar plugin's version, in four parts: `1.9.0.0`.
+    /// The server's version: `melete/0.1.0`, or the Jellyfin plugin's `1.9.0.0`.
     #[serde(default)]
     pub plugin_version: Option<String>,
     /// Absent on servers before 1.9.0.0 — which then accept only the original six.

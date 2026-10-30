@@ -216,7 +216,7 @@ async fn pick_csv() -> Option<Result<(String, String), String>> {
 
 impl crate::app::App {
     /// Matches an imported playlist for the import page with `key`: the
-    /// sidecar first, the library's search where there is none.
+    /// server's matching first, the library's search where there is none.
     pub(crate) fn import_match(&mut self, key: u64, playlist: ImportedPlaylist) -> Task<App> {
         let Some(signed) = self.session.as_ref() else {
             return Task::none();

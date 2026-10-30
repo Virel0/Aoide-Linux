@@ -51,13 +51,13 @@ pub(crate) struct Signed {
     /// Bumped by every request that replaces the queue, so a slower earlier
     /// one does not land on top of it.
     pub play_generation: u64,
-    /// The sidecar measures tracks (false after a 404 on both endpoints).
+    /// The server measures tracks (false after a 404 on both endpoints).
     pub measures_available: bool,
     /// A batch of the queue is being measured.
     pub measuring: bool,
     /// Tracks already asked about for the queue this session.
     pub measure_asked: HashSet<String>,
-    /// The sidecar answers `/aoide/next` (false after a 404).
+    /// The server answers `/aoide/next` (false after a 404).
     pub next_available: bool,
     /// When the saved queue last followed the playhead, by the app's clock.
     pub queue_saved_at: u64,

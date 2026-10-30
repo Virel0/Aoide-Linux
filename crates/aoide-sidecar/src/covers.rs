@@ -1,4 +1,4 @@
-//! Cover bytes behind a hash: this device's blob directory first, the sidecar second.
+//! Cover bytes behind a hash: this device's blob directory first, the server second.
 //!
 //! Call [`cover_bytes`] when a cover is **about to be drawn** — a visible row, an
 //! open detail page — and never from sync: a device joining an account would
@@ -25,7 +25,7 @@ impl ImageByteSource for BlobDirectory {
 /// Why [`cover_bytes`] couldn't produce a cover's bytes.
 #[derive(Debug, thiserror::Error)]
 pub enum CoverFetchError {
-    /// Fetching from the sidecar failed; a 404 is not this but `Ok(None)`.
+    /// Fetching from the server failed; a 404 is not this but `Ok(None)`.
     #[error("transport: {0}")]
     Transport(#[from] SidecarError),
     /// Recording the fetched blob in the store failed.
@@ -41,15 +41,15 @@ pub enum CoverFetchError {
 }
 
 /// The bytes behind `hash`, from `blobs` if this device holds them, otherwise fetched
-/// from the sidecar and kept in `blobs` (and recorded as already on the server, so
+/// from the server and kept in `blobs` (and recorded as already on the server, so
 /// nothing ever uploads them back). `Ok(None)` when nobody has them yet — the device
-/// that chose the cover has not synced — or there is no sidecar, or `hash` is not a
-/// hash at all; draw the next source instead. `mime` is what the playlist row says
-/// the bytes are, used only when the bytes do not say for themselves.
+/// that chose the cover has not synced — or the server lacks the route, or `hash` is
+/// not a hash at all; draw the next source instead. `mime` is what the playlist row
+/// says the bytes are, used only when the bytes do not say for themselves.
 ///
 /// # Errors
 ///
-/// [`CoverFetchError::Transport`] when the sidecar fails other than with a 404;
+/// [`CoverFetchError::Transport`] when the server fails other than with a 404;
 /// [`CoverFetchError::Mismatch`] when its bytes don't hash to `hash`;
 /// [`CoverFetchError::Io`] when the bytes can't be written to `blobs`;
 /// [`CoverFetchError::Store`] when the store can't record them. Nothing is kept

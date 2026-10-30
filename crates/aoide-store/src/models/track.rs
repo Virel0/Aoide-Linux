@@ -12,7 +12,7 @@ use crate::record::{Record, int, opt_int, opt_text, text};
 /// from its own connection to the same server.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TrackRef {
-    /// The id Jellyfin gives the track today; the key.
+    /// The id Melete gives the track today; the key.
     pub jellyfin_id: String,
     /// The [`ContentKey`] fingerprint, which outlives the id.
     pub content_key: String,
@@ -20,7 +20,7 @@ pub struct TrackRef {
     pub musicbrainz_id: Option<String>,
     /// The track's title.
     pub title: String,
-    /// The track's artist, as Jellyfin reports it.
+    /// The track's artist, as Melete reports it.
     pub artist: String,
     /// The album's title.
     pub album: String,
@@ -28,7 +28,7 @@ pub struct TrackRef {
     pub album_artist: Option<String>,
     /// The album's own id, for drawing a playlist cover from what it holds.
     pub album_id: Option<String>,
-    /// The track's length in milliseconds, when Jellyfin knows it.
+    /// The track's length in milliseconds, when Melete knows it.
     pub duration_ms: Option<i64>,
     /// The release year, when tagged.
     pub year: Option<i64>,
@@ -135,7 +135,7 @@ impl Record for TrackRef {
     }
 }
 
-/// The fingerprint that survives a Jellyfin rescan.
+/// The fingerprint that survives a rescan.
 ///
 /// Normalised hard, because the point is to match the *same recording* after its id
 /// changed. Duration is rounded to the second so a re-encode that shifts it by a few

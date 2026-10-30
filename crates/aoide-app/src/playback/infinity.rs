@@ -68,7 +68,7 @@ impl InfinityTrigger {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TopUp {
     pub items: Vec<Item>,
-    /// The sidecar's factor summary, by track id.
+    /// The server's factor summary, by track id.
     pub reasons: HashMap<String, String>,
     /// The server has no `/aoide/next`: don't ask again this session.
     pub sidecar_absent: bool,
@@ -82,7 +82,7 @@ pub struct Ask {
     pub queue: Vec<String>,
     /// Every id already in the queue, which nothing is added twice over.
     pub known: HashSet<String>,
-    /// Whether the sidecar may still be asked this session.
+    /// Whether `/aoide/next` may still be asked this session.
     pub use_sidecar: bool,
 }
 

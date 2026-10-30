@@ -345,8 +345,8 @@ mod tests {
         );
 
         for url in [
-            "https://jellyfin.example.org/Items/1/Images/Primary?api_key=secret",
-            "http://jellyfin.example.org/Items/1/Images/Primary",
+            "https://melete.example.org/api/v1/music/albums/1/cover?api_key=secret",
+            "http://melete.example.org/api/v1/music/albums/1/cover",
             "https://user:pass@example.org/cover.jpg",
             "file:///home/someone/.cache/cover.jpg",
         ] {

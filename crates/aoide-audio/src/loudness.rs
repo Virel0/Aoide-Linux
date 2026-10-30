@@ -1,12 +1,12 @@
 //! How much to turn a track down so every record plays at the same level.
 //!
 //! The contract shared with the iOS app (`LoudnessNormalisation.swift`) and the
-//! desktop app (`loudness.ts`); the sidecar measures the numbers. All three
+//! desktop app (`loudness.ts`); Melete measures the numbers. All three
 //! must agree or one album plays at two levels on two devices.
 //!
 //! Level volume is one switch over two sources, as on the desktop: the
 //! ReplayGain tags a file carries ([`ReplayGainTags`], read by the decoder)
-//! and the sidecar's measurement ([`gain_db`]). A file with its own
+//! and Melete's measurement ([`gain_db`]). A file with its own
 //! ReplayGain plays by its tags and the measurement stands down, so nothing
 //! is levelled twice; [`level_gain`] is that whole decision.
 
@@ -67,7 +67,7 @@ pub struct ReplayGainTags {
 
 impl ReplayGainTags {
     /// Whether the file carries a gain of its own (the desktop's
-    /// `hasReplayGain`): used when the sidecar has not measured the track.
+    /// `hasReplayGain`): used when Melete has not measured the track.
     pub fn is_present(&self) -> bool {
         self.track_gain_db.is_some_and(f64::is_finite)
             || self.album_gain_db.is_some_and(f64::is_finite)
@@ -80,7 +80,7 @@ impl ReplayGainTags {
     /// down to hear, and track gain flattens the quiet song meant to be quiet.
     /// Peak-limited always, so the peak stays at or under 0 dBFS: the factor
     /// is never more than one over the peak (album peak first, as for the
-    /// gain), and with no peak tag never more than one. Unlike the sidecar's
+    /// gain), and with no peak tag never more than one. Unlike Melete's
     /// gain this can turn a track up, as far as its peak allows.
     pub fn linear_gain(&self) -> Option<f64> {
         let finite = |value: Option<f64>| value.filter(|v| v.is_finite());
@@ -95,10 +95,10 @@ impl ReplayGainTags {
 
 /// The factor a track plays at under Level volume.
 ///
-/// Off: one, whatever the file or the sidecar says. On: the sidecar's
+/// Off: one, whatever the file or Melete says. On: Melete's
 /// measured gain in dB when it has measured the track (from [`gain_db`],
 /// only ever a cut; `Some(0.0)` for a measured track it leaves alone), else
-/// the file's own ReplayGain, else one. The sidecar wins because it measured
+/// the file's own ReplayGain, else one. Melete wins because it measured
 /// every track the same way; tags are whatever each tagger wrote. `tags` is
 /// `None` when the file's tags were not read.
 pub fn level_gain(enabled: bool, tags: Option<&ReplayGainTags>, measured_db: Option<f64>) -> f32 {

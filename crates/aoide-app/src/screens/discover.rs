@@ -1,8 +1,8 @@
-//! Discover: this week's 30 songs from the sidecar's `GET /aoide/discover`,
+//! Discover: this week's 30 songs from Melete's `GET /aoide/discover`,
 //! songs in the library not yet heard all the way through, chosen by what is
 //! listened to. The list holds still for the ISO week (UTC), so it is fetched
 //! when Home opens and again only once the week has turned. A 404 is an older
-//! sidecar: the tile stays hidden for the session. The iOS app's
+//! server: the tile stays hidden for the session. The iOS app's
 //! `DiscoverStore` and `DiscoverView`.
 
 use aoide_melete::MeleteClient;

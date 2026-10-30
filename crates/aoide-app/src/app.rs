@@ -120,7 +120,7 @@ pub enum Message {
     ConfirmErase(bool),
     SignOut,
     TokenRejected,
-    /// Sync with the sidecar now, not at the next launch or focus.
+    /// Sync with Melete now, not at the next launch or focus.
     SyncNow,
     Synced(Result<SyncReport, String>),
     Section(Section),

@@ -116,7 +116,7 @@ impl TrackMeta {
     }
 }
 
-/// What the sidecar has said about tracks, kept for the session so a track
+/// What Melete has said about tracks, kept for the session so a track
 /// played twice is asked about once.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Measures {
@@ -197,7 +197,7 @@ fn sound_bounds(bounds: &aoide_sidecar::SoundBounds) -> Option<SoundBounds> {
     (end > start).then(|| SoundBounds::new(start, end))
 }
 
-/// The sound bounds and loudness gain a track plays with: what the sidecar
+/// The sound bounds and loudness gain a track plays with: what Melete
 /// measured, as far as the settings ask for it.
 pub fn applied(
     id: &str,
@@ -205,7 +205,7 @@ pub fn applied(
     settings: &Settings,
 ) -> (Option<SoundBounds>, Option<f64>) {
     let sound = settings.skip_silence.then(|| measures.bounds(id)).flatten();
-    // A measured track the sidecar leaves alone is 0 dB, not `None`: its
+    // A measured track Melete leaves alone is 0 dB, not `None`: its
     // measurement wins over the file's tags, "leave it" included.
     let gain_db = if settings.level_volume {
         measures

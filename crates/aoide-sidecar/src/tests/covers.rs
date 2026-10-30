@@ -1,4 +1,4 @@
-//! Cover bytes: held here, else fetched from the sidecar once and kept; and a cover
+//! Cover bytes: held here, else fetched from the server once and kept; and a cover
 //! chosen from a file reaching the server before the op that names it.
 
 use std::sync::Arc;

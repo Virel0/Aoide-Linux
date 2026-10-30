@@ -13,7 +13,7 @@ use crate::models::{Op, OpKind};
 
 /// The tables that sync, and the two names each of them has.
 ///
-/// The local tables are singular camelCase, the sidecar's allow-list is plural
+/// The local tables are singular camelCase, the server's allow-list is plural
 /// snake_case, and matching on the server is strict and case-sensitive — so these
 /// seven strings *are* the contract. `track` is absent on purpose: the track cache is
 /// per device and the server refuses it, and with no variant to name it an op for it
@@ -61,7 +61,7 @@ impl SyncEntity {
         }
     }
 
-    /// The name in the sidecar's allow-list.
+    /// The name in the server's allow-list.
     pub fn wire_name(self) -> &'static str {
         match self {
             Self::Playlist => "playlists",

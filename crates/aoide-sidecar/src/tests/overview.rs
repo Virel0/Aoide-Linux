@@ -78,8 +78,8 @@ async fn a_refused_change_shows_as_set_aside() {
     );
 }
 
-/// The sidecar's 503 names the real cause in a ProblemDetails body; that is what a
-/// person needs to read, not "HTTP 503".
+/// The Jellyfin sidecar's 503 named the real cause in a ProblemDetails body; that
+/// is what a person needs to read, not "HTTP 503".
 #[tokio::test]
 async fn a_failed_sync_carries_the_servers_own_words() {
     let server = MockServer::start().await;
@@ -138,6 +138,15 @@ fn the_servers_words_come_out_of_a_problem_body_or_a_plain_one() {
         path: "aoide/sync/push".into(),
         detail: detail.map(str::to_owned),
     };
+    assert_eq!(
+        status(Some(
+            r#"{"error":"the seed isn't a track this user can see"}"#
+        ))
+        .server_text()
+        .as_deref(),
+        Some("the seed isn't a track this user can see"),
+        "Melete's shape"
+    );
     assert_eq!(
         status(Some(r#"{"title":"Malformed request body"}"#))
             .server_text()

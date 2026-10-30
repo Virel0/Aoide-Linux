@@ -9,7 +9,7 @@
 //! are its tracks' genres, its finish counts their sum, and it counts as just
 //! heard when any track on it was — and the best few queued whole.
 //!
-//! **Why not `/aoide/next`.** The sidecar ranks songs; an album answer is not
+//! **Why not `/aoide/next`.** Melete ranks songs; an album answer is not
 //! something it gives. Taking its songs' albums would let one strong song pull
 //! in a weak record, and the desktop's albums mode doesn't ask it either. So
 //! with this setting on Infinity ranks albums here, from the local history,

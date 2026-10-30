@@ -325,7 +325,7 @@ pub fn loop_status(mode: RepeatMode) -> LoopStatus {
 /// What is playing, as MPRIS sees it.
 pub fn player_state(now: &NowPlaying) -> aoide_mpris::PlayerState {
     let metadata = now.track_id.as_ref().map(|id| Metadata {
-        jellyfin_id: id.clone(),
+        track_id: id.clone(),
         title: now.title.clone(),
         artists: non_empty(&now.artist).into_iter().collect(),
         album: non_empty(&now.album),
@@ -408,7 +408,7 @@ mod tests {
     fn metadata_carries_the_track_and_its_id() {
         let state = player_state(&playing());
         let metadata = state.metadata.unwrap();
-        assert_eq!(metadata.jellyfin_id, "t1");
+        assert_eq!(metadata.track_id, "t1");
         assert_eq!(state.position, Duration::from_millis(61_250));
         assert_eq!(metadata.length, Some(Duration::from_millis(243_500)));
         assert_eq!(metadata.artists, ["The Quiet Engines"]);

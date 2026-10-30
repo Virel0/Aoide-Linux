@@ -3,7 +3,7 @@
 //! ([`OpenRouter::describe_mix`]).
 //!
 //! **The model only translates.** It turns words into filters or rules;
-//! Jellyfin and the local history select the tracks, so a model can never
+//! Melete and the local history select the tracks, so a model can never
 //! put a song in front of the listener. See [`smart_search`] and
 //! [`smart_rules`].
 //!
