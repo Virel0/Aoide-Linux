@@ -13,8 +13,8 @@ was installed (pacman, Flatpak, AppImage, deb or from source), and the steps
 that show it. Replies come in the advisory thread; the aim is to release a fix
 before the advisory is published.
 
-Problems in the Aoide sidecar plugin belong in
-[Virel0/aoide-sidecar](https://github.com/Virel0/aoide-sidecar), and problems
+Problems in Melete, the server, belong in
+[Virel0/Melete](https://github.com/Virel0/Melete), and problems
 in the iPhone app in [Virel0/Aoide](https://github.com/Virel0/Aoide).
 
 ## Supported versions
