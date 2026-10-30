@@ -222,6 +222,21 @@ const MIGRATIONS: &[(&str, &str)] = &[
         ALTER TABLE "playEvent" ADD COLUMN "activity" TEXT;
         "#,
     ),
+    (
+        "v10",
+        r#"
+        -- Album likes. Their own table, as they are their own entity on the wire.
+        CREATE TABLE "albumLike" (
+            "id" TEXT PRIMARY KEY NOT NULL,
+            "albumId" TEXT NOT NULL UNIQUE,
+            "contentKey" TEXT NOT NULL,
+            "liked" BOOLEAN NOT NULL,
+            "updatedAt" INTEGER NOT NULL,
+            "deleted" BOOLEAN NOT NULL DEFAULT 0,
+            "originDevice" TEXT NOT NULL
+        );
+        "#,
+    ),
 ];
 
 /// Applies every migration this store has not seen, each in its own transaction.

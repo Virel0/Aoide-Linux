@@ -15,7 +15,7 @@ use crate::models::{Op, OpKind};
 ///
 /// The local tables are singular camelCase, the server's allow-list is plural
 /// snake_case, and matching on the server is strict and case-sensitive — so these
-/// seven strings *are* the contract. `track` is absent on purpose: the track cache is
+/// eight strings *are* the contract. `track` is absent on purpose: the track cache is
 /// per device and the server refuses it, and with no variant to name it an op for it
 /// cannot be turned into a wire op at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -34,11 +34,14 @@ pub enum SyncEntity {
     QueueState,
     /// `trackFlags` locally, `track_flags` on the wire. Held until the server accepts it.
     TrackFlags,
+    /// `albumLike` locally, `album_likes` on the wire. Only ever pulled: this app likes
+    /// an album through Melete's API, which writes the op, so there is nothing to hold.
+    AlbumLike,
 }
 
 impl SyncEntity {
     /// Every entity, in declaration order.
-    pub const ALL: [SyncEntity; 7] = [
+    pub const ALL: [SyncEntity; 8] = [
         Self::Playlist,
         Self::PlaylistItem,
         Self::Folder,
@@ -46,6 +49,7 @@ impl SyncEntity {
         Self::PlayEvent,
         Self::QueueState,
         Self::TrackFlags,
+        Self::AlbumLike,
     ];
 
     /// The local table name, which is what the op log stores.
@@ -58,6 +62,7 @@ impl SyncEntity {
             Self::PlayEvent => "playEvent",
             Self::QueueState => "queueState",
             Self::TrackFlags => "trackFlags",
+            Self::AlbumLike => "albumLike",
         }
     }
 
@@ -71,6 +76,7 @@ impl SyncEntity {
             Self::PlayEvent => "play_events",
             Self::QueueState => "queue_state",
             Self::TrackFlags => "track_flags",
+            Self::AlbumLike => "album_likes",
         }
     }
 

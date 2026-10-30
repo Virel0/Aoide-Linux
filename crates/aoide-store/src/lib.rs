@@ -62,7 +62,7 @@ pub use history::{
 pub use images::{IMAGE_GRACE_DAYS, ImageBlob};
 pub use json::canonical_json;
 pub use models::{
-    ContentKey, Folder, Like, Op, OpKind, PlayEvent, PlaySource, Playlist, PlaylistItem,
+    AlbumLike, ContentKey, Folder, Like, Op, OpKind, PlayEvent, PlaySource, Playlist, PlaylistItem,
     QueueState, TrackFlags, TrackRef,
 };
 pub use play_definition::{PlayClassifier, PlayOutcome};

@@ -306,6 +306,7 @@ async fn an_album_gives_its_tracks_in_order() {
         .await;
     let (album, tracks) = signed_in(&server).album("2").await.unwrap();
     assert_eq!(album.name, "First Album");
+    assert!(!album.liked, "a server that doesn't say");
     assert_eq!(album.kind, aoide_melete::ItemKind::Album);
     let titles: Vec<&str> = tracks.iter().map(|t| t.name.as_str()).collect();
     assert_eq!(titles, ["Opening", "Middle", "Closing"]);
@@ -417,6 +418,50 @@ async fn liking_puts_and_unliking_deletes() {
     let client = signed_in(&server);
     client.set_liked("4", true).await.unwrap();
     client.set_liked("4", false).await.unwrap();
+}
+
+#[tokio::test]
+async fn albums_are_liked_listed_and_marked_on_their_page() {
+    let server = MockServer::start().await;
+    for verb in ["PUT", "DELETE"] {
+        Mock::given(method(verb))
+            .and(path("/api/v1/music/albums/2/like"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let mut album = fixture("album");
+    album["liked"] = json!(true);
+    Mock::given(method("GET"))
+        .and(path("/api/v1/music/albums/2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(album.clone()))
+        .mount(&server)
+        .await;
+    album.as_object_mut().unwrap().remove("track_list");
+    Mock::given(method("GET"))
+        .and(path("/api/v1/music/likes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "tracks": [],
+            "albums": [
+                {"liked_at": 2, "content_key": "test artist|first album", "album": album},
+                {"liked_at": 1, "content_key": "gone|album", "album": null},
+            ],
+        })))
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    client.set_album_liked("2", true).await.unwrap();
+    client.set_album_liked("2", false).await.unwrap();
+    assert!(client.album("2").await.unwrap().0.liked);
+    let likes = client.likes().await.unwrap();
+    let albums: Vec<(&str, bool)> = likes
+        .albums
+        .iter()
+        .map(|a| (a.name.as_str(), a.liked))
+        .collect();
+    assert_eq!(albums, [("First Album", true)]);
+    assert!(likes.songs.is_empty());
 }
 
 #[tokio::test]
