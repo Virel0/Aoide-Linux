@@ -21,6 +21,8 @@
 //!   [`MeleteClient::set_album_liked`].
 //! - **Listening together:** [`MeleteClient::start_listening`],
 //!   [`MeleteClient::join_listening`] and the rest of [`ListenSession`]'s calls.
+//! - **Requests:** [`MeleteClient::request_search`], [`MeleteClient::ask_for`],
+//!   [`MeleteClient::music_requests`] and [`MeleteClient::withdraw_request`].
 //! - **Get Info:** [`MeleteClient::item_details`].
 //! - **Sharing:** [`MeleteClient::user_directory`] names whom to share with.
 //! - **Playing:** [`MeleteClient::play`] for a stream link,
@@ -43,6 +45,7 @@ mod lyrics;
 mod maintenance;
 mod media;
 mod model;
+mod requests;
 
 pub use address::ServerAddress;
 pub use auth::{Credentials, Device, QuickConnectCode, ServerInfo, UserName};
@@ -54,6 +57,7 @@ pub use listen::{ListenMember, ListenSession, ListenState, Listening, is_stale};
 pub use lyrics::{LyricLine, LyricWord, Lyrics};
 pub use media::{Stream, StreamFormat};
 pub use model::{COVER_TAG, Item, ItemKind, NameId, Page};
+pub use requests::{Candidate, MusicRequest, Progress, RequestKind, RequestState};
 /// The URL type every media URL is returned as.
 pub use reqwest::Url;
 
