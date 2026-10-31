@@ -5,7 +5,8 @@
 //! password, so a wrong address says so rather than "wrong password". Quick
 //! Connect signs in without a password: the app shows a code, someone signed
 //! in to Melete's web UI approves it, and the app, asking every few seconds,
-//! gets a session of its own. The
+//! gets a session of its own. A user with two-factor sign-in on is asked,
+//! after the password, for the code from their authenticator app. The
 //! token goes to the system keyring before anything else is written; if the
 //! keyring will not keep it, signing in fails rather than leaving a login that
 //! vanishes at the next launch. Signing out never waits on the network: the
@@ -169,19 +170,96 @@ impl Connection {
     }
 }
 
+/// What a password sign-in came to.
+#[derive(Debug, Clone)]
+pub enum SignedIn {
+    Connected(Connection),
+    /// The password was right, and the user has two-factor sign-in on.
+    CodeNeeded(CodeStep),
+}
+
+/// A sign-in waiting for a two-factor code: the server, and the challenge the
+/// code finishes, within 5 minutes.
+#[derive(Debug, Clone)]
+pub struct CodeStep {
+    client: MeleteClient,
+    challenge: String,
+}
+
+/// Why a two-factor code didn't sign in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeRefused {
+    pub reason: String,
+    /// The challenge is spent or ran out: the password has to be given again.
+    pub start_over: bool,
+}
+
 /// Signs in: probe, authenticate, keep the token. The password goes no further.
 pub async fn sign_in(
     form: SignInForm,
     device: Device,
     keyring: Arc<dyn CredentialStore>,
-) -> Result<Connection, String> {
+) -> Result<SignedIn, String> {
     let (address, username) = form.validate()?;
     let anonymous = probe(address, device).await?;
-    let credentials = anonymous
-        .sign_in(&username, &form.password)
+    let credentials = match anonymous.sign_in(&username, &form.password).await {
+        Ok(credentials) => credentials,
+        Err(Error::SecondFactorNeeded { challenge }) => {
+            return Ok(SignedIn::CodeNeeded(CodeStep {
+                client: anonymous,
+                challenge,
+            }));
+        }
+        Err(error) => return Err(describe(&error)),
+    };
+    keep(anonymous, credentials, keyring)
         .await
-        .map_err(|e| describe(&e))?;
-    keep(anonymous, credentials, keyring).await
+        .map(SignedIn::Connected)
+}
+
+/// Finishes a two-factor sign-in with the code from the authenticator app.
+///
+/// # Errors
+///
+/// A wrong code leaves the step for another try; a spent or expired challenge
+/// starts over with the password.
+pub async fn finish_sign_in(
+    step: CodeStep,
+    code: String,
+    keyring: Arc<dyn CredentialStore>,
+) -> Result<Connection, CodeRefused> {
+    let refused = |reason: &str, start_over| CodeRefused {
+        reason: reason.to_owned(),
+        start_over,
+    };
+    let credentials = match step.client.finish_sign_in(&step.challenge, &code).await {
+        Ok(credentials) => credentials,
+        Err(Error::Unauthorized) => {
+            return Err(refused(
+                "That code wasn't right. Type the one your authenticator app shows now.",
+                false,
+            ));
+        }
+        Err(Error::Http { status: 410, .. }) => {
+            return Err(refused(
+                "That took too long. Enter your password again for a new code.",
+                true,
+            ));
+        }
+        Err(Error::Http { status: 429, .. }) => {
+            return Err(refused(
+                "Too many wrong codes. Wait 15 minutes, then sign in again.",
+                true,
+            ));
+        }
+        Err(error) => return Err(refused(&describe(&error), false)),
+    };
+    keep(step.client, credentials, keyring)
+        .await
+        .map_err(|reason| CodeRefused {
+            reason,
+            start_over: true,
+        })
 }
 
 /// Quick Connect's first half: the address is checked and a code made for
@@ -447,9 +525,13 @@ mod tests {
             .mount(&server)
             .await;
         let keyring = Arc::new(MemoryStore::default());
-        let connection = sign_in(form(&server, "pw-123"), device(), keyring.clone())
-            .await
-            .unwrap();
+        let SignedIn::Connected(connection) =
+            sign_in(form(&server, "pw-123"), device(), keyring.clone())
+                .await
+                .unwrap()
+        else {
+            panic!("expected a connection");
+        };
         assert_eq!(connection.account.user_id, "1");
         assert_eq!(connection.account.username, "Alice");
         assert_eq!(connection.token(), "tok-1");
@@ -473,6 +555,74 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn two_factor_asks_for_the_code_and_keeps_the_token_it_gives() {
+        let server = melete().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/auth/login"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": "a code is needed", "second_factor": "totp",
+                "challenge": "m2f_abc", "expires_in": 300,
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/auth/login/second-factor"))
+            .and(body_json(
+                serde_json::json!({"challenge": "m2f_abc", "code": "123456"}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(session(1, "Alice", "tok-2")))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/auth/login/second-factor"))
+            .respond_with(
+                ResponseTemplate::new(401).set_body_json(
+                    serde_json::json!({"error": "wrong code", "reason": "wrong_code"}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let keyring = Arc::new(MemoryStore::default());
+        let Ok(SignedIn::CodeNeeded(step)) =
+            sign_in(form(&server, "pw-123"), device(), keyring.clone()).await
+        else {
+            panic!("expected the code step");
+        };
+        let wrong = finish_sign_in(step.clone(), "000000".into(), keyring.clone())
+            .await
+            .unwrap_err();
+        assert!(!wrong.start_over, "{wrong:?}");
+        let connection = finish_sign_in(step, "123456".into(), keyring.clone())
+            .await
+            .unwrap();
+        assert_eq!(connection.token(), "tok-2");
+        let key = connection.account.keyring_key();
+        assert_eq!(keyring.get(&key).unwrap().as_deref(), Some("tok-2"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_spent_challenge_starts_over_with_the_password() {
+        let server = melete().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/auth/login/second-factor"))
+            .respond_with(
+                ResponseTemplate::new(410)
+                    .set_body_json(serde_json::json!({"error": "the sign-in ran out"})),
+            )
+            .mount(&server)
+            .await;
+        let step = CodeStep {
+            client: MeleteClient::new(ServerAddress::parse(&server.uri()).unwrap(), device())
+                .unwrap(),
+            challenge: "m2f_old".into(),
+        };
+        let refused = finish_sign_in(step, "123456".into(), Arc::new(MemoryStore::default()))
+            .await
+            .unwrap_err();
+        assert!(refused.start_over);
     }
 
     #[tokio::test(flavor = "multi_thread")]

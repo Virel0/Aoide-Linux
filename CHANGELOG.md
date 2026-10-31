@@ -14,6 +14,8 @@ sign-in, and playlists, likes and history come back from Melete.
 
 ### Added
 - Quick Connect: sign in by approving a code in Melete's web UI.
+- Two-factor sign-in: an account with it on in Melete 0.2.0 is asked for the
+  code from its authenticator app after the password.
 - Home's recently played, recently added and most played shelves come from
   Melete's history of every device, not this computer's alone.
 - Albums can be favourited, from Favourite on the album's page. Favourites'
@@ -25,6 +27,8 @@ sign-in, and playlists, likes and history come back from Melete.
   streaming for itself. Infinity is off while in a session.
 
 ### Changed
+- Searching for songs matches a song's own title and artist, so an album's
+  name no longer lists every track on it (Melete 0.2.0).
 - Everything the app asked of Jellyfin it asks of Melete: the library, search,
   streams, lyrics, likes, rescans and the user list for sharing. The
   `aoide-jellyfin` crate is now `aoide-melete`.

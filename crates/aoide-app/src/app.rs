@@ -60,6 +60,8 @@ pub struct App {
     /// secret to ask with.
     quick: Option<(u64, aoide_melete::MeleteClient, String)>,
     quick_attempts: u64,
+    /// A password sign-in waiting for its two-factor code.
+    code_step: Option<session::CodeStep>,
     pub(crate) session: Option<Signed>,
     /// The tray and the other services of Settings → System.
     pub(crate) system: crate::system::State,
@@ -105,6 +107,10 @@ pub enum Message {
     Login(login::Message),
     Restored(Result<Option<Connection>, String>),
     SignedIn(Result<Connection, String>),
+    /// The password was right; a two-factor code finishes the sign-in.
+    CodeNeeded(Box<session::CodeStep>),
+    /// What the server said to the two-factor code.
+    CodeChecked(Result<Connection, session::CodeRefused>),
     /// Quick Connect attempt `.0` has a code, or failed to get one.
     QuickStarted(
         u64,
@@ -224,6 +230,7 @@ impl App {
             login: login::State::new(config.last_server.clone()),
             quick: None,
             quick_attempts: 0,
+            code_step: None,
             paths,
             config,
             keyring,
@@ -328,6 +335,8 @@ impl App {
             Message::Login(message) => self.login_message(message),
             Message::Restored(result) => self.restored(result),
             Message::SignedIn(result) => self.signed_in(result),
+            Message::CodeNeeded(step) => self.code_needed(*step),
+            Message::CodeChecked(result) => self.code_checked(result),
             Message::QuickStarted(attempt, result) => self.quick_started(attempt, result),
             Message::QuickPolled(attempt, result) => self.quick_polled(attempt, result),
             Message::Claimed(result) => self.claimed(result),

@@ -1,5 +1,7 @@
-//! The sign-in screen: server address, username, password and Connect, or
-//! Quick Connect: a code to approve in Melete's web UI instead of a password.
+//! The sign-in screen: server address, username, password and Connect, then,
+//! for a user with two-factor sign-in on, the code from their authenticator
+//! app; or Quick Connect: a code to approve in Melete's web UI instead of a
+//! password.
 
 use iced::widget::{button, column, container, text, text_input};
 use iced::{Center, Element, Fill, Length};
@@ -10,6 +12,7 @@ use crate::theme;
 pub const SERVER: &str = "login-server";
 pub const USERNAME: &str = "login-username";
 pub const PASSWORD: &str = "login-password";
+pub const CODE: &str = "login-code";
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -18,6 +21,8 @@ pub struct State {
     pub busy: bool,
     /// Quick Connect's code while it waits to be approved.
     pub quick: Option<String>,
+    /// The two-factor code being typed, while the server waits for one.
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +39,11 @@ pub enum Message {
     QuickStarted(Result<String, String>),
     /// Stop waiting for the code to be approved.
     CancelQuick,
+    /// The two-factor code as typed.
+    Code(String),
+    SubmitCode,
+    /// Back to the password, giving up the code step.
+    CancelCode,
 }
 
 /// What the app should do after a form message.
@@ -48,6 +58,10 @@ pub enum Action {
     StartQuickConnect(String),
     /// Stop asking whether the code was approved.
     StopQuickConnect,
+    /// Finish the two-factor sign-in with this code.
+    FinishSignIn(String),
+    /// Forget the two-factor step.
+    DropCodeStep,
 }
 
 impl State {
@@ -112,7 +126,46 @@ impl State {
                 self.busy = false;
                 Action::StopQuickConnect
             }
+            Message::Code(value) => {
+                if let Some(code) = &mut self.code {
+                    *code = value;
+                }
+                Action::None
+            }
+            Message::SubmitCode => match &self.code {
+                Some(code) if !self.busy && !code.trim().is_empty() => {
+                    self.busy = true;
+                    self.error = None;
+                    Action::FinishSignIn(code.trim().to_owned())
+                }
+                _ => Action::None,
+            },
+            Message::CancelCode => {
+                self.code = None;
+                self.busy = false;
+                self.error = None;
+                Action::DropCodeStep
+            }
         }
+    }
+
+    /// The password was right: the code from the authenticator app comes next.
+    pub fn code_needed(&mut self) -> Action {
+        self.busy = false;
+        self.error = None;
+        self.code = Some(String::new());
+        Action::Focus(CODE)
+    }
+
+    /// The code didn't sign in: try another, or (`start_over`) the password again.
+    pub fn code_refused(&mut self, reason: String, start_over: bool) {
+        self.busy = false;
+        self.error = Some(reason);
+        self.code = if start_over {
+            None
+        } else {
+            Some(String::new())
+        };
     }
 
     /// Where typing starts: the username when the address is already there.
@@ -159,6 +212,10 @@ impl State {
             .on_submit(Message::Submit)
             .padding(10)
             .style(theme::field);
+
+        if let Some(code) = &self.code {
+            return self.code_view(code, editable);
+        }
 
         let connect = button(
             text(if self.busy {
@@ -214,6 +271,57 @@ impl State {
 }
 
 impl State {
+    /// The two-factor step: the code from the authenticator app.
+    fn code_view<'a>(&'a self, code: &'a str, editable: bool) -> Element<'a, Message> {
+        let field = text_input("123456", code)
+            .id(CODE)
+            .on_input_maybe(editable.then_some(Message::Code))
+            .on_submit(Message::SubmitCode)
+            .padding(10)
+            .style(theme::field);
+        let verify = button(
+            text(if self.busy { "Checking…" } else { "Sign In" })
+                .width(Fill)
+                .align_x(Center),
+        )
+        .width(Fill)
+        .padding(10)
+        .style(theme::filled)
+        .on_press_maybe((editable && !code.trim().is_empty()).then_some(Message::SubmitCode));
+        let mut form = column![
+            text("Two-Factor Sign-In")
+                .size(28)
+                .font(crate::widgets::BOLD),
+            text(
+                "Enter the six-digit code your authenticator app shows for this Melete \
+                 account. It changes every 30 seconds."
+            )
+            .size(13)
+            .style(|t| text::Style {
+                color: Some(theme::secondary(t)),
+            }),
+            field,
+        ]
+        .spacing(16)
+        .width(Length::Fixed(380.0));
+        if let Some(error) = &self.error {
+            form = form.push(
+                container(text(error.as_str()).size(14))
+                    .padding(10)
+                    .width(Fill)
+                    .style(theme::error_box),
+            );
+        }
+        form = form.push(verify).push(
+            button(text("Back").width(Fill).align_x(Center))
+                .width(Fill)
+                .padding(8)
+                .style(theme::tonal)
+                .on_press_maybe(editable.then_some(Message::CancelCode)),
+        );
+        container(form).center(Fill).style(theme::page).into()
+    }
+
     /// Quick Connect: the button, or the code while it waits.
     fn quick_view(&self, editable: bool) -> Element<'_, Message> {
         let quiet = |t: &iced::Theme| text::Style {
@@ -348,6 +456,38 @@ mod tests {
             State::new(Some("music.example.net".into())).first_field(),
             USERNAME
         );
+    }
+
+    #[test]
+    fn a_code_is_asked_for_after_the_password_and_sent_trimmed() {
+        let mut state = filled();
+        state.update(Message::Submit);
+        assert_eq!(state.code_needed(), Action::Focus(CODE));
+        assert!(!state.busy);
+        // Nothing to send yet.
+        assert_eq!(state.update(Message::SubmitCode), Action::None);
+        state.update(Message::Code(" 123456 ".into()));
+        assert_eq!(
+            state.update(Message::SubmitCode),
+            Action::FinishSignIn("123456".into())
+        );
+        assert_eq!(state.update(Message::SubmitCode), Action::None);
+    }
+
+    #[test]
+    fn a_wrong_code_stays_on_the_step_and_a_spent_one_starts_over() {
+        let mut state = filled();
+        state.code_needed();
+        state.update(Message::Code("000000".into()));
+        state.update(Message::SubmitCode);
+        state.code_refused("That code wasn't right.".into(), false);
+        assert_eq!(state.code.as_deref(), Some(""));
+        assert!(!state.busy && state.error.is_some());
+        state.code_refused("That took too long.".into(), true);
+        assert_eq!(state.code, None);
+        state.code_needed();
+        assert_eq!(state.update(Message::CancelCode), Action::DropCodeStep);
+        assert_eq!(state.code, None);
     }
 
     #[test]
