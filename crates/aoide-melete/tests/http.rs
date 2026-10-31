@@ -134,6 +134,60 @@ async fn sign_in_sends_the_device_name_and_reads_the_session() {
 }
 
 #[tokio::test]
+async fn two_factor_sign_in_finishes_with_the_code() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/auth/login"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({
+            "error": "a code from your authenticator app is needed",
+            "second_factor": "totp", "challenge": "m2f_abc", "expires_in": 300,
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/auth/login/second-factor"))
+        .and(body_json(json!({"challenge": "m2f_abc", "code": "123456"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "token": TOKEN,
+            "user": {"id": 3, "username": "alice", "is_admin": false},
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/auth/login/second-factor"))
+        .and(body_json(json!({"challenge": "m2f_abc", "code": "000000"})))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .set_body_json(json!({"error": "that code isn't right", "reason": "wrong_code"})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/auth/login/second-factor"))
+        .respond_with(ResponseTemplate::new(410).set_body_json(
+            json!({"error": "the sign-in ran out; sign in with your password again"}),
+        ))
+        .mount(&server)
+        .await;
+    let client = client_at(&server.uri());
+    let Err(Error::SecondFactorNeeded { challenge }) = client.sign_in("alice", "pw").await else {
+        panic!("expected a challenge");
+    };
+    assert_eq!(challenge, "m2f_abc");
+    assert_eq!(
+        client.finish_sign_in(&challenge, "000000").await,
+        Err(Error::Unauthorized)
+    );
+    // Spaces around the code are the authenticator's, not the code's.
+    let credentials = client.finish_sign_in(&challenge, " 123456 ").await.unwrap();
+    assert_eq!(credentials.access_token, TOKEN);
+    assert!(matches!(
+        client.finish_sign_in("m2f_old", "123456").await,
+        Err(Error::Http { status: 410, .. })
+    ));
+}
+
+#[tokio::test]
 async fn a_wrong_password_is_unauthorized() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -230,6 +284,42 @@ async fn a_list_query_sends_its_filters_and_page() {
         .unwrap();
     assert_eq!(page.start_index, 40);
     assert_eq!(page.total, 2);
+}
+
+#[tokio::test]
+async fn a_song_search_matches_songs_alone_and_an_album_search_doesnt_say_so() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/music/tracks"))
+        .and(query_param("q", "first"))
+        .and(query_param("q_in", "track"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture("tracks")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/music/albums"))
+        .and(query_param("q", "first"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture("albums")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    let query = ListQuery {
+        search_term: Some("first".into()),
+        limit: Some(20),
+        ..ListQuery::default()
+    };
+    client.songs(&query).await.unwrap();
+    client.albums(&query).await.unwrap();
+    let albums_asked = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.url.path() == "/api/v1/music/albums")
+        .all(|r| !r.url.query().unwrap_or_default().contains("q_in"));
+    assert!(albums_asked);
 }
 
 #[tokio::test]

@@ -160,7 +160,10 @@ impl MeleteClient {
     ///
     /// # Errors
     ///
-    /// [`Error::Unauthorized`] for a wrong username or password; HTTP 429 as
+    /// [`Error::Unauthorized`] for a wrong username or password;
+    /// [`Error::SecondFactorNeeded`] for a right password from a user with
+    /// two-factor sign-in on, to finish with
+    /// [`finish_sign_in`](Self::finish_sign_in); HTTP 429 as
     /// [`Error::Http`] after five wrong tries (the pair is locked for 15
     /// minutes); otherwise the [request errors](MeleteClient#errors).
     pub async fn sign_in(&self, username: &str, password: &str) -> Result<Credentials> {
@@ -173,6 +176,30 @@ impl MeleteClient {
             .send_decoded(
                 Method::POST,
                 &["api", "v1", "auth", "login"],
+                &[],
+                Some(&body),
+            )
+            .await?;
+        Ok(session.into())
+    }
+
+    /// Finishes a two-factor sign-in with `challenge` (from
+    /// [`Error::SecondFactorNeeded`]) and the six-digit code from the user's
+    /// authenticator app.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Unauthorized`] for a wrong code, which leaves the challenge for
+    /// another try; HTTP 410 as [`Error::Http`] once the challenge has run out or
+    /// was used (sign in with the password again); HTTP 429 after five wrong
+    /// codes (the user's codes are locked for 15 minutes); otherwise the
+    /// [request errors](MeleteClient#errors).
+    pub async fn finish_sign_in(&self, challenge: &str, code: &str) -> Result<Credentials> {
+        let body = json!({ "challenge": challenge, "code": code.trim() });
+        let session: Session = self
+            .send_decoded(
+                Method::POST,
+                &["api", "v1", "auth", "login", "second-factor"],
                 &[],
                 Some(&body),
             )

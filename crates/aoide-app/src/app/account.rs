@@ -16,7 +16,7 @@ use crate::nav::BackStack;
 use crate::playback::infinity::InfinityTrigger;
 use crate::playback::tracks::Measures;
 use crate::screens::{PlaylistSummary, Section, login};
-use crate::session::{self, Connection, Effect, Event, Phase};
+use crate::session::{self, Connection, Effect, Event, Phase, SignedIn};
 use crate::sync::{self, SyncThrottle};
 
 /// How often a Quick Connect code is asked about while it waits.
@@ -127,8 +127,26 @@ impl App {
                 self.phase = session::transition(self.phase, Event::Submitted).0;
                 Task::perform(
                     session::sign_in(form, device(&self.config), Arc::clone(&self.keyring)),
-                    Message::SignedIn,
+                    |result| match result {
+                        Ok(SignedIn::Connected(connection)) => Message::SignedIn(Ok(connection)),
+                        Ok(SignedIn::CodeNeeded(step)) => Message::CodeNeeded(Box::new(step)),
+                        Err(error) => Message::SignedIn(Err(error)),
+                    },
                 )
+            }
+            login::Action::FinishSignIn(code) => {
+                let Some(step) = self.code_step.clone() else {
+                    return Task::none();
+                };
+                self.phase = session::transition(self.phase, Event::Submitted).0;
+                Task::perform(
+                    session::finish_sign_in(step, code, Arc::clone(&self.keyring)),
+                    Message::CodeChecked,
+                )
+            }
+            login::Action::DropCodeStep => {
+                self.code_step = None;
+                Task::none()
             }
             login::Action::StartQuickConnect(server) => {
                 self.phase = session::transition(self.phase, Event::Submitted).0;
@@ -216,6 +234,36 @@ impl App {
             Err(error) => {
                 self.phase = session::transition(self.phase, Event::NothingToRestore).0;
                 self.login.error = Some(format!("Your saved login couldn't be read: {error}."));
+                Task::none()
+            }
+        }
+    }
+
+    /// The password was right: the screen asks for the two-factor code.
+    pub(super) fn code_needed(&mut self, step: session::CodeStep) -> Task<Message> {
+        self.phase = session::transition(self.phase, Event::SignInFailed).0;
+        self.code_step = Some(step);
+        match self.login.code_needed() {
+            login::Action::Focus(id) => iced::widget::operation::focus(id),
+            _ => Task::none(),
+        }
+    }
+
+    pub(super) fn code_checked(
+        &mut self,
+        result: Result<Connection, session::CodeRefused>,
+    ) -> Task<Message> {
+        match result {
+            Ok(connection) => {
+                self.code_step = None;
+                self.signed_in(Ok(connection))
+            }
+            Err(refused) => {
+                self.phase = session::transition(self.phase, Event::SignInFailed).0;
+                if refused.start_over {
+                    self.code_step = None;
+                }
+                self.login.code_refused(refused.reason, refused.start_over);
                 Task::none()
             }
         }

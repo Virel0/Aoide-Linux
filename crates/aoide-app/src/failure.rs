@@ -172,6 +172,9 @@ pub fn describe_at(error: &Error, server: Option<&str>) -> Failure {
             format!("{host} answered, but doesn't look like a Melete server.").into()
         }
         Error::Unauthorized => "Your server didn't accept this sign-in.".into(),
+        Error::SecondFactorNeeded { .. } => {
+            "This account needs the code from its authenticator app to sign in.".into()
+        }
         Error::NotSignedIn => "You're not signed in.".into(),
     }
 }

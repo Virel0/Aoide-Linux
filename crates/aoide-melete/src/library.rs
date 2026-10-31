@@ -432,6 +432,11 @@ impl MeleteClient {
             && !term.is_empty()
         {
             filters.push(("q", term.to_owned()));
+            // A song's own title and artist, so an album's name doesn't bring
+            // every track on it. Servers before 0.2.0 ignore it.
+            if list == "tracks" {
+                filters.push(("q_in", "track".to_owned()));
+            }
         }
         if let Some(genre) = query.genre.as_deref().filter(|g| !g.trim().is_empty()) {
             filters.push(("genre", genre.to_owned()));

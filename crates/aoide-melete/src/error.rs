@@ -14,9 +14,18 @@ pub enum Error {
     /// The call needs a signed-in user and the client has no credentials.
     #[error("not signed in")]
     NotSignedIn,
-    /// HTTP 401: a wrong password at sign-in, or a token the server has revoked.
+    /// HTTP 401: a wrong password at sign-in, a wrong two-factor code, or a token
+    /// the server has revoked.
     #[error("the server didn't accept the credentials (HTTP 401)")]
     Unauthorized,
+    /// HTTP 401 at sign-in with a right password, from a user with two-factor
+    /// sign-in on: finish with the code from their authenticator app
+    /// ([`MeleteClient::finish_sign_in`](crate::MeleteClient::finish_sign_in)).
+    #[error("a two-factor code is needed to finish signing in")]
+    SecondFactorNeeded {
+        /// Finishes the sign-in once, within 5 minutes.
+        challenge: String,
+    },
     /// HTTP 404.
     #[error("the server has no {path}")]
     NotFound {
@@ -58,7 +67,7 @@ const MAX_DETAIL_BYTES: usize = 400;
 pub(crate) fn check_status(status: u16, path: &str, body: &[u8]) -> Result<(), Error> {
     match status {
         200..=299 => Ok(()),
-        401 => Err(Error::Unauthorized),
+        401 => Err(second_factor(body).unwrap_or(Error::Unauthorized)),
         404 => Err(Error::NotFound {
             path: path.to_owned(),
         }),
@@ -68,6 +77,19 @@ pub(crate) fn check_status(status: u16, path: &str, body: &[u8]) -> Result<(), E
             detail: detail(body),
         }),
     }
+}
+
+/// A sign-in's challenge for a two-factor code, when that's what the 401 is.
+fn second_factor(body: &[u8]) -> Option<Error> {
+    #[derive(serde::Deserialize)]
+    struct Challenge {
+        second_factor: String,
+        challenge: String,
+    }
+    let found: Challenge = serde_json::from_slice(body).ok()?;
+    (found.second_factor == "totp").then_some(Error::SecondFactorNeeded {
+        challenge: found.challenge,
+    })
 }
 
 /// Every Melete error is `{"error": "…"}`; anything else in front of it (a proxy)
@@ -116,6 +138,21 @@ mod tests {
 
     #[test]
     fn unauthorized_is_typed() {
+        assert_eq!(
+            check_status(401, "api/v1/auth/login", br#"{"error":"wrong password"}"#),
+            Err(Error::Unauthorized)
+        );
+    }
+
+    #[test]
+    fn a_two_factor_challenge_is_told_from_a_wrong_password() {
+        let challenge = br#"{"error":"a code from your authenticator app is needed","second_factor":"totp","challenge":"m2f_abc","expires_in":300}"#;
+        assert_eq!(
+            check_status(401, "api/v1/auth/login", challenge),
+            Err(Error::SecondFactorNeeded {
+                challenge: "m2f_abc".into()
+            })
+        );
         assert_eq!(
             check_status(401, "api/v1/auth/login", br#"{"error":"wrong password"}"#),
             Err(Error::Unauthorized)

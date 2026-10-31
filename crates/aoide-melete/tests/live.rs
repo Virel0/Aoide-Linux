@@ -6,12 +6,23 @@
 //! MELETE_TEST_URL=http://127.0.0.1:8100 MELETE_TEST_USER=… MELETE_TEST_PASSWORD=… \
 //!     cargo test -p aoide-melete --test live -- --nocapture
 //! ```
+//!
+//! For a test user with two-factor sign-in on, give the code its authenticator
+//! shows now as `MELETE_TEST_CODE`: only the two-factor test runs then, since the
+//! others sign in with the password alone.
 
 use aoide_melete::{
-    Device, ListQuery, ListenState, MeleteClient, ServerAddress, StreamFormat, is_stale,
+    Device, Error, ListQuery, ListenState, MeleteClient, ServerAddress, StreamFormat, is_stale,
 };
 
 fn server() -> Option<(MeleteClient, String, String)> {
+    if std::env::var("MELETE_TEST_CODE").is_ok() {
+        return None;
+    }
+    password_server()
+}
+
+fn password_server() -> Option<(MeleteClient, String, String)> {
     let url = std::env::var("MELETE_TEST_URL").ok()?;
     let user = std::env::var("MELETE_TEST_USER").ok()?;
     let password = std::env::var("MELETE_TEST_PASSWORD").ok()?;
@@ -128,4 +139,30 @@ async fn two_devices_listen_together() {
     assert!(desk.listening_sessions().await.unwrap().is_empty());
     desk.sign_out().await.unwrap();
     phone.sign_out().await.unwrap();
+}
+
+/// A user with two-factor sign-in on: the password gets a challenge, and the
+/// code finishes it.
+#[tokio::test]
+async fn two_factor_sign_in_finishes_with_the_code() {
+    let (Some((client, user, password)), Ok(code)) =
+        (password_server(), std::env::var("MELETE_TEST_CODE"))
+    else {
+        eprintln!("MELETE_TEST_CODE not set: skipped");
+        return;
+    };
+    let Err(Error::SecondFactorNeeded { challenge }) = client.sign_in(&user, &password).await
+    else {
+        panic!("the test user should have two-factor sign-in on");
+    };
+    assert_eq!(
+        client.finish_sign_in(&challenge, "000000").await,
+        Err(Error::Unauthorized),
+        "a wrong code leaves the challenge"
+    );
+    let signed = client
+        .clone()
+        .with_credentials(client.finish_sign_in(&challenge, &code).await.unwrap());
+    signed.genres().await.unwrap();
+    signed.sign_out().await.unwrap();
 }
