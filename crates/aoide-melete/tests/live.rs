@@ -7,7 +7,9 @@
 //!     cargo test -p aoide-melete --test live -- --nocapture
 //! ```
 
-use aoide_melete::{Device, ListQuery, MeleteClient, ServerAddress, StreamFormat};
+use aoide_melete::{
+    Device, ListQuery, ListenState, MeleteClient, ServerAddress, StreamFormat, is_stale,
+};
 
 fn server() -> Option<(MeleteClient, String, String)> {
     let url = std::env::var("MELETE_TEST_URL").ok()?;
@@ -67,4 +69,63 @@ async fn signs_in_lists_plays_and_signs_out() {
 
     client.sign_out().await.unwrap();
     assert!(client.genres().await.is_err(), "the token is revoked");
+}
+
+/// Two devices of one listener: one starts, the other joins by the code, a
+/// change against an old version is refused, and leaving ends it.
+#[tokio::test]
+async fn two_devices_listen_together() {
+    let Some((client, user, password)) = server() else {
+        eprintln!("MELETE_TEST_URL not set: skipped");
+        return;
+    };
+    let desk = client
+        .clone()
+        .with_credentials(client.sign_in(&user, &password).await.unwrap());
+    let phone = client
+        .clone()
+        .with_credentials(client.sign_in(&user, &password).await.unwrap());
+    let albums = desk.albums(&ListQuery::default()).await.unwrap();
+    let tracks = desk.album_tracks(&albums.items[0].id).await.unwrap();
+    let queue: Vec<i64> = tracks.iter().map(|t| t.id.parse().unwrap()).collect();
+
+    let state = ListenState {
+        queue: queue.clone(),
+        index: 0,
+        position_ms: 0,
+        playing: true,
+    };
+    let started = desk.start_listening(&state).await.unwrap().session;
+    let joined = phone
+        .join_listening(&started.code.to_lowercase())
+        .await
+        .unwrap()
+        .session;
+    assert_eq!((joined.id, &joined.queue), (started.id, &queue));
+    assert_eq!(joined.members.len(), 2);
+
+    let paused = ListenState {
+        playing: false,
+        position_ms: 5_000,
+        ..state
+    };
+    let changed = phone
+        .change_listening(joined.id, joined.version, &paused)
+        .await
+        .unwrap()
+        .session;
+    assert!(!changed.playing && changed.version > joined.version);
+    let stale = desk
+        .change_listening(started.id, started.version, &paused)
+        .await
+        .unwrap_err();
+    assert!(is_stale(&stale), "{stale:?}");
+    let seen = desk.listening(started.id).await.unwrap();
+    assert_eq!(seen.session.position_at(seen.server_time), 5_000);
+
+    phone.leave_listening(joined.id).await.unwrap();
+    desk.leave_listening(started.id).await.unwrap();
+    assert!(desk.listening_sessions().await.unwrap().is_empty());
+    desk.sign_out().await.unwrap();
+    phone.sign_out().await.unwrap();
 }

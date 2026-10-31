@@ -51,6 +51,12 @@ pub enum Destination {
     },
     /// The queue saved at the last quit: loaded held at the saved place.
     Restore { position: usize, elapsed_ms: u64 },
+    /// A listening-together session's queue, at its place, playing as it is.
+    Together {
+        position: usize,
+        elapsed_ms: u64,
+        playing: bool,
+    },
 }
 
 /// The server's answers for one batch.
@@ -175,12 +181,16 @@ impl App {
         let replaces = matches!(
             pending.how,
             Destination::Restore { .. }
+                | Destination::Together { .. }
                 | Destination::Play {
                     how: Enqueue::Replace { .. },
                     ..
                 }
         );
         if replaces && pending.generation != signed.play_generation {
+            if matches!(pending.how, Destination::Together { .. }) {
+                signed.together.applying_ended();
+            }
             return Task::none();
         }
         let streams = signed.connection.streams();
@@ -213,6 +223,23 @@ impl App {
                 position,
                 elapsed_ms,
             } => self.playback.restore(built, position, elapsed_ms),
+            Destination::Together {
+                position,
+                elapsed_ms,
+                playing,
+            } => {
+                signed.infinity.reset();
+                signed.together.applying_ended();
+                self.playback
+                    .restore(built, position, elapsed_ms)
+                    .and_then(|()| {
+                        if playing {
+                            self.playback.play()
+                        } else {
+                            Ok(())
+                        }
+                    })
+            }
         };
         if let Err(error) = result {
             self.notice = Some(error);

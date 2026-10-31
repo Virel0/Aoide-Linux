@@ -171,6 +171,7 @@ pub enum Message {
     Collections(crate::screens::collections::Msg),
     Info(crate::info::Msg),
     Rescan(crate::rescan::Msg),
+    Together(crate::together::Msg),
 }
 
 /// The player bar's controls.
@@ -269,6 +270,7 @@ impl App {
             crate::updates::ticks(&self.config.system.updates).map(Message::Update),
             crate::palette::keys().map(Message::Palette),
             self.listening_subscription(),
+            self.together_subscription(),
         ])
     }
 
@@ -388,6 +390,7 @@ impl App {
             Message::Collections(message) => self.collections(message),
             Message::Info(message) => self.info(message),
             Message::Rescan(message) => self.rescan(message),
+            Message::Together(message) => self.together(message),
         }
     }
 

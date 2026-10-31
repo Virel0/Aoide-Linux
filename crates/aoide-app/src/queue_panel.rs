@@ -1,5 +1,6 @@
-//! The queue, under its headings: Played, Now Playing, Next Up, Then. Rows
-//! jump when clicked, move up and down within their section, and come out.
+//! The queue, under its headings: Played, Now Playing, Next Up, Then, with
+//! Listen Together above them. Rows jump when clicked, move up and down within
+//! their section, and come out.
 
 use aoide_audio::EntryId;
 use iced::widget::{Column, button, column, row, scrollable, text};
@@ -34,7 +35,11 @@ fn small(glyph: Icon, message: Option<Message>) -> Element<'static, Message> {
         .into()
 }
 
-pub fn view<'a>(app: &'a App, _signed: &'a Signed) -> Element<'a, Message> {
+pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
+    column![crate::together::view(&signed.together), queue(app)].into()
+}
+
+fn queue(app: &App) -> Element<'_, Message> {
     let Some(queue) = app.playback.queue().filter(|q| !q.is_empty()) else {
         return widgets::empty("Nothing queued. Play an album or a song to start.");
     };
