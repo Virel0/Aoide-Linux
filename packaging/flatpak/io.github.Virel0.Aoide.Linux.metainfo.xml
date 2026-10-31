@@ -72,6 +72,11 @@
   <!-- Newest first. Add one for each tag before tagging it; the date is the
        release's. -->
   <releases>
+    <release version="0.3.0" date="2026-10-31" type="development">
+      <description>
+        <p>Ask your server for music it doesn't have: look an album, artist or song up from Search and ask for it, then follow it under Requests.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-31" type="development">
       <description>
         <p>Plays from Melete instead of Jellyfin: sign in again with a password, a two-factor code or Quick Connect. Albums can be favourited, Listen Together plays in step with other devices, and song searches match a song's own title.</p>

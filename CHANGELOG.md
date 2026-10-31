@@ -7,6 +7,8 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-31
+
 ### Added
 - Asking for music the library doesn't have: under Search's results, look the
   words up on MusicBrainz through Melete and ask for an album, an artist or a
@@ -157,7 +159,8 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Virel0/Aoide-Linux/releases/tag/v0.1.0
