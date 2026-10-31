@@ -7,6 +7,8 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-31
+
 Aoide for Linux now plays from [Melete](https://github.com/Virel0/Melete), the
 server that replaces Jellyfin and keeps Aoide's sync itself. Sign in again
 after updating; the local library belongs to the old server and is cleared at
@@ -149,6 +151,7 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Virel0/Aoide-Linux/releases/tag/v0.1.0

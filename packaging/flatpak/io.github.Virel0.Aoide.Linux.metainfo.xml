@@ -72,6 +72,11 @@
   <!-- Newest first. Add one for each tag before tagging it; the date is the
        release's. -->
   <releases>
+    <release version="0.2.0" date="2026-10-31" type="development">
+      <description>
+        <p>Plays from Melete instead of Jellyfin: sign in again with a password, a two-factor code or Quick Connect. Albums can be favourited, Listen Together plays in step with other devices, and song searches match a song's own title.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-10-26" type="development">
       <description>
         <p>No change in what the app does: the code is reorganised and documented, and the audio thread can no longer stop playback on an internal check.</p>
