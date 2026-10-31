@@ -121,7 +121,13 @@ impl Asking {
         let mut about = vec![kind_word(candidate.kind).to_owned()];
         about.extend(candidate.artist.clone());
         about.extend(candidate.year.map(|y| y.to_string()));
-        about.extend(candidate.detail.clone());
+        // A detail that only says its kind again (an album whose type is Album).
+        about.extend(
+            candidate
+                .detail
+                .clone()
+                .filter(|d| !d.eq_ignore_ascii_case(kind_word(candidate.kind))),
+        );
         let words = column![
             text(candidate.title.as_str())
                 .size(14)
