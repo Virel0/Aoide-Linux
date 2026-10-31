@@ -82,7 +82,7 @@ impl App {
     /// Writes the queue as it stands, when it has changed enough to matter:
     /// through the handoff broadcast, which settles a burst of changes into
     /// one row and publishes it (see `handoff`).
-    pub(crate) fn save_queue(&self) -> Task<Message> {
-        self.broadcast_queue()
+    pub(crate) fn save_queue(&mut self) -> Task<Message> {
+        Task::batch([self.broadcast_queue(), self.share_change()])
     }
 }

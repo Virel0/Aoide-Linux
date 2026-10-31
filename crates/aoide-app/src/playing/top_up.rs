@@ -13,6 +13,10 @@ use crate::playback::tracks::TrackMeta;
 impl App {
     /// Tops the queue up if Infinity is on and it is running short.
     pub(crate) fn check_infinity(&mut self) -> Task<Message> {
+        // Every device in a session would add songs of its own.
+        if self.listening_together() {
+            return Task::none();
+        }
         let enabled = self.config.settings.infinity;
         let repeat_off = self.playback.repeat() == RepeatMode::Off;
         let current = self

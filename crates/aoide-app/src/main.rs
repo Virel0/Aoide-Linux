@@ -47,6 +47,7 @@ mod system;
 #[cfg(test)]
 mod test_json;
 mod theme;
+mod together;
 mod tray;
 mod updates;
 mod users;

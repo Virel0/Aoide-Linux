@@ -20,6 +20,9 @@ sign-in, and playlists, likes and history come back from Melete.
   Albums tab lists them, in place of the albums of liked songs. Album likes
   are their own sync record (`album_likes`), shared with Melete and the
   iPhone app; favouriting an album favourites none of its songs.
+- Listen Together: start a session with your queue at the top of the queue
+  panel, or join one by its code, and every device in it plays in step, each
+  streaming for itself. Infinity is off while in a session.
 
 ### Changed
 - Everything the app asked of Jellyfin it asks of Melete: the library, search,

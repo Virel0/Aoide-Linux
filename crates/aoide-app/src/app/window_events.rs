@@ -38,7 +38,7 @@ impl App {
     /// finish what it was given, then exits.
     pub(crate) fn quit(&mut self) -> Task<Message> {
         self.save_config();
-        let _ = self.save_queue();
+        let _ = self.broadcast_queue();
         let store = self.store.clone();
         let now = aoide_store::now_millis();
         Task::future(async move {

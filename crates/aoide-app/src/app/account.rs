@@ -71,6 +71,8 @@ pub(crate) struct Signed {
     pub discover: crate::screens::discover::Discover,
     /// The Get Info sheet, while it is open.
     pub info: Option<crate::info::Sheet>,
+    /// Listening together with other devices.
+    pub together: crate::together::Together,
 }
 
 impl Signed {
@@ -111,6 +113,7 @@ impl Signed {
             handoff,
             discover: Default::default(),
             info: None,
+            together: Default::default(),
         }
     }
 }

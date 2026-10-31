@@ -19,6 +19,8 @@
 //! - **Home:** [`MeleteClient::home`].
 //! - **Likes:** [`MeleteClient::likes`], [`MeleteClient::set_liked`] and
 //!   [`MeleteClient::set_album_liked`].
+//! - **Listening together:** [`MeleteClient::start_listening`],
+//!   [`MeleteClient::join_listening`] and the rest of [`ListenSession`]'s calls.
 //! - **Get Info:** [`MeleteClient::item_details`].
 //! - **Sharing:** [`MeleteClient::user_directory`] names whom to share with.
 //! - **Playing:** [`MeleteClient::play`] for a stream link,
@@ -36,6 +38,7 @@ mod client;
 mod details;
 mod error;
 mod library;
+mod listen;
 mod lyrics;
 mod maintenance;
 mod media;
@@ -47,6 +50,7 @@ pub use client::MeleteClient;
 pub use details::ItemDetails;
 pub use error::Error;
 pub use library::{Home, Likes, ListQuery, SearchResults, Sort};
+pub use listen::{ListenMember, ListenSession, ListenState, Listening, is_stale};
 pub use lyrics::{LyricLine, LyricWord, Lyrics};
 pub use media::{Stream, StreamFormat};
 pub use model::{COVER_TAG, Item, ItemKind, NameId, Page};
