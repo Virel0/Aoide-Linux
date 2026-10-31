@@ -23,6 +23,7 @@ pub mod mixes;
 pub mod playlist;
 pub mod playlists;
 pub mod replay;
+pub mod requests;
 pub mod search;
 pub mod settings;
 pub mod share;
@@ -57,6 +58,8 @@ pub enum Section {
     Mixes,
     Favourites,
     Replay,
+    /// Music asked for.
+    Requests,
     /// A new saved filter.
     Collections,
     /// One saved filter, by id.
@@ -64,13 +67,14 @@ pub enum Section {
 }
 
 impl Section {
-    pub const LIBRARY: [Section; 10] = [
+    pub const LIBRARY: [Section; 11] = [
         Section::Home,
         Section::Albums,
         Section::Artists,
         Section::Songs,
         Section::Genres,
         Section::Favourites,
+        Section::Requests,
         Section::Playlists,
         Section::Mixes,
         Section::Replay,
@@ -91,6 +95,7 @@ impl Section {
             Section::Mixes => "Mixes",
             Section::Favourites => "Favourites",
             Section::Replay => "Replay",
+            Section::Requests => "Requests",
             Section::Collections => "New collection",
             Section::Collection(_) => "Collection",
         }
@@ -211,6 +216,7 @@ pub enum Page {
     Discover(discover::State),
     Favourites(favourites::State),
     Replay(replay::State),
+    Requests(requests::State),
     SyncStatus(sync_status::State),
     Share(share::State),
     Import(import::State),
@@ -236,6 +242,7 @@ pub enum PageMsg {
     Discover(discover::Message),
     Favourites(favourites::Message),
     Replay(replay::Message),
+    Requests(requests::Message),
     SyncStatus(sync_status::Message),
     Share(share::Message),
     Import(import::Message),
@@ -258,6 +265,7 @@ impl Page {
             Section::Mixes => wrap(mixes::open(), Page::Mixes),
             Section::Favourites => wrap(favourites::open(ctx), Page::Favourites),
             Section::Replay => wrap(replay::open(ctx), Page::Replay),
+            Section::Requests => wrap(requests::open(ctx), Page::Requests),
             Section::Collections => wrap(collections::open(ctx, None), Page::Collections),
             Section::Collection(id) => wrap(collections::open(ctx, Some(id)), Page::Collections),
         }
@@ -295,6 +303,7 @@ impl Page {
             (Page::Discover(state), PageMsg::Discover(m)) => state.update(m),
             (Page::Favourites(state), PageMsg::Favourites(m)) => state.update(m),
             (Page::Replay(state), PageMsg::Replay(m)) => state.update(m, ctx),
+            (Page::Requests(state), PageMsg::Requests(m)) => state.update(m, ctx),
             (Page::SyncStatus(state), PageMsg::SyncStatus(m)) => state.update(m, ctx),
             (Page::Share(state), PageMsg::Share(m)) => state.update(m, ctx),
             (Page::Import(state), PageMsg::Import(m)) => state.update(m, ctx),
@@ -324,6 +333,7 @@ impl Page {
             Page::Discover(state) => state.view(view),
             Page::Favourites(state) => state.view(view),
             Page::Replay(state) => state.view(view),
+            Page::Requests(state) => state.view(view),
             Page::SyncStatus(state) => state.view(view),
             Page::Share(state) => state.view(view),
             Page::Import(state) => state.view(view),
@@ -350,7 +360,9 @@ impl Page {
             Page::Discover(state) => state.artwork(),
             Page::Favourites(state) => state.artwork(),
             Page::Replay(state) => state.artwork(),
-            Page::SyncStatus(_) | Page::Share(_) | Page::Import(_) => Vec::new(),
+            Page::SyncStatus(_) | Page::Share(_) | Page::Import(_) | Page::Requests(_) => {
+                Vec::new()
+            }
             Page::Playlists(state) => state.artwork(),
             Page::Collections(state) => state.artwork(),
             Page::Mixes(state) => state.artwork(),

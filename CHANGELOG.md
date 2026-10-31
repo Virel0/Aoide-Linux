@@ -7,6 +7,12 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- Asking for music the library doesn't have: under Search's results, look the
+  words up on MusicBrainz through Melete and ask for an album, an artist or a
+  song. Requests, in the sidebar, lists what you've asked for and how each is
+  getting on, with Withdraw for one still waiting.
+
 ## [0.2.0] - 2026-10-31
 
 Aoide for Linux now plays from [Melete](https://github.com/Virel0/Melete), the

@@ -1,6 +1,9 @@
 //! Search: songs, albums and artists as you type, asked for once typing
 //! pauses. A phrase of three words or more can also be searched by
-//! description (smart.rs), but only when the button is pressed.
+//! description (smart.rs), but only when the button is pressed; and what the
+//! library doesn't have can be looked up and asked for (`ask`).
+
+mod ask;
 
 use std::time::Duration;
 
@@ -52,6 +55,8 @@ pub struct State {
     results: Option<Load<Results>>,
     /// The phrase last searched by description, and what it found.
     described: Option<(String, Load<crate::smart::Described>)>,
+    /// The words last looked up to ask for, and what they found.
+    asking: Option<ask::Asking>,
 }
 
 #[derive(Debug, Default)]
@@ -73,6 +78,8 @@ pub enum Message {
     Retry,
     /// Ask again for the description that failed.
     RetryDescribe,
+    /// Looking up and asking for what the library doesn't have.
+    Ask(ask::Message),
 }
 
 pub fn open() -> (State, Task<App>) {
@@ -83,6 +90,7 @@ pub fn open() -> (State, Task<App>) {
             searched: String::new(),
             results: None,
             described: None,
+            asking: None,
         },
         iced::widget::operation::focus(FIELD),
     )
@@ -145,6 +153,19 @@ impl State {
                 self.described = None;
                 self.update(Message::Describe, ctx)
             }
+            Message::Ask(ask::Message::LookUp) => {
+                let term = self.term.trim().to_owned();
+                if term.is_empty() {
+                    return Task::none();
+                }
+                let (asking, task) = ask::look_up(term, ctx);
+                self.asking = Some(asking);
+                task
+            }
+            Message::Ask(message) => match &mut self.asking {
+                Some(asking) => asking.update(message, ctx),
+                None => Task::none(),
+            },
             Message::Described(phrase, result) => {
                 if self.described.as_ref().is_some_and(|(p, _)| *p == phrase) {
                     self.described = Some((phrase, Load::from(result)));
@@ -247,6 +268,7 @@ impl State {
                             }
                         }));
                 }
+                body = body.push(self.ask_view(view));
             }
         }
         widgets::page(body)
@@ -254,6 +276,23 @@ impl State {
 }
 
 impl State {
+    /// Asking for what the library doesn't have: the button for these words,
+    /// or what looking them up found.
+    fn ask_view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
+        let term = self.term.trim();
+        match &self.asking {
+            Some(asking) if asking.term == term => asking.view(view),
+            _ => button(text("Not in your library? Look it up to ask for it").size(13))
+                .style(theme::tonal)
+                .padding([6, 12])
+                .on_press(App::Page(
+                    view.key,
+                    PageMsg::Search(Message::Ask(ask::Message::LookUp)),
+                ))
+                .into(),
+        }
+    }
+
     /// "Search by description" and what it found: offered for a phrase of
     /// three words or more when an OpenRouter key is set. The phrase stays
     /// on this computer until the button is pressed.

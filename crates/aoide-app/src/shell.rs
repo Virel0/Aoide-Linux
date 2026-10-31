@@ -174,6 +174,7 @@ fn section_glyph(section: &Section) -> Icon {
         Section::Settings => Icon::Settings,
         Section::Mixes => Icon::Mix,
         Section::Favourites => Icon::Heart,
+        Section::Requests => Icon::Plus,
         Section::Replay => Icon::Sparkle,
         Section::Collections | Section::Collection(_) => Icon::Genre,
     }
