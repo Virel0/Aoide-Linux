@@ -7,6 +7,7 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::events::EventStream;
 use crate::{MeleteClient, Result};
 
 /// What can be asked for in music.
@@ -91,6 +92,25 @@ pub struct Progress {
     pub percent: Option<f64>,
     /// The latest word on it, in plain words.
     pub message: Option<String>,
+    /// Where it's coming from: `torrent` or `soulseek`.
+    pub source: Option<String>,
+    /// Unix seconds it last changed; none for a step worked out from the library.
+    pub updated_at: Option<i64>,
+    /// While it's copied home: how far that has got.
+    pub copied: Option<Copying>,
+}
+
+/// A download being copied home to the server.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Copying {
+    /// Bytes copied so far.
+    pub bytes: u64,
+    /// Bytes to copy in all.
+    pub total: u64,
+    /// The copy's speed so far, once it has run a second.
+    pub bytes_per_second: Option<u64>,
+    /// At that speed, rounded up.
+    pub seconds_left: Option<u64>,
 }
 
 /// One of this user's requests.
@@ -112,6 +132,10 @@ pub struct MusicRequest {
     pub reason: Option<String>,
     /// Unix seconds.
     pub created_at: i64,
+    /// Unix seconds it was approved or declined.
+    pub decided_at: Option<i64>,
+    /// Who decided; none when it was approved at once.
+    pub decided_by: Option<String>,
     /// How it's getting on, once approved; none before, and for a whole artist.
     pub progress: Option<Progress>,
 }
@@ -183,5 +207,53 @@ impl MeleteClient {
         let id = id.to_string();
         self.send_empty(Method::DELETE, &["api", "v1", "requests", &id], &[])
             .await
+    }
+
+    /// Follows this user's requests live: their 50 newest, each time one changes
+    /// (Melete looks every 2 seconds). The stream ends after 10 minutes; open
+    /// another.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](MeleteClient#errors).
+    pub async fn follow_requests(&self) -> Result<RequestFeed> {
+        let response = self
+            .open_events(&["api", "v1", "requests", "events"])
+            .await?;
+        Ok(RequestFeed {
+            events: EventStream::new(response),
+        })
+    }
+}
+
+/// This user's requests as they change; see [`MeleteClient::follow_requests`].
+pub struct RequestFeed {
+    events: EventStream,
+}
+
+impl RequestFeed {
+    /// The music requests as they stand now; `None` once the stream has ended.
+    ///
+    /// # Errors
+    ///
+    /// When the connection fails, or an event can't be read.
+    pub async fn next(&mut self) -> Result<Option<Vec<MusicRequest>>> {
+        while let Some(event) = self.events.next().await? {
+            if event.name != "requests" {
+                continue;
+            }
+            let requests: Vec<MusicRequest> =
+                serde_json::from_str(&event.data).map_err(|e| crate::Error::Decoding {
+                    path: "api/v1/requests/events".to_owned(),
+                    message: e.to_string(),
+                })?;
+            return Ok(Some(
+                requests
+                    .into_iter()
+                    .filter(|r| r.kind != RequestKind::Other)
+                    .collect(),
+            ));
+        }
+        Ok(None)
     }
 }

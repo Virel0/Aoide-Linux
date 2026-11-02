@@ -242,6 +242,40 @@ impl MeleteClient {
         self.send_decoded(Method::GET, segments, query, None).await
     }
 
+    /// Opens a Server-Sent Events stream: the answer, still being sent, for
+    /// [`EventStream`](crate::EventStream) to read.
+    pub(crate) async fn open_events(&self, segments: &[&str]) -> Result<reqwest::Response> {
+        let mut request = self
+            .http
+            .get(self.url(segments, &[]))
+            .header(ACCEPT, "text/event-stream");
+        if let Some(credentials) = &self.credentials {
+            request = request.header(
+                AUTHORIZATION,
+                format!("Bearer {}", credentials.access_token),
+            );
+        }
+        let response = request.send().await.map_err(transport)?;
+        let status = response.status().as_u16();
+        if !(200..300).contains(&status) {
+            let body = read_capped(response, 64 << 10)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            let path = segments.join("/");
+            // Never Ok: the status is outside 2xx.
+            return Err(check_status(status, &path, &body)
+                .err()
+                .unwrap_or(Error::Http {
+                    status,
+                    path,
+                    detail: None,
+                }));
+        }
+        Ok(response)
+    }
+
     /// A request whose answer has no body worth reading (most are 204).
     pub(crate) async fn send_empty(
         &self,

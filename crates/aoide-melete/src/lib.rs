@@ -39,12 +39,14 @@ mod auth;
 mod client;
 mod details;
 mod error;
+mod events;
 mod library;
 mod listen;
 mod lyrics;
 mod maintenance;
 mod media;
 mod model;
+mod request_imports;
 mod requests;
 
 pub use address::ServerAddress;
@@ -52,12 +54,18 @@ pub use auth::{Credentials, Device, QuickConnectCode, ServerInfo, UserName};
 pub use client::MeleteClient;
 pub use details::ItemDetails;
 pub use error::Error;
+pub use events::{Event, EventStream};
 pub use library::{Home, Likes, ListQuery, SearchResults, Sort};
 pub use listen::{ListenMember, ListenSession, ListenState, Listening, is_stale};
 pub use lyrics::{LyricLine, LyricWord, Lyrics};
 pub use media::{Stream, StreamFormat};
 pub use model::{COVER_TAG, Item, ItemKind, NameId, Page};
-pub use requests::{Candidate, MusicRequest, Progress, RequestKind, RequestState};
+pub use request_imports::{
+    PlaylistImport, PlaylistImportSummary, PlaylistImportTrack, playlist_csv,
+};
+pub use requests::{
+    Candidate, Copying, MusicRequest, Progress, RequestFeed, RequestKind, RequestState,
+};
 /// The URL type every media URL is returned as.
 pub use reqwest::Url;
 

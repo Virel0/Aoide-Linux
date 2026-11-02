@@ -128,3 +128,112 @@ async fn the_list_is_music_only_and_reads_progress() {
     );
     client.withdraw_request(9).await.unwrap();
 }
+
+#[tokio::test]
+async fn the_feed_reads_each_requests_event_and_ends_with_the_stream() {
+    let server = MockServer::start().await;
+    let mut copying = request(
+        "approved",
+        json!({
+            "kind": "album", "wanted_id": 3, "title": "Low Tide by The Quiet Engines",
+            "step": "transferring", "percent": null, "message": "Copying to the server",
+            "download_id": 7, "source": "soulseek", "updated_at": 1_790_000_200,
+            "copied": {"bytes": 50, "total": 200, "bytes_per_second": 10, "seconds_left": 15},
+        }),
+    );
+    copying["decided_at"] = json!(1_790_000_050);
+    copying["decided_by"] = json!("admin");
+    let mut movie = request("requested", Value::Null);
+    movie["kind"] = json!("movie");
+    let body = format!(
+        ": keep-alive\n\nevent: sync\ndata: {{}}\n\nevent: requests\ndata: {}\n\n",
+        json!([copying, movie])
+    );
+    Mock::given(method("GET"))
+        .and(path("/api/v1/requests/events"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(body),
+        )
+        .mount(&server)
+        .await;
+    let mut feed = signed_in(&server).follow_requests().await.unwrap();
+    let requests = feed.next().await.unwrap().unwrap();
+    assert_eq!(requests.len(), 1, "the movie is left out");
+    assert_eq!(requests[0].decided_by.as_deref(), Some("admin"));
+    let progress = requests[0].progress.as_ref().unwrap();
+    assert_eq!(progress.source.as_deref(), Some("soulseek"));
+    assert_eq!(progress.copied.as_ref().unwrap().seconds_left, Some(15));
+    assert_eq!(feed.next().await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn a_refused_feed_is_an_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/requests/events"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({"error": "sign in"})))
+        .mount(&server)
+        .await;
+    assert!(signed_in(&server).follow_requests().await.is_err());
+}
+
+fn import_summary() -> Value {
+    json!({
+        "id": 4, "user_id": 1, "username": "alice", "name": "Road trip", "state": "done",
+        "message": null, "created_at": 1_790_000_000, "finished_at": 1_790_000_060,
+        "tracks": 3, "asked": 1, "already": 1, "unmatched": 1, "waiting": 1,
+    })
+}
+
+#[tokio::test]
+async fn a_playlist_is_imported_listed_read_and_removed() {
+    let server = MockServer::start().await;
+    let mut queued = import_summary();
+    queued["state"] = json!("queued");
+    Mock::given(method("POST"))
+        .and(path("/api/v1/requests/imports"))
+        .and(body_json(
+            json!({"name": "Road trip", "csv": "Track Name\nCreep\n"}),
+        ))
+        .respond_with(ResponseTemplate::new(202).set_body_json(queued))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/requests/imports"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([import_summary()])))
+        .mount(&server)
+        .await;
+    let mut one = import_summary();
+    one["items"] = json!([
+        {"position": 1, "title": "Creep", "artist": "Radiohead", "album": null, "isrc": null,
+         "state": "asked", "why": null, "request_id": 9},
+        {"position": 2, "title": "Nowhere Song", "artist": null, "album": null, "isrc": null,
+         "state": "unmatched", "why": "no recording fits", "request_id": null},
+    ]);
+    Mock::given(method("GET"))
+        .and(path("/api/v1/requests/imports/4"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(one))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/v1/requests/imports/4"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"taken_back": 1})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    let started = client
+        .import_playlist("Road trip", "Track Name\nCreep\n")
+        .await
+        .unwrap();
+    assert_eq!((started.id, started.state.as_str()), (4, "queued"));
+    let list = client.playlist_imports().await.unwrap();
+    assert_eq!((list[0].tracks, list[0].unmatched), (3, 1));
+    let read = client.playlist_import(4).await.unwrap();
+    assert_eq!(read.summary.name, "Road trip");
+    assert_eq!(read.items[0].request_id, Some(9));
+    assert_eq!(read.items[1].why.as_deref(), Some("no recording fits"));
+    client.remove_playlist_import(4).await.unwrap();
+}

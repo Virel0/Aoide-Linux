@@ -1,57 +1,131 @@
 //! Requests: the music this listener has asked Melete for, newest first, with
-//! where each stands (waiting, declined and why, or how its download is going)
-//! and Withdraw for one still waiting. Asking happens in Search.
+//! where each stands (waiting, declined and why, or how its download is going,
+//! kept up to date while the page is open) and Withdraw for one still waiting;
+//! and the playlists asked for song by song, each with its songs and Remove.
+//! Asking happens in Search and Import.
 
-use aoide_melete::{MusicRequest, RequestKind, RequestState};
-use iced::widget::{button, column, row, text};
-use iced::{Center, Element, Fill, Task};
+use aoide_melete::{MusicRequest, PlaylistImport, PlaylistImportSummary};
+use iced::Task;
 
-use super::{Ctx, Load, PageMsg, View, fetch};
+use super::{Ctx, Load, PageMsg, fetch};
 use crate::app::Message as App;
 use crate::failure::Failure;
-use crate::{theme, widgets};
+
+mod live;
+mod view;
+mod words;
+
+pub use words::standing;
 
 #[derive(Debug)]
 pub struct State {
     requests: Load<Vec<MusicRequest>>,
+    imports: Load<Vec<PlaylistImportSummary>>,
+    /// The import whose songs are shown, and them once read.
+    open_import: Option<(i64, Load<PlaylistImport>)>,
     /// A withdrawal on its way, by request id.
     withdrawing: Option<i64>,
-    /// Why the last withdrawal failed.
+    /// The import Remove was pressed on: asking once more.
+    confirm_remove: Option<i64>,
+    /// A removal on its way, by import id.
+    removing: Option<i64>,
+    /// Why the last withdrawal or removal failed.
     problem: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     Loaded(Result<Vec<MusicRequest>, Failure>),
+    /// The newest requests as they stand now, from the live feed.
+    Live(Vec<MusicRequest>),
     Refresh,
     Withdraw(i64),
     Withdrawn(Result<(), Failure>),
+    ImportsLoaded(Result<Vec<PlaylistImportSummary>, Failure>),
+    /// An import is still asking: how far it has got.
+    RefreshImports,
+    /// Shows an import's songs, or hides them.
+    ShowImport(i64),
+    ImportRead(i64, Result<PlaylistImport, Failure>),
+    Remove(i64),
+    KeepImport,
+    ConfirmRemove(i64),
+    Removed(Result<(), Failure>),
+}
+
+fn wrap(message: Message) -> PageMsg {
+    PageMsg::Requests(message)
 }
 
 fn load(ctx: &Ctx<'_>) -> Task<App> {
     let client = ctx.client.clone();
     fetch(ctx.key, async move { client.music_requests().await }, |r| {
-        PageMsg::Requests(Message::Loaded(r))
+        wrap(Message::Loaded(r))
     })
+}
+
+fn load_imports(ctx: &Ctx<'_>) -> Task<App> {
+    let client = ctx.client.clone();
+    fetch(
+        ctx.key,
+        async move { client.playlist_imports().await },
+        |r| wrap(Message::ImportsLoaded(r)),
+    )
+}
+
+fn read_import(ctx: &Ctx<'_>, id: i64) -> Task<App> {
+    let client = ctx.client.clone();
+    fetch(
+        ctx.key,
+        async move { client.playlist_import(id).await },
+        move |r| wrap(Message::ImportRead(id, r)),
+    )
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
     let state = State {
         requests: Load::Loading,
+        imports: Load::Loading,
+        open_import: None,
         withdrawing: None,
+        confirm_remove: None,
+        removing: None,
         problem: None,
     };
-    (state, load(ctx))
+    (state, Task::batch([load(ctx), load_imports(ctx)]))
+}
+
+/// The feed's newest requests over the list: it follows the 50 newest, so
+/// older ones stay as the list read them.
+fn merge(listed: &[MusicRequest], live: Vec<MusicRequest>) -> Vec<MusicRequest> {
+    let Some(oldest) = live.iter().map(|r| r.id).min() else {
+        return listed.to_vec();
+    };
+    let mut merged = live;
+    merged.extend(listed.iter().filter(|r| r.id < oldest).cloned());
+    merged
 }
 
 impl State {
+    /// An import is still working through its songs, so worth asking about.
+    pub fn imports_running(&self) -> bool {
+        self.imports
+            .ready()
+            .is_some_and(|all| all.iter().any(words::import_running))
+    }
+
     pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {
         match message {
             Message::Loaded(result) => {
                 self.requests = Load::from(result);
                 Task::none()
             }
-            Message::Refresh => load(ctx),
+            Message::Live(live) => {
+                let listed = self.requests.ready().map(Vec::as_slice).unwrap_or_default();
+                self.requests = Load::Ready(merge(listed, live));
+                Task::none()
+            }
+            Message::Refresh => Task::batch([load(ctx), load_imports(ctx)]),
             Message::Withdraw(id) => {
                 self.withdrawing = Some(id);
                 self.problem = None;
@@ -59,7 +133,7 @@ impl State {
                 fetch(
                     ctx.key,
                     async move { client.withdraw_request(id).await },
-                    |r| PageMsg::Requests(Message::Withdrawn(r)),
+                    |r| wrap(Message::Withdrawn(r)),
                 )
             }
             Message::Withdrawn(result) => {
@@ -69,165 +143,107 @@ impl State {
                 }
                 load(ctx)
             }
-        }
-    }
-
-    pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
-        let key = view.key;
-        let refresh = button(text("Refresh").size(13))
-            .style(theme::tonal)
-            .padding([6, 12])
-            .on_press(App::Page(key, PageMsg::Requests(Message::Refresh)));
-        let mut body = column![
-            widgets::title_bar("Requests", view.can_go_back),
-            row![
-                widgets::secondary("Music you've asked your server for. Ask for more from Search.")
-                    .size(13)
-                    .width(Fill),
-                refresh,
-            ]
-            .align_y(Center),
-        ]
-        .spacing(16);
-        if let Some(problem) = &self.problem {
-            body = body.push(widgets::secondary(problem.as_str()).size(13));
-        }
-        body = body.push(match &self.requests {
-            Load::Loading => widgets::loading(),
-            Load::Failed(error) => view.failure(error),
-            Load::Ready(requests) if requests.is_empty() => widgets::empty(
-                "Nothing asked for yet. Search for an artist, album or song that isn't in your library, then ask for it.",
-            ),
-            Load::Ready(requests) => column(requests.iter().map(|r| self.row(r, key)))
-                .spacing(10)
-                .into(),
-        });
-        widgets::page(body)
-    }
-
-    /// One request: what it is, and where it stands.
-    fn row<'a>(&self, request: &'a MusicRequest, key: u64) -> Element<'a, App> {
-        let mut what = vec![kind_word(request.kind).to_owned()];
-        if let Some(artist) = &request.artist {
-            what.push(artist.clone());
-        }
-        if let Some(year) = request.year {
-            what.push(year.to_string());
-        }
-        let mut line = row![
-            column![
-                text(request.title.as_str())
-                    .size(14)
-                    .font(widgets::SEMIBOLD),
-                widgets::secondary(what.join(" · ")).size(12),
-                text(standing(request)).size(12).style(|t| text::Style {
-                    color: Some(theme::accent(t)),
-                }),
-            ]
-            .spacing(2)
-            .width(Fill)
-        ]
-        .align_y(Center);
-        if request.state == RequestState::Requested {
-            let busy = self.withdrawing == Some(request.id);
-            line = line.push(
-                button(text(if busy { "Withdrawing…" } else { "Withdraw" }).size(12))
-                    .style(theme::tonal)
-                    .padding([4, 10])
-                    .on_press_maybe((!busy).then_some(App::Page(
-                        key,
-                        PageMsg::Requests(Message::Withdraw(request.id)),
-                    ))),
-            );
-        }
-        line.into()
-    }
-}
-
-fn kind_word(kind: RequestKind) -> &'static str {
-    match kind {
-        RequestKind::Artist => "Artist",
-        RequestKind::Album => "Album",
-        RequestKind::Song => "Song",
-        RequestKind::Other => "Request",
-    }
-}
-
-/// Where a request stands, in words.
-pub fn standing(request: &MusicRequest) -> String {
-    match request.state {
-        RequestState::Requested => "Waiting for approval".to_owned(),
-        RequestState::Declined => match &request.reason {
-            Some(reason) => format!("Declined: {reason}"),
-            None => "Declined".to_owned(),
-        },
-        RequestState::Approved => match &request.progress {
-            None => "Approved".to_owned(),
-            Some(progress) => match (progress.step.as_str(), progress.percent) {
-                ("downloading", Some(percent)) => format!("Downloading, {percent:.0}%"),
-                ("wanted", _) => "Approved, waiting to be looked for".to_owned(),
-                ("searching", _) => "Looking for a download".to_owned(),
-                ("downloading", None) => "Downloading".to_owned(),
-                ("transferring", _) => "Copying to your server".to_owned(),
-                ("importing", _) => "Adding to your library".to_owned(),
-                ("in_library", _) => "In your library".to_owned(),
-                ("failed", _) => progress.message.clone().map_or_else(
-                    || "Couldn't be fetched".to_owned(),
-                    |m| format!("Couldn't be fetched: {m}"),
-                ),
-                (other, _) => progress.message.clone().unwrap_or_else(|| other.to_owned()),
+            Message::ImportsLoaded(result) => {
+                self.imports = Load::from(result);
+                Task::none()
+            }
+            Message::RefreshImports => match self.open_import {
+                Some((id, _)) => Task::batch([load_imports(ctx), read_import(ctx, id)]),
+                None => load_imports(ctx),
             },
-        },
+            Message::ShowImport(id) => {
+                if self
+                    .open_import
+                    .as_ref()
+                    .is_some_and(|(open, _)| *open == id)
+                {
+                    self.open_import = None;
+                    return Task::none();
+                }
+                self.open_import = Some((id, Load::Loading));
+                read_import(ctx, id)
+            }
+            Message::ImportRead(id, result) => {
+                if let Some((open, songs)) = &mut self.open_import
+                    && *open == id
+                {
+                    *songs = Load::from(result);
+                }
+                Task::none()
+            }
+            Message::Remove(id) => {
+                self.confirm_remove = Some(id);
+                Task::none()
+            }
+            Message::KeepImport => {
+                self.confirm_remove = None;
+                Task::none()
+            }
+            Message::ConfirmRemove(id) => {
+                self.confirm_remove = None;
+                self.removing = Some(id);
+                self.problem = None;
+                let client = ctx.client.clone();
+                fetch(
+                    ctx.key,
+                    async move { client.remove_playlist_import(id).await },
+                    |r| wrap(Message::Removed(r)),
+                )
+            }
+            Message::Removed(result) => {
+                if self.open_import.as_ref().map(|(id, _)| *id) == self.removing {
+                    self.open_import = None;
+                }
+                self.removing = None;
+                if let Err(error) = result {
+                    self.problem = Some(error.to_string());
+                }
+                // Its waiting requests went with it.
+                Task::batch([load(ctx), load_imports(ctx)])
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aoide_melete::Progress;
+    use aoide_melete::{RequestKind, RequestState};
 
-    fn request(state: RequestState, progress: Option<(&str, Option<f64>)>) -> MusicRequest {
+    fn request(id: i64, state: RequestState) -> MusicRequest {
         MusicRequest {
-            id: 1,
-            kind: RequestKind::Album,
-            title: "Low Tide".into(),
+            id,
+            kind: RequestKind::Song,
+            title: format!("Song {id}"),
             year: None,
             artist: None,
             state,
-            reason: (state == RequestState::Declined).then(|| "not on any tracker".into()),
-            created_at: 0,
-            progress: progress.map(|(step, percent)| Progress {
-                step: step.into(),
-                percent,
-                message: Some("No release fits the profile".into()),
-            }),
+            reason: None,
+            created_at: id,
+            decided_at: None,
+            decided_by: None,
+            progress: None,
         }
     }
 
     #[test]
-    fn a_request_says_where_it_stands() {
+    fn the_feed_updates_the_newest_and_keeps_the_older() {
+        let listed = [3, 2, 1].map(|id| request(id, RequestState::Requested));
+        let live = vec![
+            request(4, RequestState::Requested),
+            request(3, RequestState::Approved),
+        ];
+        let merged = merge(&listed, live);
+        let ids: Vec<_> = merged.iter().map(|r| (r.id, r.state)).collect();
         assert_eq!(
-            standing(&request(RequestState::Requested, None)),
-            "Waiting for approval"
+            ids,
+            [
+                (4, RequestState::Requested),
+                (3, RequestState::Approved),
+                (2, RequestState::Requested),
+                (1, RequestState::Requested),
+            ]
         );
-        assert_eq!(
-            standing(&request(RequestState::Declined, None)),
-            "Declined: not on any tracker"
-        );
-        assert_eq!(
-            standing(&request(
-                RequestState::Approved,
-                Some(("downloading", Some(42.4)))
-            )),
-            "Downloading, 42%"
-        );
-        assert_eq!(
-            standing(&request(RequestState::Approved, Some(("in_library", None)))),
-            "In your library"
-        );
-        assert_eq!(
-            standing(&request(RequestState::Approved, Some(("failed", None)))),
-            "Couldn't be fetched: No release fits the profile"
-        );
+        assert_eq!(merge(&listed, Vec::new()).len(), 3);
     }
 }

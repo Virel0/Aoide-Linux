@@ -5,6 +5,7 @@ use aoide_sidecar::{ImportMatch, ImportResult, ImportedPlaylist};
 use iced::widget::{Column, Row, button, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
+use super::ask::Asking;
 use super::{Message, State, Step, line, summary};
 use crate::app::Message as App;
 use crate::screens::{PageMsg, View};
@@ -79,7 +80,7 @@ impl State {
             .spacing(10)
             .align_y(Center),
         );
-        column = column.push(tools(result, key));
+        column = column.push(tools(result, key, self.asking));
         let (have, lack): (Vec<&ImportMatch>, Vec<&ImportMatch>) =
             result.matches.iter().partition(|m| m.found.is_some());
         if !lack.is_empty() {
@@ -104,8 +105,8 @@ impl State {
     }
 }
 
-/// Start Over, and Copy Missing Songs when some are.
-fn tools(result: &ImportResult, key: u64) -> Row<'_, App> {
+/// Start Over, and Copy Missing Songs and Ask Your Server for Them when some are.
+fn tools(result: &ImportResult, key: u64, asking: Asking) -> Row<'_, App> {
     let message = move |m: Message| App::Page(key, PageMsg::Import(m));
     let mut tools = row![
         button(text("Start over").size(13))
@@ -120,6 +121,19 @@ fn tools(result: &ImportResult, key: u64) -> Row<'_, App> {
                 .style(theme::tonal)
                 .padding([6, 12])
                 .on_press(message(Message::CopyMissing)),
+        );
+        let missing = result.missing().len();
+        let label = match asking {
+            Asking::Sending => "Asking…".to_owned(),
+            Asking::Sent => "Asked for".to_owned(),
+            Asking::Not if missing == 1 => "Ask your server for it".to_owned(),
+            Asking::Not => format!("Ask your server for the {missing}"),
+        };
+        tools = tools.push(
+            button(text(label).size(13))
+                .style(theme::tonal)
+                .padding([6, 12])
+                .on_press_maybe((asking == Asking::Not).then(|| message(Message::AskForMissing))),
         );
     }
     tools

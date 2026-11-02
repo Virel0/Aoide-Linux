@@ -3,7 +3,8 @@
 //! columns and the other tools' names for them). The tracks are matched
 //! against the library by Melete's `POST /aoide/match`, or by the shared
 //! rules over its search when that can't be reached; then what was found
-//! is saved as an Aoide playlist, and what was not can be copied as text.
+//! is saved as an Aoide playlist, and what was not can be copied as text or
+//! asked for from the server.
 
 use aoide_melete::{Item, ListQuery, MeleteClient};
 use aoide_sidecar::{
@@ -18,6 +19,7 @@ use super::{Ctx, PageMsg, Route};
 use crate::app::Message as App;
 use crate::playback::tracks::TrackMeta;
 
+mod ask;
 mod view;
 
 /// Melete's song search, for the matching rules when `/aoide/match` can't
@@ -138,6 +140,7 @@ pub struct State {
     step: Step,
     error: Option<String>,
     note: Option<String>,
+    asking: ask::Asking,
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +157,9 @@ pub enum Message {
     Save,
     Saved(Result<String, String>),
     CopyMissing,
+    /// Asks the server for the songs not found.
+    AskForMissing,
+    Asked(Result<(), String>),
     StartOver,
 }
 
@@ -165,6 +171,7 @@ pub fn open(_ctx: &Ctx<'_>) -> (State, Task<App>) {
             step: Step::Start,
             error: None,
             note: None,
+            asking: ask::Asking::Not,
         },
         Task::none(),
     )
@@ -269,6 +276,7 @@ impl State {
             }
             Message::Matched(found) => {
                 self.step = Step::Matched(found);
+                self.asking = ask::Asking::Not;
                 Task::none()
             }
             Message::Name(name) => {
@@ -294,6 +302,11 @@ impl State {
                 };
                 self.note = Some("The missing songs are on the clipboard.".to_owned());
                 iced::clipboard::write(missing_text(&found.1))
+            }
+            Message::AskForMissing => self.ask_for_missing(ctx),
+            Message::Asked(result) => {
+                self.asked(result);
+                Task::none()
             }
             Message::StartOver => {
                 self.step = Step::Start;

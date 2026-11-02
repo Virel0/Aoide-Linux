@@ -29,7 +29,7 @@ pub enum Message {
     LookUp,
     Found(String, Result<Vec<Candidate>, Failure>),
     Ask(usize),
-    Asked(usize, Result<MusicRequest, Failure>),
+    Asked(usize, Result<Box<MusicRequest>, Failure>),
 }
 
 fn wrap(message: Message) -> PageMsg {
@@ -84,14 +84,15 @@ impl Asking {
                 let client = ctx.client.clone();
                 fetch(
                     ctx.key,
-                    async move { client.ask_for(&candidate).await },
+                    async move { client.ask_for(&candidate).await.map(Box::new) },
                     move |r| wrap(Message::Asked(place, r)),
                 )
             }
             Message::Asked(place, result) => {
                 self.asking = None;
                 self.asked.retain(|(p, _)| *p != place);
-                self.asked.push((place, result.map_err(|e| e.to_string())));
+                self.asked
+                    .push((place, result.map(|r| *r).map_err(|e| e.to_string())));
                 Task::none()
             }
         }
