@@ -7,6 +7,19 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Changed
+- Lyrics, their translation and their pronunciation all come from Melete.
+  The server looks lyrics up on LRCLIB when it has none of its own, and
+  translates through the LibreTranslate it has set up.
+- The lyrics panel's Romaji switch is now Pronunciation, and covers Korean and
+  Cyrillic too: each line in Latin letters, from Melete, with kanji read in
+  context. Furigana are still worked out on this computer.
+
+### Removed
+- Settings → Lyrics → Find Lyrics on the Internet, and the LibreTranslate
+  server and key: Melete does both. A key you saved stays in the keyring until
+  you remove it there.
+
 ### Added
 - Requests keeps itself up to date while it's open, from Melete's request
   feed: no need to press Refresh to see a download move along.

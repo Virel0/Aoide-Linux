@@ -23,11 +23,11 @@ workspace = true
 [dependencies]
 aoide-audio = { path = "../aoide-audio" }
 # Discord Rich Presence, OpenRouter (search by description, mixes), the update
-# notice; lyric translation: the lyrics' language here, the translating by the
-# listener's own LibreTranslate server.
+# notice, and the lyrics' language (the server translates them).
 aoide-integrations = { path = "../aoide-integrations" }
 aoide-melete = { path = "../aoide-melete" }
-# Internet lyrics (LRCLIB) for songs the server has none for.
+# Telling Japanese lyrics by their kana, readings for furigana, and LRC
+# parsing in tests.
 aoide-lyrics = { path = "../aoide-lyrics" }
 # MPRIS, single instance and sleep inhibit; on macOS it builds and reports
 # itself unavailable.

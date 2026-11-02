@@ -214,7 +214,7 @@ pub fn view<'a>(
         Category::General => crate::appearance::general_section(&extras),
         Category::Playback => playback_section(settings, &extras, key),
         Category::Sound => sound_section(settings, &extras, key),
-        Category::Lyrics => lyrics_section(settings, &extras, key),
+        Category::Lyrics => lyrics_section(settings, key),
         Category::Infinity => column![
             infinity_albums_section(settings, key),
             hidden_section(state, key)
@@ -379,11 +379,7 @@ fn switch<'a>(label: &'a str, value: bool, which: Toggle, key: u64) -> Element<'
     .into()
 }
 
-fn lyrics_section<'a>(
-    settings: &Settings,
-    extras: &crate::listening::SettingsExtras<'a>,
-    key: u64,
-) -> Element<'a, App> {
+fn lyrics_section<'a>(settings: &Settings, key: u64) -> Element<'a, App> {
     let message = move |m: Message| App::Page(key, PageMsg::Settings(m));
     let offset = settings.lyric_offset_ms;
     let lyrics_rows = column![
@@ -397,8 +393,6 @@ fn lyrics_section<'a>(
             move |ms| message(Message::LyricOffset(ms)),
         )
         .step(50),
-        crate::lyrics_online::settings_row(extras),
-        crate::lyrics_extras::settings_row(extras),
     ];
     let lyrics_rows = if offset != 0 {
         lyrics_rows.push(

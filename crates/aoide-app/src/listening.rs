@@ -41,10 +41,8 @@ pub struct State {
     /// Private listening: no play events in the history (so none reach
     /// Melete) while on. Lasts until switched off or quit.
     pub private: bool,
-    /// The internet lyrics finder, made when first needed.
-    pub finder: Option<std::sync::Arc<aoide_lyrics::LyricsFinder>>,
-    /// Where the lyrics showing came from, when not the server: the track
-    /// and the provider's name.
+    /// Where the lyrics showing came from, when it's a service to credit:
+    /// the track and the service's name.
     pub lyrics_source: Option<(String, String)>,
     /// The lyrics' language and their translation.
     pub lyric_extras: crate::lyrics_extras::State,
@@ -64,16 +62,17 @@ pub enum Msg {
     /// What the listener is doing, for the next plays; `None` untags.
     Activity(Option<aoide_store::Activity>),
     Interface(crate::appearance::InterfaceSettings),
+    /// A track's lyrics, and whether the server said pronunciation is off.
     LyricsFound(
         String,
-        Result<Option<crate::lyrics_online::Found>, crate::failure::Failure>,
+        Result<Option<aoide_melete::LyricsAnswer>, crate::failure::Failure>,
+        bool,
     ),
     /// New lyrics are in the panel.
     LyricsShown,
     Translate(bool),
-    Translated(String, Result<Vec<String>, String>),
-    /// Settings → Lyrics → Translation.
-    Server(crate::lyrics_extras::ServerMsg),
+    /// A translation, or why not, and whether the server has none set up.
+    Translated(String, Result<Vec<String>, String>, bool),
     Sleep(Choice),
     SleepMinutes(String),
     SleepCustom,
@@ -133,24 +132,6 @@ impl App {
         Subscription::batch([sleep, self.full_player_subscription()])
     }
 
-    /// What a lyrics lookup needs past the server: the finder and its
-    /// cache, or `None` while internet lyrics are off.
-    pub(crate) fn lyrics_online(&mut self) -> Option<crate::lyrics_online::Online> {
-        if !self.config.interface.internet_lyrics {
-            return None;
-        }
-        if self.listening.finder.is_none() {
-            self.listening.finder = crate::lyrics_online::finder();
-        }
-        Some(crate::lyrics_online::Online {
-            finder: self.listening.finder.clone()?,
-            dir: self
-                .paths
-                .as_ref()
-                .and_then(crate::lyrics_online::cache_dir),
-        })
-    }
-
     /// Private listening on or off. On: the song playing has its play event
     /// closed, as if it ended here, and nothing after that is recorded. Off:
     /// recording starts again with the next song, so a song half heard in
@@ -207,14 +188,15 @@ impl App {
                 Task::none()
             }
             Msg::Interface(interface) => self.interface_changed(interface),
-            Msg::LyricsFound(item, result) => self.lyrics_found(item, result),
+            Msg::LyricsFound(item, result, pronunciation_off) => {
+                self.lyrics_found(item, result, pronunciation_off)
+            }
             Msg::LyricsShown => self.lyrics_shown(),
             Msg::Translate(on) => self.set_translate(on),
-            Msg::Translated(item, result) => {
-                self.translated(item, result);
+            Msg::Translated(item, result, not_set_up) => {
+                self.translated(item, result, not_set_up);
                 Task::none()
             }
-            Msg::Server(msg) => self.translation_server(msg),
             Msg::Transcode(transcode) => {
                 self.config.sound.transcode = transcode.sanitised();
                 self.save_config();
@@ -271,23 +253,23 @@ impl App {
         }
     }
 
-    /// Lyrics found (on the server or online): shown, with where they came
-    /// from when not the server.
+    /// Lyrics found: shown, with their pronunciation, and LRCLIB credited
+    /// when they came from it.
     fn lyrics_found(
         &mut self,
         item: String,
-        result: Result<Option<crate::lyrics_online::Found>, crate::failure::Failure>,
+        result: Result<Option<aoide_melete::LyricsAnswer>, crate::failure::Failure>,
+        pronunciation_off: bool,
     ) -> Task<Message> {
-        self.listening.lyrics_source = match &result {
-            Ok(Some(crate::lyrics_online::Found {
-                provider: Some(provider),
-                ..
-            })) => Some((item.clone(), provider.clone())),
-            _ => None,
-        };
+        let answer = result.as_ref().ok().and_then(Option::as_ref);
+        self.listening.lyrics_source = answer
+            .filter(|a| a.source.as_deref() == Some("lrclib"))
+            .map(|_| (item.clone(), "LRCLIB".to_owned()));
+        let pronunciations = answer.and_then(|a| a.pronunciations.clone());
+        self.pronounced(&item, pronunciations, pronunciation_off);
         Task::done(Message::Lyrics(
             item,
-            result.map(|found| found.map(|f| f.lyrics)),
+            result.map(|found| found.map(|a| a.lyrics)),
         ))
         .chain(Task::done(Message::Listening(Msg::LyricsShown)))
     }

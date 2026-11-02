@@ -1,18 +1,12 @@
-//! What the lyrics panel adds to the words themselves: a translation under
-//! each line, when the lyrics aren't in the listener's language; and for
-//! Japanese, romaji under each line and readings over the kanji.
-//!
-//! Kana to romaji is always there (kanji pass through it unread). With the
-//! `furigana` feature, aoide-lyrics' `JapaneseReader` (lindera with IPADIC)
-//! reads the kanji too: readings over them, and romaji of the whole line.
-//!
-//! Translation is done by the listener's own LibreTranslate server
-//! (aoide-integrations' `LibreTranslate`), named in Settings → Lyrics with
-//! its API key if it wants one. Until a server is named the Translate switch
-//! isn't there. The lyrics go to that server and nowhere else.
+//! What the lyrics panel adds to the words themselves, from Melete: each
+//! line's pronunciation in Latin letters (Japanese, Korean, Cyrillic), while
+//! the server has pronunciation on; and a translation under each line, when
+//! the lyrics aren't in the listener's language and the server has
+//! LibreTranslate set up. For Japanese, with the `furigana` feature,
+//! aoide-lyrics' `JapaneseReader` (lindera with IPADIC) also puts readings
+//! over the kanji, on this computer.
 
-use aoide_integrations::translate::libre::LibreTranslate;
-use aoide_melete::Lyrics;
+use aoide_melete::{Error, Lyrics, LyricsAsk, MeleteClient};
 use iced::widget::{button, column, container, row, text};
 use iced::{Center, Element, Task};
 
@@ -20,14 +14,6 @@ use crate::app::{App, Message};
 use crate::listening::Msg;
 use crate::screens::Load;
 use crate::{theme, widgets};
-
-mod server;
-
-use server::read_key;
-pub use server::{ServerMsg, ServerSettings, key_state, settings_row};
-
-/// The keyring entry for the translation server's API key.
-pub const KEY_ENTRY: &str = "libretranslate-key";
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -38,16 +24,18 @@ pub struct State {
     /// Translate is switched on (for this session).
     pub translate: bool,
     pub translation: Option<Translation>,
+    /// The server said it has no translation set up: Translate isn't offered.
+    pub translation_off: bool,
+    /// The server said pronunciation is off: it isn't asked for again.
+    pub pronunciation_off: bool,
+    /// Each line's pronunciation, for the track named, as the server gave it.
+    pub pronounced: Option<(String, Vec<Option<String>>)>,
     /// The lyrics have kana: Japanese.
     pub japanese: bool,
-    /// Each line in romaji, for Japanese lyrics.
-    pub romaji: Vec<String>,
     /// Each line in runs with their readings (the `furigana` feature).
     pub ruby: Vec<Vec<RubyRun>>,
     #[cfg(feature = "furigana")]
     reader: Option<aoide_lyrics::JapaneseReader>,
-    /// Settings → Lyrics → Translation.
-    pub settings: ServerSettings,
 }
 
 /// A run of a line and, over its kanji, how they're read.
@@ -59,19 +47,6 @@ pub struct RubyRun {
 
 /// Whether this build reads kanji.
 pub const CAN_READ_KANJI: bool = cfg!(feature = "furigana");
-
-/// Japanese lyrics' romaji, line by line: by the reader when there is one,
-/// else kana by kana.
-pub fn romaji_lines(lyrics: &Lyrics, reader: Option<&dyn Fn(&str) -> String>) -> Vec<String> {
-    lyrics
-        .lines
-        .iter()
-        .map(|line| match reader {
-            Some(read) => read(&line.text),
-            None => aoide_lyrics::kana_to_romaji(&line.text),
-        })
-        .collect()
-}
 
 /// Whether lyrics are Japanese: they have kana.
 pub fn is_japanese(lyrics: &Lyrics) -> bool {
@@ -102,8 +77,34 @@ pub fn foreign_language(lyrics: &Lyrics, target: &str) -> Option<&'static str> {
 }
 
 /// A failed translation in a sentence.
-pub fn failure(error: &str) -> String {
-    format!("The lyrics couldn't be translated: {error}.")
+pub fn failure(error: &Error) -> String {
+    match error {
+        Error::Http { status: 409, .. } => "Your server has no translation set up.".to_owned(),
+        error => format!(
+            "The lyrics couldn't be translated: {}.",
+            crate::failure::describe(error)
+        ),
+    }
+}
+
+/// The playing track's lyrics from Melete, with each line's pronunciation
+/// unless the server has said it's off. A 409 is pronunciation off: asked
+/// again without, and the second value says so.
+pub async fn fetch(
+    client: MeleteClient,
+    item: String,
+    pronounce: bool,
+) -> (Result<Option<aoide_melete::LyricsAnswer>, Error>, bool) {
+    let ask = LyricsAsk {
+        translate: None,
+        pronounce,
+    };
+    match client.lyrics_with(&item, &ask).await {
+        Err(Error::Http { status: 409, .. }) if pronounce => {
+            (client.lyrics_with(&item, &LyricsAsk::default()).await, true)
+        }
+        result => (result, false),
+    }
 }
 
 impl App {
@@ -120,8 +121,8 @@ impl App {
         }
     }
 
-    /// New lyrics are showing: what language, and a translation if one is
-    /// switched on.
+    /// New lyrics are showing: what language, readings for Japanese, and a
+    /// translation if one is switched on.
     pub(crate) fn lyrics_shown(&mut self) -> Task<Message> {
         let Some((item, lyrics)) = self.shown_lyrics() else {
             return Task::none();
@@ -134,7 +135,6 @@ impl App {
         extras.foreign = foreign_language(&lyrics, &target_language());
         extras.translation = None;
         extras.japanese = is_japanese(&lyrics);
-        extras.romaji.clear();
         extras.ruby.clear();
         if extras.japanese {
             self.read_japanese(&lyrics);
@@ -160,83 +160,104 @@ impl App {
         }
     }
 
-    /// Romaji (and with the feature, readings) for Japanese lyrics.
+    /// Readings over the kanji of Japanese lyrics.
     #[cfg(feature = "furigana")]
     fn read_japanese(&mut self, lyrics: &Lyrics) {
         let extras = &mut self.listening.lyric_extras;
         if extras.reader.is_none() {
             extras.reader = aoide_lyrics::JapaneseReader::new().ok();
         }
-        match &extras.reader {
-            Some(reader) => {
-                let read = |line: &str| reader.romaji(line);
-                extras.romaji = romaji_lines(lyrics, Some(&read));
-                extras.ruby = lyrics
-                    .lines
-                    .iter()
-                    .map(|line| {
-                        reader
-                            .furigana(&line.text)
-                            .into_iter()
-                            .map(|r| RubyRun {
-                                text: r.text,
-                                reading: r.reading,
-                            })
-                            .collect()
-                    })
-                    .collect();
-            }
-            None => extras.romaji = romaji_lines(lyrics, None),
+        if let Some(reader) = &extras.reader {
+            extras.ruby = lyrics
+                .lines
+                .iter()
+                .map(|line| {
+                    reader
+                        .furigana(&line.text)
+                        .into_iter()
+                        .map(|r| RubyRun {
+                            text: r.text,
+                            reading: r.reading,
+                        })
+                        .collect()
+                })
+                .collect();
         }
     }
 
     #[cfg(not(feature = "furigana"))]
-    fn read_japanese(&mut self, lyrics: &Lyrics) {
-        self.listening.lyric_extras.romaji = romaji_lines(lyrics, None);
-    }
+    fn read_japanese(&mut self, _lyrics: &Lyrics) {}
 
-    /// Translates the lyrics showing, if asked, worth it and a server is
-    /// named.
+    /// Asks the server to translate the lyrics showing, if asked and worth it.
     fn start_translation(&mut self) -> Task<Message> {
         let extras = &self.listening.lyric_extras;
-        let (Some(_), true, None) = (extras.foreign, extras.translate, &extras.translation) else {
+        let (Some(_), true, None, false) = (
+            extras.foreign,
+            extras.translate,
+            &extras.translation,
+            extras.translation_off,
+        ) else {
             return Task::none();
         };
-        let Some(server) = self.config.translation_server.clone() else {
+        let Some((item, _)) = self.shown_lyrics() else {
             return Task::none();
         };
-        let Some((item, lyrics)) = self.shown_lyrics() else {
+        let Some(signed) = self.session.as_ref() else {
             return Task::none();
         };
+        let client = signed.connection.client.clone();
         self.listening.lyric_extras.translation = Some(Translation::Working);
-        let keyring = self.keyring.clone();
-        let to = target_language();
-        let lines: Vec<String> = lyrics.lines.iter().map(|l| l.text.clone()).collect();
+        let ask = LyricsAsk {
+            translate: Some(target_language()),
+            pronounce: false,
+        };
         Task::perform(
             async move {
-                let key = read_key(keyring).await;
-                let result = match LibreTranslate::new(&server, key) {
-                    Ok(libre) => libre
-                        .translate_lines(&lines, &to)
-                        .await
-                        .map_err(|e| e.to_string()),
-                    Err(error) => Err(error.to_string()),
-                };
+                let result = client.lyrics_with(&item, &ask).await;
                 (item, result)
             },
-            |(item, result)| Message::Listening(Msg::Translated(item, result)),
+            |(item, result)| match result {
+                Err(Error::Unauthorized) => Message::TokenRejected,
+                Ok(answer) => Message::Listening(Msg::Translated(
+                    item,
+                    answer
+                        .and_then(|a| a.translations)
+                        .ok_or_else(|| "The server sent no translation.".to_owned()),
+                    false,
+                )),
+                Err(error) => Message::Listening(Msg::Translated(
+                    item,
+                    Err(failure(&error)),
+                    matches!(error, Error::Http { status: 409, .. }),
+                )),
+            },
         )
     }
 
-    pub(crate) fn translated(&mut self, item: String, result: Result<Vec<String>, String>) {
+    pub(crate) fn translated(
+        &mut self,
+        item: String,
+        result: Result<Vec<String>, String>,
+        not_set_up: bool,
+    ) {
         let extras = &mut self.listening.lyric_extras;
+        extras.translation_off |= not_set_up;
         if extras.item.as_deref() != Some(item.as_str()) {
             return;
         }
         extras.translation = Some(match result {
             Ok(lines) => Translation::Ready(lines),
-            Err(error) => Translation::Failed(failure(&error)),
+            Err(why) => Translation::Failed(why),
         });
+    }
+
+    /// Each line's pronunciation for `item`, or that the server has it off.
+    pub(crate) fn pronounced(&mut self, item: &str, lines: Option<Vec<Option<String>>>, off: bool) {
+        let extras = &mut self.listening.lyric_extras;
+        extras.pronunciation_off |= off;
+        extras.pronounced = lines
+            .filter(|l| l.iter().any(Option::is_some))
+            .map(|l| (item.to_owned(), l));
     }
 }
 
@@ -247,8 +268,11 @@ pub fn toolbar<'a>(app: &'a App, item: &str) -> Option<Element<'a, Message>> {
     if extras.item.as_deref() != Some(item) {
         return None;
     }
-    let offer_translation = app.config.translation_server.is_some() && extras.foreign.is_some();
-    if !offer_translation && !extras.japanese {
+    let offer_translation =
+        extras.foreign.is_some() && (!extras.translation_off || extras.translate);
+    let pronounced = pronunciations(app, item).is_some();
+    let furigana = CAN_READ_KANJI && extras.japanese;
+    if !offer_translation && !pronounced && !furigana {
         return None;
     }
     let interface = &app.config.interface;
@@ -260,22 +284,23 @@ pub fn toolbar<'a>(app: &'a App, item: &str) -> Option<Element<'a, Message>> {
     };
     let mut bar = row![].spacing(6).align_y(Center);
     let mut notes = column![].spacing(4);
-    if extras.japanese {
-        let mut romaji = interface.clone();
-        romaji.romaji = !interface.romaji;
-        bar = bar.push(switch("Romaji", interface.romaji, Msg::Interface(romaji)));
-        if CAN_READ_KANJI {
-            let mut furigana = interface.clone();
-            furigana.furigana = !interface.furigana;
-            bar = bar.push(switch(
-                "Furigana",
-                interface.furigana,
-                Msg::Interface(furigana),
-            ));
-        } else if interface.romaji {
-            notes = notes
-                .push(widgets::secondary("Kana in romaji; kanji are left as they are.").size(11));
-        }
+    if pronounced {
+        let mut changed = interface.clone();
+        changed.romaji = !interface.romaji;
+        bar = bar.push(switch(
+            "Pronunciation",
+            interface.romaji,
+            Msg::Interface(changed),
+        ));
+    }
+    if furigana {
+        let mut changed = interface.clone();
+        changed.furigana = !interface.furigana;
+        bar = bar.push(switch(
+            "Furigana",
+            interface.furigana,
+            Msg::Interface(changed),
+        ));
     }
     if offer_translation {
         bar = bar.push(switch(
@@ -292,18 +317,25 @@ pub fn toolbar<'a>(app: &'a App, item: &str) -> Option<Element<'a, Message>> {
             if !status.is_empty() {
                 notes = notes.push(widgets::secondary(status).size(12));
             }
-            notes = notes.push(
-                widgets::secondary(
-                    "Translated by your LibreTranslate server; the lyrics go only to it.",
-                )
-                .size(11),
-            );
+            if !extras.translation_off {
+                notes = notes.push(
+                    widgets::secondary("Translated by your server's LibreTranslate.").size(11),
+                );
+            }
         }
     }
     Some(column![bar, notes].spacing(6).into())
 }
 
-/// What goes under line `index`: its romaji, its translation.
+/// The server's pronunciation of each line of `item`'s lyrics, when it gave any.
+fn pronunciations<'a>(app: &'a App, item: &str) -> Option<&'a [Option<String>]> {
+    match &app.listening.lyric_extras.pronounced {
+        Some((for_item, lines)) if for_item == item => Some(lines),
+        _ => None,
+    }
+}
+
+/// What goes under line `index`: its pronunciation, its translation.
 pub fn under<'a>(app: &'a App, item: &str, index: usize) -> Option<Element<'a, Message>> {
     let extras = &app.listening.lyric_extras;
     if extras.item.as_deref() != Some(item) {
@@ -312,9 +344,12 @@ pub fn under<'a>(app: &'a App, item: &str, index: usize) -> Option<Element<'a, M
     let mut lines = column![].spacing(2);
     let mut any = false;
     if app.config.interface.romaji
-        && let Some(romaji) = extras.romaji.get(index).filter(|l| !l.trim().is_empty())
+        && let Some(said) = pronunciations(app, item)
+            .and_then(|all| all.get(index))
+            .and_then(Option::as_deref)
+            .filter(|l| !l.trim().is_empty())
     {
-        lines = lines.push(widgets::secondary(romaji.as_str()).size(13));
+        lines = lines.push(widgets::secondary(said).size(13));
         any = true;
     }
     if extras.translate
@@ -364,7 +399,6 @@ pub fn ruby_line<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::server::{forgets_key, parse_address};
     use super::*;
 
     fn lyrics(text: &str) -> Lyrics {
@@ -383,53 +417,66 @@ mod tests {
     }
 
     #[test]
-    fn japanese_lyrics_get_romaji_kana_by_kana() {
-        let japanese = lyrics("さよならは言わないで\nありがとう");
-        assert!(is_japanese(&japanese));
+    fn japanese_lyrics_are_told_by_their_kana() {
+        assert!(is_japanese(&lyrics("さよならは言わないで\nありがとう")));
         assert!(!is_japanese(&lyrics("Sous le ciel de Paris")));
-        let romaji = romaji_lines(&japanese, None);
-        assert_eq!(romaji[1], "arigatou");
-        // Without a dictionary the kanji pass through.
-        assert!(romaji[0].contains('言'), "{}", romaji[0]);
-        let upper = |s: &str| s.to_uppercase();
-        assert_eq!(
-            romaji_lines(&japanese, Some(&upper))[1],
-            "ありがとう".to_uppercase()
-        );
+    }
+
+    #[test]
+    fn a_translation_the_server_cant_make_says_why() {
+        let off = Error::Http {
+            status: 409,
+            path: "api/v1/music/tracks/1/lyrics".into(),
+            detail: None,
+        };
+        assert_eq!(failure(&off), "Your server has no translation set up.");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn pronunciation_turned_off_is_asked_again_without_it() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/music/tracks/2/lyrics"))
+            .and(query_param("pronounce", "true"))
+            .respond_with(ResponseTemplate::new(409).set_body_json(
+                serde_json::json!({"error": "lyrics' pronunciation isn't turned on on this server"}),
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/music/tracks/2/lyrics"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "track_id": 2, "source": "file", "synced": true,
+                "lines": [{"start_seconds": 1.0, "text": "First line"}],
+            })))
+            .mount(&server)
+            .await;
+        let client = MeleteClient::new(
+            aoide_melete::ServerAddress::parse(&server.uri()).unwrap(),
+            aoide_melete::Device::new("Test", "device-1"),
+        )
+        .unwrap()
+        .with_credentials(aoide_melete::Credentials {
+            user_id: "u1".into(),
+            access_token: "tok".into(),
+            username: "alice".into(),
+        });
+        let (answer, off) = fetch(client.clone(), "2".into(), true).await;
+        let answer = answer.unwrap().unwrap();
+        assert!(off, "the server said pronunciation is off");
+        assert_eq!(answer.lyrics.lines[0].text, "First line");
+        assert_eq!(answer.pronunciations, None);
+        let (_, off) = fetch(client, "2".into(), false).await;
+        assert!(!off);
     }
 
     #[cfg(feature = "furigana")]
     #[test]
     fn with_the_dictionary_kanji_are_read() {
         let reader = aoide_lyrics::JapaneseReader::new().unwrap();
-        let japanese = lyrics("夜空に輝く");
-        let read = |line: &str| reader.romaji(line);
-        let romaji = romaji_lines(&japanese, Some(&read));
-        assert!(romaji[0].starts_with("yozora"), "{}", romaji[0]);
         let runs = reader.furigana("夜空に輝く");
         assert_eq!(runs[0].reading.as_deref(), Some("よぞら"));
-    }
-
-    #[test]
-    fn a_key_is_never_kept_for_another_server() {
-        let ours = Some("https://translate.example.net");
-        assert!(forgets_key(ours, Some("https://translate.example.org")));
-        assert!(forgets_key(ours, None));
-        assert!(!forgets_key(ours, ours));
-        assert!(!forgets_key(None, ours));
-    }
-
-    #[test]
-    fn the_address_is_read_as_the_sign_in_reads_one() {
-        assert_eq!(parse_address("  "), Ok(None));
-        assert_eq!(
-            parse_address("translate.example.net").unwrap().as_deref(),
-            Some("https://translate.example.net")
-        );
-        assert_eq!(
-            parse_address("192.168.1.10:5000").unwrap().as_deref(),
-            Some("http://192.168.1.10:5000")
-        );
-        assert!(parse_address("ftp://translate.example.net").is_err());
     }
 }

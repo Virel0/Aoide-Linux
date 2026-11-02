@@ -16,9 +16,8 @@ pub struct InterfaceSettings {
     pub track_in_title: bool,
     pub appearance: Appearance,
     pub accent: Accent,
-    /// LRCLIB for songs the server has no lyrics for.
-    pub internet_lyrics: bool,
-    /// Romaji under each line of Japanese lyrics.
+    /// Each line's pronunciation in Latin letters under it, from the server
+    /// (named for the romaji it first was).
     pub romaji: bool,
     /// Readings over the kanji of Japanese lyrics (the `furigana` feature).
     pub furigana: bool,
@@ -30,7 +29,6 @@ impl Default for InterfaceSettings {
             track_in_title: true,
             appearance: Appearance::System,
             accent: Accent::Violet,
-            internet_lyrics: true,
             romaji: false,
             furigana: false,
         }
@@ -166,17 +164,9 @@ impl App {
         &mut self,
         interface: InterfaceSettings,
     ) -> iced::Task<Message> {
-        let lyrics_switched = interface.internet_lyrics != self.config.interface.internet_lyrics;
         self.config.interface = interface;
         self.save_config();
-        if !lyrics_switched {
-            return iced::Task::none();
-        }
-        // Look the song's lyrics up again, with or without the internet.
-        if let Some(signed) = self.session.as_mut() {
-            signed.lyrics = None;
-        }
-        self.track_changed()
+        iced::Task::none()
     }
 }
 
@@ -372,13 +362,11 @@ mod tests {
     fn it_is_on_by_default_and_round_trips() {
         let interface = InterfaceSettings::default();
         assert!(interface.track_in_title);
-        assert!(interface.internet_lyrics);
         assert!(!interface.romaji && !interface.furigana);
         let changed = InterfaceSettings {
             track_in_title: false,
             appearance: Appearance::Light,
             accent: Accent::Orange,
-            internet_lyrics: false,
             romaji: true,
             furigana: true,
         };
