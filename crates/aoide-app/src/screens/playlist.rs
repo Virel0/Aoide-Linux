@@ -42,7 +42,7 @@ pub struct State {
     smart: Option<Vec<String>>,
     /// The cover as drawn (`covers`): a chosen picture, an item, or the
     /// first track's album.
-    cover: Option<crate::artwork::ArtKey>,
+    cover: Option<crate::covers::Cover>,
     /// What the last cover change said: done, or why not.
     cover_note: Option<Result<String, String>>,
 }
@@ -93,7 +93,7 @@ pub enum Message {
     Remove(String),
     /// Ask for the cover to draw.
     FindCover,
-    Cover(Option<crate::artwork::ArtKey>),
+    Cover(Option<crate::covers::Cover>),
     ChooseCover,
     RemoveCover,
     CoverNote(Result<String, String>),
@@ -138,7 +138,11 @@ impl State {
 
     /// The songs' covers and the playlist's own.
     pub fn artwork(&self) -> Vec<crate::artwork::ArtKey> {
-        let mut keys: Vec<_> = self.cover.clone().into_iter().collect();
+        let mut keys: Vec<_> = self
+            .cover
+            .iter()
+            .flat_map(|cover| cover.keys().iter().cloned())
+            .collect();
         if let Load::Ready(tracks) = &self.tracks {
             keys.extend(super::track_art(tracks));
         }

@@ -32,6 +32,11 @@ state of every feature in more detail.
   MusicBrainz id, which Discord fetches. Aoide's icon stands in for an album
   MusicBrainz doesn't know, and is the small picture when the playing badge is
   off.
+- Smart playlists (Heavy Rotation, Rediscover Mix, mixes and your own) get a
+  cover of their own: the covers of the first four different albums they
+  hold, two by two, worked out on this computer and following their songs.
+  With one to three albums, the first one's cover. A cover you chose still
+  wins. Nothing is uploaded or synced.
 - The sidebar shows each playlist's cover beside its name, small and
   rounded, from the same picture the Playlists page draws, or the playlist's
   glyph on a quiet square where it has none.
