@@ -66,6 +66,10 @@ pub struct Item {
     /// ([`MeleteClient::motion_cover`](crate::MeleteClient::motion_cover)
     /// reads it); `None` when it has none, and always on a track.
     pub motion_cover: Option<String>,
+    /// A track's MusicBrainz release, when Melete knows it.
+    pub mb_release_id: Option<String>,
+    /// A track's MusicBrainz release group, when Melete knows it.
+    pub mb_release_group_id: Option<String>,
 }
 
 /// The name a cover is cached under: Melete gives covers no version, and says
@@ -138,6 +142,10 @@ pub(crate) struct WireTrack {
     pub bit_depth: Option<u32>,
     pub channels: Option<u32>,
     pub isrc: Option<String>,
+    #[serde(default)]
+    pub mb_release_id: Option<String>,
+    #[serde(default)]
+    pub mb_release_group_id: Option<String>,
     #[serde(default, deserialize_with = "nullable")]
     pub liked: bool,
     #[serde(default, deserialize_with = "nullable")]
@@ -222,6 +230,8 @@ impl From<WireTrack> for Item {
             liked: track.liked,
             isrc: track.isrc,
             motion_cover: None,
+            mb_release_id: track.mb_release_id,
+            mb_release_group_id: track.mb_release_group_id,
         }
     }
 }
@@ -335,6 +345,28 @@ mod tests {
         assert_eq!((item.disc_number, item.track_number), (Some(1), Some(1)));
         assert_eq!(item.year, Some(2020));
         assert!(!item.liked);
+    }
+
+    #[test]
+    fn a_tracks_musicbrainz_release_comes_with_it() {
+        let item = track(
+            r#"{"id":1,"title":"t","album_id":2,"album":"a","album_artist":"b",
+                "track_number":null,"disc_number":null,"year":null,"duration_seconds":null,
+                "genres":[],"codec":null,"bitrate_kbps":null,"sample_rate":null,
+                "bit_depth":null,"channels":null,"isrc":null,
+                "mb_release_id":"5d2e3f4a-0000-4000-8000-000000000001",
+                "mb_release_group_id":null}"#,
+        );
+        assert_eq!(
+            item.mb_release_id.as_deref(),
+            Some("5d2e3f4a-0000-4000-8000-000000000001")
+        );
+        assert_eq!(item.mb_release_group_id, None);
+        let fixture = track(include_str!("../tests/fixtures/track.json"));
+        assert_eq!(
+            (fixture.mb_release_id, fixture.mb_release_group_id),
+            (None, None)
+        );
     }
 
     #[test]

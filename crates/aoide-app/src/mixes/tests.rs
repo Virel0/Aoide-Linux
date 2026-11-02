@@ -21,6 +21,8 @@ fn track(id: &str, genre: &str, year: i32, favourite: bool) -> TrackMeta {
         year: Some(year),
         genres: vec![genre.into()],
         favourite,
+        mb_release_id: None,
+        mb_release_group_id: None,
     }
 }
 

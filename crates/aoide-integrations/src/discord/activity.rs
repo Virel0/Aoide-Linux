@@ -56,9 +56,10 @@ pub struct PresenceOptions {
     /// Keep the presence up while paused (without the time bar). Off clears
     /// it on pause.
     pub show_when_paused: bool,
-    /// Use the track's cover as the large image. The URL is visible to
-    /// everyone who can see the presence, so only a public `https://` URL
-    /// without credentials is used; anything else falls back to Aoide's icon.
+    /// Use the track's cover as the large image, with Aoide's icon as the
+    /// small one when the badge is off. The URL is visible to everyone who
+    /// can see the presence, so only a public `https://` URL without
+    /// credentials is used; anything else falls back to Aoide's icon.
     pub show_cover: bool,
     /// The small playing / paused badge on the image.
     pub show_state_icon: bool,
@@ -189,17 +190,19 @@ pub fn activity(now: Option<&NowPlaying>, options: &PresenceOptions) -> Option<V
         .show_cover
         .then(|| track.cover_url.as_deref().and_then(public_https))
         .flatten();
+    let has_cover = cover.is_some();
     let large = cover.map_or_else(|| ICON_ASSET.to_owned(), String::from);
     assets.insert("large_image".into(), json!(large));
     if let Some(album) = track.album.as_deref().and_then(fit) {
         assets.insert("large_text".into(), json!(album));
     }
-    if options.show_state_icon {
-        let (image, text) = if now.playing {
-            (PLAYING_ASSET, "Playing")
-        } else {
-            (PAUSED_ASSET, "Paused")
-        };
+    // The badge where it is wanted; else, under a cover, Aoide's icon.
+    let small = match (options.show_state_icon, now.playing) {
+        (true, true) => Some((PLAYING_ASSET, "Playing")),
+        (true, false) => Some((PAUSED_ASSET, "Paused")),
+        (false, _) => has_cover.then_some((ICON_ASSET, "Aoide")),
+    };
+    if let Some((image, text)) = small {
         assets.insert("small_image".into(), json!(image));
         assets.insert("small_text".into(), json!(text));
     }
@@ -355,6 +358,25 @@ mod tests {
             let a = activity(Some(&playing), &options).unwrap();
             assert_eq!(a["assets"]["large_image"], "icon", "{url}");
         }
+    }
+
+    #[test]
+    fn under_a_cover_without_the_badge_the_small_image_is_aoides_icon() {
+        let options = PresenceOptions {
+            show_cover: true,
+            show_state_icon: false,
+            ..on()
+        };
+        let a = activity(Some(&now(true)), &options).unwrap();
+        assert_eq!(a["assets"]["small_image"], "icon");
+        assert_eq!(a["assets"]["small_text"], "Aoide");
+        assert_eq!(a["assets"]["large_text"], "Album");
+
+        let mut uncovered = now(true);
+        uncovered.track.cover_url = None;
+        let a = activity(Some(&uncovered), &options).unwrap();
+        assert_eq!(a["assets"]["large_image"], "icon");
+        assert!(a["assets"].get("small_image").is_none());
     }
 
     #[test]
