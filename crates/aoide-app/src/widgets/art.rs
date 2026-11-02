@@ -30,6 +30,28 @@ pub fn art<'a>(
     }
 }
 
+/// A playlist's cover in a small square; where it has none, a placeholder
+/// with the playlist's glyph.
+pub fn playlist_art<'a>(
+    key: Option<&ArtKey>,
+    artwork: &'a Artwork,
+    size: f32,
+    glyph: Icon,
+) -> Element<'a, Message> {
+    let radius = (size / 6.0).round();
+    if key.is_some() {
+        return art(key, artwork, size, radius);
+    }
+    container(icon(glyph, (size * 0.6).round(), Tone::Secondary))
+        .center(size)
+        .style(move |t| {
+            let mut style = theme::placeholder(t);
+            style.border.radius = radius.into();
+            style
+        })
+        .into()
+}
+
 /// An artist's picture, round and centred in the space it is given; a round
 /// placeholder with the artist glyph where there is no picture yet.
 pub fn round_art<'a>(key: Option<&'a ArtKey>, artwork: &'a Artwork) -> Element<'a, Message> {

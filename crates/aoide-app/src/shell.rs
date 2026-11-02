@@ -5,15 +5,23 @@ use iced::widget::{
     Column, button, center, column, container, mouse_area, opaque, row, rule, scrollable, space,
     stack, text,
 };
-use iced::{Center, Element, Fill, Length};
+use iced::{Center, Element, Fill, Length, Padding};
 
 use crate::actions::{Menu, RowAction};
 use crate::app::{App, Message, Signed};
 use crate::icons::{Icon, Tone, icon};
-use crate::screens::{Page, Section, View};
+use crate::screens::{Page, PlaylistSummary, Section, View};
 use crate::{now_playing, player_bar, screens, theme, widgets};
 
 const SIDEBAR_WIDTH: f32 = 220.0;
+/// A sidebar line's glyph, and a playlist's cover in its place.
+const GLYPH: f32 = 18.0;
+const COVER: f32 = 24.0;
+/// A sidebar line's padding at either end, above and below, and between
+/// its glyph and its label.
+const INSET: f32 = 10.0;
+const LEADING: f32 = 6.0;
+const GAP: f32 = 10.0;
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     if let Some(full) = &app.listening.full {
@@ -82,11 +90,7 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     }
     let mut lists = Column::new().spacing(2);
     for playlist in &signed.playlists {
-        lists = lists.push(item(
-            playlist.name.clone(),
-            Icon::Playlist,
-            Section::Playlist(playlist.id.clone()),
-        ));
+        lists = lists.push(playlist_item(app, signed, playlist));
     }
     let mut body = column![
         container(text("Aoide").size(22).font(widgets::BOLD)).padding([4, 10]),
@@ -136,25 +140,66 @@ fn sidebar_item<'a>(
     glyph: Icon,
     section: Section,
 ) -> button::Button<'a, Message> {
+    let tone = if signed.section == section {
+        Tone::Accent
+    } else {
+        Tone::Secondary
+    };
+    sidebar_line(signed, icon(glyph, GLYPH, tone), label, section, GAP).padding([LEADING, INSET])
+}
+
+/// A playlist's sidebar line: its cover where the others have a glyph. The
+/// cover is wider than a glyph, so the line's padding gives up the
+/// difference: the line keeps the others' height, the cover is centred where
+/// their glyphs are, and the name starts where theirs do.
+fn playlist_item<'a>(
+    app: &'a App,
+    signed: &'a Signed,
+    playlist: &'a PlaylistSummary,
+) -> button::Button<'a, Message> {
+    let glyph = if playlist.smart {
+        Icon::Sparkle
+    } else {
+        Icon::Playlist
+    };
+    let cover = widgets::playlist_art(
+        signed.playlist_art.get(&playlist.id),
+        &app.artwork,
+        COVER,
+        glyph,
+    );
+    let shift = (COVER - GLYPH) / 2.0;
+    sidebar_line(
+        signed,
+        cover,
+        playlist.name.clone(),
+        Section::Playlist(playlist.id.clone()),
+        GAP - shift,
+    )
+    .padding(Padding {
+        top: LEADING - shift,
+        right: INSET,
+        bottom: LEADING - shift,
+        left: INSET - shift,
+    })
+}
+
+/// What a sidebar line's glyph or cover sits beside: its label, and the
+/// press that shows its section.
+fn sidebar_line<'a>(
+    signed: &Signed,
+    lead: impl Into<Element<'a, Message>>,
+    label: String,
+    section: Section,
+    spacing: f32,
+) -> button::Button<'a, Message> {
     let selected = signed.section == section;
     button(
-        row![
-            icon(
-                glyph,
-                18.0,
-                if selected {
-                    Tone::Accent
-                } else {
-                    Tone::Secondary
-                }
-            ),
-            crate::ellipsis::ellipsis(label).size(14),
-        ]
-        .spacing(10)
-        .align_y(Center),
+        row![lead.into(), crate::ellipsis::ellipsis(label).size(14)]
+            .spacing(spacing)
+            .align_y(Center),
     )
     .width(Fill)
-    .padding([6, 10])
     .style(if selected {
         theme::row_selected
     } else {

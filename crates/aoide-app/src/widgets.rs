@@ -14,7 +14,7 @@ mod page;
 mod tiles;
 mod tracks;
 
-pub use art::art;
+pub use art::{art, playlist_art};
 pub use menu_strip::menu_strip;
 pub use page::{PAGE, empty, failure, loading, page, plain_failure, title_bar};
 pub use tiles::{shelf, tile_grid};
