@@ -28,8 +28,9 @@
 //! - **Playing:** [`MeleteClient::play`] for a stream link,
 //!   [`MeleteClient::cover_url`] for covers.
 //! - **Maintenance** (administrators): [`MeleteClient::refresh_library`].
-//! - **Lyrics:** [`MeleteClient::lyrics`], the server's own. The aoide-lyrics
-//!   crate looks on the internet when this has none.
+//! - **Lyrics:** [`MeleteClient::lyrics`], from a file beside the track, its
+//!   tags, or LRCLIB through the server; [`MeleteClient::lyrics_with`] adds
+//!   the server's translation and pronunciation of each line.
 
 #![warn(missing_docs)]
 #![warn(clippy::missing_errors_doc)]
@@ -57,7 +58,7 @@ pub use error::Error;
 pub use events::{Event, EventStream};
 pub use library::{Home, Likes, ListQuery, SearchResults, Sort};
 pub use listen::{ListenMember, ListenSession, ListenState, Listening, is_stale};
-pub use lyrics::{LyricLine, LyricWord, Lyrics};
+pub use lyrics::{LyricLine, LyricWord, Lyrics, LyricsAnswer, LyricsAsk};
 pub use media::{Stream, StreamFormat};
 pub use model::{COVER_TAG, Item, ItemKind, NameId, Page};
 pub use request_imports::{

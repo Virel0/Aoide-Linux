@@ -60,9 +60,9 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 
 ### Lyrics
 - Synced lyrics from Melete: follow along, click a line to seek, adjust the timing
-- Lyrics from LRCLIB when the server has none
-- Translation by your own LibreTranslate server
-- Romaji and furigana for Japanese lyrics
+- Lyrics from LRCLIB when the server has none, looked up by the server
+- Translation and pronunciation (Japanese, Korean, Cyrillic) from the server
+- Furigana for Japanese lyrics
 
 </td>
 <td width="50%" valign="top">
@@ -190,9 +190,7 @@ to other services only for the features below.
 
 | Where | What is sent | When |
 |---|---|---|
-| Your Melete server | Sign-in, library requests, streams, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover | Always; *Private listening* keeps plays out of the sync log |
-| [LRCLIB](https://lrclib.net) | Title, first artist, album and length of a song your server has no lyrics for | On by default; Settings → Lyrics → *Find lyrics on the internet* |
-| Your LibreTranslate server | The lyric lines, your language and the key | Only when you set a server and turn on Translate |
+| Your Melete server | Sign-in, library requests, streams, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover, and your language when you turn on Translate | Always; *Private listening* keeps plays out of the sync log |
 | [OpenRouter](https://openrouter.ai) | The phrase you typed, or a mix's description, with your library's genre names | Only with a key set, and only when you press the button |
 | Discord, through its local socket | The song and artist | Only while Rich Presence is on |
 | GitHub's API | One unauthenticated request for the latest release, with a fixed user agent, at most once a day | On by default; Settings → System → Updates → *Check for updates* |
@@ -201,8 +199,7 @@ to other services only for the features below.
 What stays on the computer: the sign-in token and any API keys in the system
 keyring (the Secret Service, or the Secret portal inside the Flatpak); settings
 in `~/.config/aoide/config.json`; the play history, playlists, taste flags and
-sync log in `~/.local/share/aoide/aoide.sqlite`; artwork and 30 days of LRCLIB
-answers in `~/.cache/aoide`. [SECURITY.md](SECURITY.md) has the details.
+sync log in `~/.local/share/aoide/aoide.sqlite`; artwork in `~/.cache/aoide`. [SECURITY.md](SECURITY.md) has the details.
 
 ## Building
 
@@ -231,18 +228,17 @@ and the packaging checks.
 | Crate | What it holds |
 |---|---|
 | `aoide-melete` | Melete HTTP client: sign-in, the library, streams, lyrics, likes |
-| `aoide-lyrics` | Internet lyrics (LRCLIB) for tracks the server has none for, and LRC parsing |
+| `aoide-lyrics` | LRC parsing, and Japanese readings for furigana |
 | `aoide-sidecar` | Client for Aoide's routes on Melete: sync, Infinity, Discover, measurements |
 | `aoide-store` | Local SQLite store: history, playlists, taste flags, op log |
 | `aoide-audio` | Decoding, output, gapless, crossfade, loudness |
 | `aoide-mpris` | The Linux desktop: MPRIS media controls, tray icon, single instance, sleep inhibit |
-| `aoide-integrations` | Services outside the server: Discord Rich Presence, OpenRouter (search by description, mixes), lyric translation, update notice |
+| `aoide-integrations` | Services outside the server: Discord Rich Presence, OpenRouter (search by description, mixes), the lyrics' language, update notice |
 | `aoide-app` | The iced application |
 
 What is ported from the Electron app, and what is still to come, is in
 [TRACKER.md](TRACKER.md). Release signing and checksums are in
-[docs/releases.md](docs/releases.md), and the LibreTranslate setup in
-[docs/translation.md](docs/translation.md).
+[docs/releases.md](docs/releases.md).
 
 ## Licence
 

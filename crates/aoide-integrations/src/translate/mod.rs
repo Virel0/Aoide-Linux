@@ -1,19 +1,11 @@
-//! Lyrics in the listener's own language, under the original lines.
-//!
-//! Two halves:
-//!
-//! - Always built: which language lyrics are in ([`detect_language`], by
-//!   whatlang's trigram detector, nothing sent anywhere), the listener's
-//!   language ([`system_language`], from the locale), and whether a
-//!   translation is worth offering ([`needs_translation`]): a button that
-//!   translates English into English is noise.
-//! - [`libre::LibreTranslate`]: the translation itself, by the listener's
-//!   own LibreTranslate server; the lyrics go to that server and nowhere
-//!   else.
+//! Whether lyrics are worth translating: which language they are in
+//! ([`detect_language`], by whatlang's trigram detector, nothing sent
+//! anywhere), the listener's language ([`system_language`], from the
+//! locale), and whether a translation is worth offering
+//! ([`needs_translation`]): a button that translates English into English is
+//! noise. The translation itself is the Melete server's.
 //!
 //! Languages are two-letter ISO 639-1 codes ("en", "fr", "ja").
-
-pub mod libre;
 
 use std::ffi::OsString;
 

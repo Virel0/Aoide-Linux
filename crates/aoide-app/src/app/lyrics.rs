@@ -35,8 +35,7 @@ impl App {
     /// if they are showing and not already here.
     pub(crate) fn track_changed(&mut self) -> Task<Message> {
         let current = self.playback.current().map(|(_, q)| q.meta.id.clone());
-        let meta = self.playback.current().map(|(_, q)| q.meta.clone());
-        let online = self.lyrics_online();
+        let pronounce = !self.listening.lyric_extras.pronunciation_off;
         let Some(signed) = self.session.as_mut() else {
             return Task::none();
         };
@@ -52,21 +51,18 @@ impl App {
         });
         signed.lyric_line = None;
         let client = signed.connection.client.clone();
-        let Some(meta) = meta else {
-            return Task::none();
-        };
         Task::perform(
             async move {
-                let result =
-                    crate::lyrics_online::find(client, online, meta, aoide_store::now_millis())
-                        .await;
-                (item, result)
+                let (result, pronunciation_off) =
+                    crate::lyrics_extras::fetch(client, item.clone(), pronounce).await;
+                (item, result, pronunciation_off)
             },
-            |(item, result)| match result {
+            |(item, result, pronunciation_off)| match result {
                 Err(aoide_melete::Error::Unauthorized) => Message::TokenRejected,
                 result => Message::Listening(crate::listening::Msg::LyricsFound(
                     item,
                     result.map_err(|e| crate::failure::describe(&e)),
+                    pronunciation_off,
                 )),
             },
         )

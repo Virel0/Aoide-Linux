@@ -204,15 +204,8 @@ name = "aoide-lyrics"
 version = "0.3.0"
 dependencies = [
  "aoide-melete",
- "futures-util",
  "lindera",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
  "thiserror 2.0.21",
- "tokio",
- "wiremock",
 ]
 
 [[package]]

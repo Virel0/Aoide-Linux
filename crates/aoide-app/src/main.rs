@@ -21,7 +21,6 @@ mod library;
 mod listening;
 mod logging;
 mod lyrics_extras;
-mod lyrics_online;
 mod lyrics_panel;
 mod maintenance;
 mod mixes;

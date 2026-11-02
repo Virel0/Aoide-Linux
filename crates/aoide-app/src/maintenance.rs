@@ -144,12 +144,14 @@ pub fn caches(paths: &crate::config::Paths) -> Vec<Cache> {
         dir: paths.artwork_dir.clone(),
         clears: "the album covers kept on this computer; they are fetched again as they are shown",
     }];
-    if let Some(dir) = crate::lyrics_online::cache_dir(paths) {
+    // Kept by versions that looked lyrics up on LRCLIB themselves; Melete does
+    // that now, so this only holds what they left.
+    if let Some(dir) = paths.artwork_dir.parent().map(|cache| cache.join("lyrics")) {
         all.push(Cache {
             name: "Internet lyrics",
             dir,
-            clears: "the lyrics found on LRCLIB, and the songs it had none for; they are looked up \
-                     again when played",
+            clears: "lyrics found on LRCLIB by earlier versions of this app; your server looks \
+                     lyrics up now, so nothing here is used",
         });
     }
     all
