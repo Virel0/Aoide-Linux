@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use aoide_melete::MotionCoverChoice;
 use iced::widget::image;
-use iced::{Element, Subscription, Task};
+use iced::{Element, Length, Subscription, Task};
 
 use crate::app::{App, Message};
 use crate::full_player::Show;
@@ -101,7 +101,7 @@ pub fn over<'a>(
     album: Option<&str>,
     still: Element<'a, Message>,
     cover: Option<&image::Handle>,
-    size: f32,
+    size: impl Into<Length> + Copy,
     radius: f32,
 ) -> Element<'a, Message> {
     match album.and_then(|album| Some((album, motion.playing(album)?))) {

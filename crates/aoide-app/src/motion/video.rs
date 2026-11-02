@@ -84,7 +84,7 @@ impl Loop {
         &'a self,
         still: Element<'a, Message>,
         cover: Option<&image::Handle>,
-        size: f32,
+        size: impl Into<Length> + Copy,
         radius: f32,
         broke: Message,
     ) -> Element<'a, Message> {
@@ -92,8 +92,8 @@ impl Loop {
             return still;
         };
         let player = VideoPlayer::new(video)
-            .width(Length::Fixed(size))
-            .height(Length::Fixed(size))
+            .width(size)
+            .height(size)
             .content_fit(ContentFit::Cover)
             .on_error(move |_| broke.clone());
         let fading = 1.0 - self.shown(Instant::now());

@@ -95,6 +95,22 @@ pub fn page(theme: &Theme) -> container::Style {
     }
 }
 
+/// Over the full player's cover: a little shade under the top bar, clear
+/// through the middle, then into the page under the controls.
+pub fn cover_fade(theme: &Theme) -> container::Style {
+    let page = theme.extended_palette().background.base.color;
+    let fade = iced::gradient::Linear::new(iced::Radians::PI)
+        .add_stop(0.0, Color { a: 0.55, ..page })
+        .add_stop(0.14, Color { a: 0.0, ..page })
+        .add_stop(0.45, Color { a: 0.0, ..page })
+        .add_stop(0.78, Color { a: 0.92, ..page })
+        .add_stop(1.0, page);
+    container::Style {
+        background: Some(Background::Gradient(fade.into())),
+        ..container::Style::default()
+    }
+}
+
 /// The player bar along the bottom.
 pub fn bar(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
