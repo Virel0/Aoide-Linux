@@ -1,7 +1,8 @@
 //! Aoide playlists' covers: which picture to draw (`Store::playlist_covers`),
 //! the bytes of a chosen one fetched only when it is about to be drawn
 //! (`aoide_sidecar::cover_bytes`, from this computer's blob directory first),
-//! choosing one from a file, and taking it off.
+//! choosing one from a file, and taking it off. A smart playlist nobody
+//! chose a cover for is drawn as a mosaic of its albums (`mosaic`).
 //!
 //! A chosen picture is kept in the blob directory in the data directory, not
 //! the cache: until the next sync uploads it, it is the only copy. The sync
@@ -21,6 +22,10 @@ use crate::config::Paths;
 use crate::screens::{Page, PageMsg};
 use crate::store_worker::StoreHandle;
 
+mod mosaic;
+
+pub use mosaic::Cover;
+
 /// Where chosen covers are kept: beside the store.
 pub fn blobs_dir(paths: &Paths) -> PathBuf {
     paths.store_file.with_file_name("covers")
@@ -37,11 +42,11 @@ pub fn blob_key(hash: &str) -> ArtKey {
     ArtKey::new("aoidecover", hash)
 }
 
-/// What one resolution found: each playlist's key, and the bytes of the
+/// What one resolution found: each playlist's cover, and the bytes of the
 /// chosen pictures to put in the artwork cache.
 #[derive(Debug, Clone, Default)]
 pub struct Resolved {
-    pub art: HashMap<String, ArtKey>,
+    pub art: HashMap<String, Cover>,
     pub bytes: Vec<(ArtKey, Vec<u8>)>,
 }
 
@@ -64,7 +69,7 @@ pub fn album_covers(covers: &HashMap<String, PlaylistCover>) -> Vec<(String, Art
 
 /// The covers of these playlists, the way they are drawn: chosen pictures as
 /// bytes (fetched from the server only if this computer lacks them), first
-/// tracks by their album's cover.
+/// tracks by their album's cover, smart playlists by their albums'.
 pub async fn resolve(
     store: StoreHandle,
     shared: Arc<Store>,
@@ -72,13 +77,16 @@ pub async fn resolve(
     blobs: Option<BlobDirectory>,
     ids: Vec<String>,
 ) -> Resolved {
-    let covers: HashMap<String, PlaylistCover> = store
+    let now = aoide_store::now_millis();
+    let (covers, smart) = store
         .call(move |w| {
             let lists: Vec<_> = ids
                 .iter()
                 .filter_map(|id| w.store.playlist(id).ok().flatten())
                 .collect();
-            w.store.playlist_covers(&lists).unwrap_or_default()
+            let covers = w.store.playlist_covers(&lists).unwrap_or_default();
+            let smart = mosaic::smart_albums(&w.store, &lists, &covers, now);
+            (covers, smart)
         })
         .await
         .unwrap_or_default();
@@ -94,12 +102,20 @@ pub async fn resolve(
             cover_bytes(&shared, blobs, sidecar.as_ref(), hash, mime.as_deref()).await
         {
             let key = blob_key(hash);
-            resolved.art.insert(playlist.clone(), key.clone());
+            resolved
+                .art
+                .insert(playlist.clone(), Cover::One(key.clone()));
             resolved.bytes.push((key, bytes));
         }
     }
     for (playlist, key) in album_covers(&covers) {
-        resolved.art.entry(playlist).or_insert(key);
+        resolved.art.entry(playlist).or_insert(Cover::One(key));
+    }
+    // Only smart playlists nobody chose a cover for: over their stand-ins.
+    for (playlist, albums) in smart {
+        if let Some(cover) = Cover::from_albums(&albums) {
+            resolved.art.insert(playlist, cover);
+        }
     }
     resolved
 }
@@ -375,7 +391,7 @@ mod tests {
         };
         let shared = store.shared();
         let found = resolve(store, shared, None, Some(blobs), vec![id.clone()]).await;
-        assert_eq!(found.art.get(&id), Some(&blob_key(&hash)));
+        assert_eq!(found.art.get(&id), Some(&Cover::One(blob_key(&hash))));
         assert_eq!(found.bytes, [(blob_key(&hash), png)]);
     }
 }
