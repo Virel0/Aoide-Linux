@@ -7,6 +7,20 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- Requests keeps itself up to date while it's open, from Melete's request
+  feed: no need to press Refresh to see a download move along.
+- Each request says more: where a download comes from (torrent or Soulseek),
+  how the copy to the server is going (size, speed and time left), Melete's
+  latest word on it, who approved or declined it and when, and when it last
+  changed.
+- Import can ask your server for the songs a playlist has that your library
+  doesn't. They go to Melete, which matches each on MusicBrainz and asks for
+  it.
+- Requests lists those playlists with how many songs were asked for, asked
+  already or not found, each song with what became of it, and Remove, which
+  takes back the songs still waiting for approval.
+
 ## [0.3.0] - 2026-10-31
 
 ### Added

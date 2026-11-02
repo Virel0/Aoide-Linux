@@ -278,6 +278,7 @@ impl App {
             crate::palette::keys().map(Message::Palette),
             self.listening_subscription(),
             self.together_subscription(),
+            self.requests_subscription(),
         ])
     }
 
