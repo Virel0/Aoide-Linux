@@ -1,7 +1,7 @@
-//! The full-screen player: the cover large, with the album's motion cover
-//! over it (or the visualizer in its place),
-//! the song, the seek bar and the transport, over the whole window, which
-//! goes full screen with it. Esc leaves.
+//! The full-screen player: the cover, still or moving, edge to edge across
+//! the whole window, fading into the song, the seek bar and the transport
+//! along the foot (or the visualizer in the middle instead); the window goes
+//! full screen with it. Esc leaves.
 //!
 //! The visualizer reads the engine's tap (`aoide_audio::Visualizer`) about
 //! 30 times a second, and only while it is on screen, something is playing
@@ -10,7 +10,7 @@
 use std::time::Duration;
 
 use aoide_audio::{Visualizer, VisualizerConfig};
-use iced::widget::{button, canvas, column, container, row, slider, text};
+use iced::widget::{button, canvas, column, container, row, slider, space, stack, text};
 use iced::{
     Center, Element, Fill, Length, Point, Rectangle, Renderer, Size, Subscription, Task, Theme,
     keyboard, mouse, window,
@@ -199,26 +199,42 @@ impl App {
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Element<'a, Message> {
     let current = app.playback.current().map(|(_, q)| &q.meta);
-    let body = column![
-        container(middle(app, full, current)).center_x(Fill),
+    let controls = column![
         words(current),
         container(scrubber(app, signed, current)).center_x(Fill),
         transport(&app.playback),
         widgets::secondary("Esc to leave").size(11),
     ]
-    .spacing(26)
+    .spacing(22)
     .align_x(Center)
     .width(Fill);
-
-    container(
-        column![top_bar(full), container(body).center(Fill)]
+    let page = match full.show {
+        Show::Artwork => stack![
+            cover(app, current),
+            container(space())
+                .width(Fill)
+                .height(Fill)
+                .style(theme::cover_fade),
+            column![top_bar(full), space().height(Fill), controls]
+                .spacing(10)
+                .padding(24),
+        ]
+        .into(),
+        Show::Visualizer => Element::from(
+            column![
+                top_bar(full),
+                container(column![container(bars(app, full)).center_x(Fill), controls].spacing(26))
+                    .center(Fill),
+            ]
             .spacing(10)
             .padding(24),
-    )
-    .width(Fill)
-    .height(Fill)
-    .style(theme::page)
-    .into()
+        ),
+    };
+    container(page)
+        .width(Fill)
+        .height(Fill)
+        .style(theme::page)
+        .into()
 }
 
 /// Close, and the switch between the artwork and the visualiser.
@@ -256,35 +272,31 @@ fn top_bar(full: &FullPlayer) -> Element<'_, Message> {
     .into()
 }
 
-/// The cover large, or the visualiser's bars in its place.
-fn middle<'a>(
-    app: &'a App,
-    full: &'a FullPlayer,
-    current: Option<&'a TrackMeta>,
-) -> Element<'a, Message> {
-    match full.show {
-        Show::Artwork => {
-            let (size, radius) = (420.0, 14.0);
-            let key = current
-                .and_then(|m| m.artwork.as_ref())
-                .map(|(i, t)| ArtKey::new(i, t));
-            let still = widgets::art(key.as_ref(), &app.artwork, Length::Fixed(size), radius);
-            let handle = key.as_ref().and_then(|key| app.artwork.get(key));
-            let album = current.and_then(|m| m.album_id.as_deref());
-            crate::motion::over(&app.motion, album, still, handle, size, radius)
-        }
-        Show::Visualizer => canvas(Bars {
-            levels: if full.bars.is_empty() {
-                vec![0.0; BARS]
-            } else {
-                full.bars.clone()
-            },
-            dimmed: !app.playback.is_playing(),
-        })
-        .width(Length::Fixed(760.0))
-        .height(Length::Fixed(420.0))
-        .into(),
-    }
+/// The cover, with the album's motion cover over it, filling the window and
+/// cropped to it.
+fn cover<'a>(app: &'a App, current: Option<&'a TrackMeta>) -> Element<'a, Message> {
+    let key = current
+        .and_then(|m| m.artwork.as_ref())
+        .map(|(i, t)| ArtKey::new(i, t));
+    let still = widgets::art(key.as_ref(), &app.artwork, Fill, 0.0);
+    let handle = key.as_ref().and_then(|key| app.artwork.get(key));
+    let album = current.and_then(|m| m.album_id.as_deref());
+    crate::motion::over(&app.motion, album, still, handle, Fill, 0.0)
+}
+
+/// The visualiser's bars, dimmed while paused.
+fn bars(app: &App, full: &FullPlayer) -> Element<'static, Message> {
+    canvas(Bars {
+        levels: if full.bars.is_empty() {
+            vec![0.0; BARS]
+        } else {
+            full.bars.clone()
+        },
+        dimmed: !app.playback.is_playing(),
+    })
+    .width(Length::Fixed(760.0))
+    .height(Length::Fixed(420.0))
+    .into()
 }
 
 /// The song's title, and its artist and album under it.

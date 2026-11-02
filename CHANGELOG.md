@@ -8,6 +8,8 @@ state of every feature in more detail.
 ## [Unreleased]
 
 ### Changed
+- The full player shows the cover, still or moving, edge to edge across the
+  whole window, fading into the song and the controls along the foot.
 - Lyrics, their translation and their pronunciation all come from Melete.
   The server looks lyrics up on LRCLIB when it has none of its own, and
   translates through the LibreTranslate it has set up.
