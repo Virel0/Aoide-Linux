@@ -26,7 +26,9 @@
 //! - **Get Info:** [`MeleteClient::item_details`].
 //! - **Sharing:** [`MeleteClient::user_directory`] names whom to share with.
 //! - **Playing:** [`MeleteClient::play`] for a stream link,
-//!   [`MeleteClient::cover_url`] for covers.
+//!   [`MeleteClient::cover_url`] for covers, [`MeleteClient::motion_cover`]
+//!   for an album's looping video and [`MeleteClient::motion_cover_choice`]
+//!   for whether this user sees the ones the server made.
 //! - **Maintenance** (administrators): [`MeleteClient::refresh_library`].
 //! - **Lyrics:** [`MeleteClient::lyrics`], from a file beside the track, its
 //!   tags, or LRCLIB through the server; [`MeleteClient::lyrics_with`] adds
@@ -47,6 +49,7 @@ mod lyrics;
 mod maintenance;
 mod media;
 mod model;
+mod motion;
 mod request_imports;
 mod requests;
 
@@ -61,6 +64,7 @@ pub use listen::{ListenMember, ListenSession, ListenState, Listening, is_stale};
 pub use lyrics::{LyricLine, LyricWord, Lyrics, LyricsAnswer, LyricsAsk};
 pub use media::{Stream, StreamFormat};
 pub use model::{COVER_TAG, Item, ItemKind, NameId, Page};
+pub use motion::{MOTION_COVER_MAX_BYTES, MotionCoverChoice};
 pub use request_imports::{
     PlaylistImport, PlaylistImportSummary, PlaylistImportTrack, playlist_csv,
 };

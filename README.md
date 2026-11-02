@@ -49,6 +49,7 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 - Search as you type; **search by description** through OpenRouter once you add a key
 - **Command palette** on Ctrl+K: every screen, the player's controls, and songs, albums and artists
 - Get info on any song: format, bit rate, sample rate, bit depth, channels
+- **Motion covers**: an album's looping video plays, muted, over its cover on its page and in the full-screen player
 
 ### Playback
 - Native decoding with symphonia: FLAC, ALAC, MP3, AAC, Vorbis, WAV, AIFF
@@ -144,7 +145,8 @@ Releases are not signed yet, which is why `SigLevel` is relaxed. Each release
 carries `SHA256SUMS` files, and [docs/releases.md](docs/releases.md) has the
 stricter lines to use once a release key exists. Optional packages: a Secret
 Service provider such as GNOME Keyring or KWallet, which keeps you signed in
-between launches, and `noto-fonts-cjk` for Japanese, Chinese and Korean text.
+between launches, `noto-fonts-cjk` for Japanese, Chinese and Korean text, and
+`gst-libav` for motion covers in H.264, which is what Melete makes.
 
 ### Flatpak
 
@@ -154,7 +156,8 @@ flatpak install --user aoide-linux.flatpak
 flatpak run io.github.Virel0.Aoide.Linux
 ```
 
-The bundle uses the freedesktop 26.08 runtime from Flathub. It does not update
+The bundle uses the freedesktop 26.08 runtime from Flathub, whose codecs
+extension (installed with it) plays H.264 motion covers. It does not update
 itself: install the next release's bundle the same way. The Flatpak builds in
 CI but has not yet been run on a desktop.
 
@@ -164,7 +167,10 @@ Download `aoide-linux-<version>-x86_64.AppImage` or
 `aoide-linux_<version>_amd64.deb` from the
 [latest release](https://github.com/Virel0/Aoide-Linux/releases/latest). Both
 need glibc 2.35 or later (Ubuntu 22.04, Debian 12 and newer). The AppImage
-bundles no libraries: it uses the system's ALSA, D-Bus, and Wayland or X11.
+bundles no libraries: it uses the system's ALSA, D-Bus, GStreamer, and Wayland
+or X11. The deb brings GStreamer and recommends `gstreamer1.0-libav`, which
+motion covers in H.264 need; for the AppImage, install GStreamer's base and
+good plugins and `gstreamer1.0-libav` (or your distribution's names for them).
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS-appimage-deb
@@ -190,7 +196,7 @@ to other services only for the features below.
 
 | Where | What is sent | When |
 |---|---|---|
-| Your Melete server | Sign-in, library requests, streams, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover, and your language when you turn on Translate | Always; *Private listening* keeps plays out of the sync log |
+| Your Melete server | Sign-in, library requests, streams, albums' motion covers and whether you see the ones it made, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover, and your language when you turn on Translate | Always; *Private listening* keeps plays out of the sync log; Settings → General → *Motion covers* off asks for no videos |
 | [OpenRouter](https://openrouter.ai) | The phrase you typed, or a mix's description, with your library's genre names | Only with a key set, and only when you press the button |
 | Discord, through its local socket | The song and artist | Only while Rich Presence is on |
 | GitHub's API | One unauthenticated request for the latest release, with a fixed user agent, at most once a day | On by default; Settings → System → Updates → *Check for updates* |
@@ -199,7 +205,7 @@ to other services only for the features below.
 What stays on the computer: the sign-in token and any API keys in the system
 keyring (the Secret Service, or the Secret portal inside the Flatpak); settings
 in `~/.config/aoide/config.json`; the play history, playlists, taste flags and
-sync log in `~/.local/share/aoide/aoide.sqlite`; artwork in `~/.cache/aoide`. [SECURITY.md](SECURITY.md) has the details.
+sync log in `~/.local/share/aoide/aoide.sqlite`; artwork and motion covers in `~/.cache/aoide`. [SECURITY.md](SECURITY.md) has the details.
 
 ## Building
 
@@ -207,9 +213,10 @@ sync log in `~/.local/share/aoide/aoide.sqlite`; artwork in `~/.cache/aoide`. [S
 cargo run -p aoide-app
 ```
 
-Rust 1.98 or later. Linux needs the ALSA and D-Bus development headers
-(`alsa-lib` and `dbus` on Arch, `libasound2-dev` and `libdbus-1-dev` on Debian
-and Ubuntu). The default build includes furigana, which fetches the IPADIC
+Rust 1.98 or later. Linux needs the ALSA, D-Bus and GStreamer development
+headers (`alsa-lib`, `dbus`, `gstreamer` and `gst-plugins-base-libs` on Arch;
+`libasound2-dev`, `libdbus-1-dev`, `libgstreamer1.0-dev` and
+`libgstreamer-plugins-base1.0-dev` on Debian and Ubuntu). The default build includes furigana, which fetches the IPADIC
 dictionary at build time and adds about 48 MB to the binary.
 
 The checks CI runs:
@@ -227,14 +234,14 @@ and the packaging checks.
 
 | Crate | What it holds |
 |---|---|
-| `aoide-melete` | Melete HTTP client: sign-in, the library, streams, lyrics, likes |
+| `aoide-melete` | Melete HTTP client: sign-in, the library, streams, lyrics, likes, motion covers |
 | `aoide-lyrics` | LRC parsing, and Japanese readings for furigana |
 | `aoide-sidecar` | Client for Aoide's routes on Melete: sync, Infinity, Discover, measurements |
 | `aoide-store` | Local SQLite store: history, playlists, taste flags, op log |
 | `aoide-audio` | Decoding, output, gapless, crossfade, loudness |
 | `aoide-mpris` | The Linux desktop: MPRIS media controls, tray icon, single instance, sleep inhibit |
 | `aoide-integrations` | Services outside the server: Discord Rich Presence, OpenRouter (search by description, mixes), the lyrics' language, update notice |
-| `aoide-app` | The iced application |
+| `aoide-app` | The iced application; motion covers play on GStreamer through iced_video_player |
 
 What is ported from the Electron app, and what is still to come, is in
 [TRACKER.md](TRACKER.md). Release signing and checksums are in

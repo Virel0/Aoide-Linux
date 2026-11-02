@@ -53,6 +53,7 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
     let view = View {
         key: 0,
         artwork: &app.artwork,
+        motion: &app.motion,
         playing: None,
         menu: Some(menu),
         playlists: &signed.playlists,
@@ -203,6 +204,7 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     let view = View {
         key: entry.key,
         artwork: &app.artwork,
+        motion: &app.motion,
         playing: app.playback.current().map(|(_, q)| q.meta.id.as_str()),
         menu: signed.menu.as_ref(),
         playlists: &signed.playlists,

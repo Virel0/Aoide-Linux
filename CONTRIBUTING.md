@@ -11,12 +11,13 @@ being ported and what is not.
 cargo run -p aoide-app
 ```
 
-You need Rust 1.98 or later and the ALSA and D-Bus development headers:
+You need Rust 1.98 or later and the ALSA, D-Bus and GStreamer development
+headers (GStreamer plays motion covers):
 
 | Distribution | Packages |
 |---|---|
-| Arch | `alsa-lib dbus pkgconf` |
-| Debian, Ubuntu | `libasound2-dev libdbus-1-dev pkg-config` |
+| Arch | `alsa-lib dbus gstreamer gst-plugins-base-libs pkgconf` |
+| Debian, Ubuntu | `libasound2-dev libdbus-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev pkg-config` |
 
 The default build includes furigana, which fetches the IPADIC dictionary at
 build time (set `LINDERA_BUILD_DICTIONARY_CACHE_DIR` to build offline from a
@@ -37,6 +38,10 @@ cargo test --workspace
 
 # MPRIS, single instance and sleep inhibit, on a private D-Bus (Linux)
 cargo test -p aoide-mpris -- --include-ignored
+
+# A motion cover's GStreamer pipeline (Linux, with GStreamer's base and good
+# plugins: gstreamer1.0-plugins-base and -good, or gst-plugins-base and -good)
+cargo test -p aoide-app -- --ignored motion::video
 
 # The keyring, against GNOME Keyring on a private D-Bus (Linux)
 dbus-run-session -- sh -c 'printf ci | gnome-keyring-daemon --unlock --components=secrets > /dev/null && cargo test -p aoide-app -- --ignored keyring'

@@ -42,6 +42,15 @@ directories = "6"
 # custom widget, ellipsis.rs (it measures text with the renderer; no other crates).
 iced = { version = "0.14", features = ["tokio", "image-without-codecs", "svg", "canvas", "advanced"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+# Motion covers: albums' looping videos, played muted over their covers on
+# the system's GStreamer (MIT or Apache-2.0, jazzfool/iced_video_player, made
+# for iced 0.14). It needs the wgpu renderer; drawn in software, the still
+# cover stays. It turns on iced's `image` feature, every format the image
+# crate has. gstreamer and gstreamer-app are its own, named here to build a
+# pipeline with no sound (src/motion/video.rs).
+iced_video_player = "0.6"
+gstreamer = "0.23"
+gstreamer-app = "0.23"
 # The log facade (already in the tree through iced); the app's own logger is logging.rs.
 log = "0.4.34"
 # Artwork downloads. The same TLS stack as every other crate: rustls on ring, never

@@ -21,6 +21,8 @@ pub struct InterfaceSettings {
     pub romaji: bool,
     /// Readings over the kanji of Japanese lyrics (the `furigana` feature).
     pub furigana: bool,
+    /// Albums' looping videos over their covers, on this computer.
+    pub motion_covers: bool,
 }
 
 impl Default for InterfaceSettings {
@@ -31,6 +33,7 @@ impl Default for InterfaceSettings {
             accent: Accent::Violet,
             romaji: false,
             furigana: false,
+            motion_covers: true,
         }
     }
 }
@@ -363,12 +366,14 @@ mod tests {
         let interface = InterfaceSettings::default();
         assert!(interface.track_in_title);
         assert!(!interface.romaji && !interface.furigana);
+        assert!(interface.motion_covers);
         let changed = InterfaceSettings {
             track_in_title: false,
             appearance: Appearance::Light,
             accent: Accent::Orange,
             romaji: true,
             furigana: true,
+            motion_covers: false,
         };
         let json = serde_json::to_string(&changed).unwrap();
         let back: InterfaceSettings = serde_json::from_str(&json).unwrap();

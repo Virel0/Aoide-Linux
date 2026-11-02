@@ -7,6 +7,14 @@
 # tool would find them in the binary. libasound2 is libasound2t64 from
 # Debian 13 and Ubuntu 24.04 on. libc6 is the glibc CI builds against.
 #
+# Motion covers play on the system's GStreamer, through iced_video_player:
+# libgstreamer1.0-0, libgstreamer-plugins-base1.0-0 (its app and video
+# libraries) and GLib (libglib2.0-0t64 from Debian 13 and Ubuntu 24.04 on) are
+# linked; gstreamer1.0-plugins-base has playbin and the video conversion, and
+# gstreamer1.0-plugins-good the MP4 and WebM files and VP8/VP9. H.264, which
+# is what Melete makes, needs gstreamer1.0-libav; without it the still cover
+# shows.
+#
 # The keyring keeps the sign-in between launches; any Secret Service
 # provider does (GNOME Keyring, KWallet, KeePassXC), and KDE has its own.
 # Vulkan draws the window on the GPU; without it iced draws in software.
@@ -18,8 +26,8 @@ Installed-Size: @INSTALLED_SIZE@
 Section: sound
 Priority: optional
 Homepage: https://github.com/Virel0/Aoide-Linux
-Depends: libc6 (>= 2.35), libgcc-s1, libasound2t64 | libasound2, libdbus-1-3, libxkbcommon0, libwayland-client0, libwayland-cursor0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrandr2
-Recommends: libvulkan1, mesa-vulkan-drivers | vulkan-icd, fonts-noto-cjk
+Depends: libc6 (>= 2.35), libgcc-s1, libasound2t64 | libasound2, libdbus-1-3, libglib2.0-0t64 | libglib2.0-0, libgstreamer1.0-0, libgstreamer-plugins-base1.0-0, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, libxkbcommon0, libwayland-client0, libwayland-cursor0, libwayland-egl1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrandr2
+Recommends: libvulkan1, mesa-vulkan-drivers | vulkan-icd, fonts-noto-cjk, gstreamer1.0-libav
 Suggests: gnome-keyring | keepassxc
 Description: native music client for Melete
  Aoide for Linux plays the music on your own Melete server. It is the

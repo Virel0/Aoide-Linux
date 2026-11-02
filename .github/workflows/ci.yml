@@ -16,7 +16,7 @@ jobs:
         with:
           persist-credentials: false
       - name: System libraries
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev pkg-config dbus
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libdbus-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev pkg-config dbus
       # rustup comes with the runner; no third-party action needed.
       - name: Rust
         run: rustup toolchain install stable --profile minimal --component clippy,rustfmt --no-self-update && rustup default stable
@@ -50,6 +50,12 @@ jobs:
             | awk '$2 != "total" && $1 > 800 { print "::warning file=" $2 "::" $1 " lines (limit 800)" }'
       - name: MPRIS, single instance and sleep inhibit, on a private D-Bus
         run: cargo test -p aoide-mpris -- --include-ignored
+      # A motion cover's pipeline, made and played by GStreamer: a WebM loop
+      # with a sound track is encoded, then opened looped and without sound.
+      - name: Motion covers, on GStreamer's base and good plugins
+        run: |
+          sudo apt-get install -y gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+          cargo test -p aoide-app -- --ignored motion::video
       - name: The keyring, against GNOME Keyring on a private D-Bus
         run: |
           sudo apt-get install -y gnome-keyring

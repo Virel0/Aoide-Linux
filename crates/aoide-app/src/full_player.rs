@@ -1,4 +1,5 @@
-//! The full-screen player: the cover large (or the visualizer in its place),
+//! The full-screen player: the cover large, with the album's motion cover
+//! over it (or the visualizer in its place),
 //! the song, the seek bar and the transport, over the whole window, which
 //! goes full screen with it. Esc leaves.
 //!
@@ -262,15 +263,16 @@ fn middle<'a>(
     current: Option<&'a TrackMeta>,
 ) -> Element<'a, Message> {
     match full.show {
-        Show::Artwork => widgets::art(
-            current
+        Show::Artwork => {
+            let (size, radius) = (420.0, 14.0);
+            let key = current
                 .and_then(|m| m.artwork.as_ref())
-                .map(|(i, t)| ArtKey::new(i, t))
-                .as_ref(),
-            &app.artwork,
-            Length::Fixed(420.0),
-            14.0,
-        ),
+                .map(|(i, t)| ArtKey::new(i, t));
+            let still = widgets::art(key.as_ref(), &app.artwork, Length::Fixed(size), radius);
+            let handle = key.as_ref().and_then(|key| app.artwork.get(key));
+            let album = current.and_then(|m| m.album_id.as_deref());
+            crate::motion::over(&app.motion, album, still, handle, size, radius)
+        }
         Show::Visualizer => canvas(Bars {
             levels: if full.bars.is_empty() {
                 vec![0.0; BARS]

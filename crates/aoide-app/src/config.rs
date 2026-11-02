@@ -18,6 +18,8 @@ pub struct Paths {
     pub config_file: PathBuf,
     pub store_file: PathBuf,
     pub artwork_dir: PathBuf,
+    /// Albums' motion covers, kept a week.
+    pub motion_dir: PathBuf,
 }
 
 impl Paths {
@@ -36,6 +38,7 @@ impl Paths {
             config_file: config.join("config.json"),
             store_file: data.join("aoide.sqlite"),
             artwork_dir: cache.join("artwork"),
+            motion_dir: cache.join("motion"),
         }
     }
 }
@@ -298,6 +301,7 @@ mod tests {
                 accent: crate::appearance::Accent::Teal,
                 romaji: true,
                 furigana: false,
+                motion_covers: false,
             },
             collections: Vec::new(),
             activity: Some("gaming".into()),
@@ -369,5 +373,6 @@ mod tests {
         assert_eq!(paths.config_file, Path::new("/c/config.json"));
         assert_eq!(paths.store_file, Path::new("/d/aoide.sqlite"));
         assert_eq!(paths.artwork_dir, Path::new("/k/artwork"));
+        assert_eq!(paths.motion_dir, Path::new("/k/motion"));
     }
 }

@@ -24,6 +24,7 @@ mod lyrics_extras;
 mod lyrics_panel;
 mod maintenance;
 mod mixes;
+mod motion;
 mod nav;
 mod now_playing;
 mod palette;
