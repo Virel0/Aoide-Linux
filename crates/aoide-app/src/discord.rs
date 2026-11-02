@@ -31,6 +31,7 @@ pub enum Message {
     Enabled(bool),
     Display(Display),
     ShowWhenPaused(bool),
+    ShowCover(bool),
     StateIcon(bool),
     Links(bool),
     Status(PresenceStatus),
@@ -101,8 +102,33 @@ fn musicbrainz_search(query: &str, kind: &str) -> Option<String> {
     .map(String::from)
 }
 
-/// What plays, as the presence describes it. `cover` is the server's image
-/// address for the track, or `None`; the presence uses it only if it is a
+/// The album's front on the Cover Art Archive, by its MusicBrainz release,
+/// else its release group: Discord fetches it through its own proxy, so
+/// nothing goes there from this computer. `None` when MusicBrainz isn't known.
+fn cover_art(release: Option<&str>, group: Option<&str>) -> Option<String> {
+    let (kind, id) = release
+        .filter(|id| is_mbid(id))
+        .map(|id| ("release", id))
+        .or_else(|| {
+            group
+                .filter(|id| is_mbid(id))
+                .map(|id| ("release-group", id))
+        })?;
+    Some(format!("https://coverartarchive.org/{kind}/{id}/front-250"))
+}
+
+/// A MusicBrainz id: a UUID, hex digits in groups of 8-4-4-4-12. Nothing
+/// else the server sends is put in the link.
+fn is_mbid(id: &str) -> bool {
+    id.len() == 36
+        && id.char_indices().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => c == '-',
+            _ => c.is_ascii_hexdigit(),
+        })
+}
+
+/// What plays, as the presence describes it. `cover` is the album's image
+/// address ([`cover_art`]), or `None`; the presence uses it only if it is a
 /// public `https` URL without credentials, and only with Show Cover on.
 pub fn playing(
     now: &NowPlaying,
@@ -174,6 +200,7 @@ impl App {
             Message::Enabled(on) => options.enabled = on,
             Message::Display(display) => options.display = display.0,
             Message::ShowWhenPaused(on) => options.show_when_paused = on,
+            Message::ShowCover(on) => options.show_cover = on,
             Message::StateIcon(on) => options.show_state_icon = on,
             Message::Links(on) => options.show_links = on,
             Message::Status(status) => {
@@ -198,9 +225,20 @@ impl App {
             return;
         };
         let now = self.desktop.now_playing();
-        // No cover: Melete's covers need a signed-in user, so Discord couldn't
-        // fetch one, and its address would name the server.
-        presence.set_now_playing(playing(&now, None, options.show_links, SystemTime::now()));
+        // Not Melete's cover: that needs a signed-in user, so Discord couldn't
+        // fetch it, and its address would name the server.
+        let cover = options
+            .show_cover
+            .then(|| {
+                let (_, queued) = self.playback.current()?;
+                let meta = &queued.meta;
+                cover_art(
+                    meta.mb_release_id.as_deref(),
+                    meta.mb_release_group_id.as_deref(),
+                )
+            })
+            .flatten();
+        presence.set_now_playing(playing(&now, cover, options.show_links, SystemTime::now()));
     }
 }
 
@@ -230,6 +268,7 @@ pub fn settings_section<'a>(
                 options.show_when_paused,
                 Message::ShowWhenPaused,
             ))
+            .push(switch("Show cover", options.show_cover, Message::ShowCover))
             .push(switch(
                 "Playing and paused badge",
                 options.show_state_icon,
@@ -245,11 +284,11 @@ pub fn settings_section<'a>(
         "Discord",
         rows,
         "Rich Presence shows the song, artist, album and a time bar on your Discord profile, \
-         through the Discord app on this computer; nothing is sent while it is off. The cover is \
-         your server's own address for the image, so everyone who sees your status can see that \
-         address: it is sent only when your server is on a public https address and the link \
-         carries no login, and Aoide's icon stands in otherwise. Links open a MusicBrainz search \
-         for the song and the artist.",
+         through the Discord app on this computer; nothing is sent while it is off. Show Cover \
+         sends a link to the album's cover on the Cover Art Archive, which names the album's \
+         MusicBrainz id: Discord fetches the picture, not this computer, and Aoide's icon \
+         stands in for an album MusicBrainz doesn't know. Links open a MusicBrainz search for \
+         the song and the artist.",
     )
 }
 
@@ -338,6 +377,48 @@ mod tests {
         )
         .unwrap();
         assert_eq!(sent["assets"]["large_image"], public);
+    }
+
+    #[test]
+    fn the_cover_is_the_cover_art_archives_by_release_then_release_group() {
+        let release = "5d2e3f4a-0000-4000-8000-000000000001";
+        let group = "9b1c2d3e-0000-4000-8000-000000000002";
+        assert_eq!(
+            cover_art(Some(release), Some(group)).as_deref(),
+            Some(
+                "https://coverartarchive.org/release/5d2e3f4a-0000-4000-8000-000000000001/front-250"
+            )
+        );
+        assert_eq!(
+            cover_art(None, Some(group)).as_deref(),
+            Some(
+                "https://coverartarchive.org/release-group/9b1c2d3e-0000-4000-8000-000000000002/front-250"
+            )
+        );
+        assert_eq!(cover_art(None, None), None);
+        // Not an id: never put in a link.
+        assert_eq!(cover_art(Some("../../x"), None), None);
+        assert_eq!(
+            cover_art(Some("5d2e3f4a-0000-4000-8000-00000000000/"), Some(group)).as_deref(),
+            Some(
+                "https://coverartarchive.org/release-group/9b1c2d3e-0000-4000-8000-000000000002/front-250"
+            )
+        );
+        let options = PresenceOptions {
+            enabled: true,
+            show_cover: true,
+            ..PresenceOptions::default()
+        };
+        let sent = activity(
+            playing(&now(), cover_art(Some(release), None), false, at()).as_ref(),
+            &options,
+        )
+        .unwrap();
+        assert_eq!(
+            sent["assets"]["large_image"],
+            "https://coverartarchive.org/release/5d2e3f4a-0000-4000-8000-000000000001/front-250"
+        );
+        assert_eq!(sent["assets"]["large_text"], "Low Tide");
     }
 
     #[test]

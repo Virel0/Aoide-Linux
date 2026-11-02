@@ -198,7 +198,7 @@ to other services only for the features below.
 |---|---|---|
 | Your Melete server | Sign-in, library requests, streams, albums' motion covers and whether you see the ones it made, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover, and your language when you turn on Translate | Always; *Private listening* keeps plays out of the sync log; Settings → General → *Motion covers* off asks for no videos |
 | [OpenRouter](https://openrouter.ai) | The phrase you typed, or a mix's description, with your library's genre names | Only with a key set, and only when you press the button |
-| Discord, through its local socket | The song and artist | Only while Rich Presence is on |
+| Discord, through its local socket | The song, artist and album; with *Show cover*, a link to the album's cover on the [Cover Art Archive](https://coverartarchive.org), which names its MusicBrainz id. Discord fetches the picture; this computer never contacts the archive | Only while Rich Presence is on; the cover only with *Show cover* on |
 | GitHub's API | One unauthenticated request for the latest release, with a fixed user agent, at most once a day | On by default; Settings → System → Updates → *Check for updates* |
 | Spotify | A request for the public playlist page you paste | Only when you import a playlist |
 

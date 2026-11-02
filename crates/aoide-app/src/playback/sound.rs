@@ -112,6 +112,8 @@ mod tests {
                 year: None,
                 genres: Vec::new(),
                 favourite: false,
+                mb_release_id: None,
+                mb_release_group_id: None,
             },
             track: aoide_audio::PlayerTrack {
                 key: id.into(),

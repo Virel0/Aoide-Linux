@@ -39,6 +39,10 @@ pub struct TrackMeta {
     pub year: Option<i32>,
     pub genres: Vec<String>,
     pub favourite: bool,
+    /// The MusicBrainz release and release group, when Melete knows them:
+    /// where Discord finds the cover.
+    pub mb_release_id: Option<String>,
+    pub mb_release_group_id: Option<String>,
 }
 
 impl TrackMeta {
@@ -71,6 +75,8 @@ impl TrackMeta {
             year: item.year,
             genres: item.genres.clone(),
             favourite: item.liked,
+            mb_release_id: item.mb_release_id.clone(),
+            mb_release_group_id: item.mb_release_group_id.clone(),
         }
     }
 

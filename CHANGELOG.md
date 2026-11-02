@@ -27,6 +27,11 @@ state of every feature in more detail.
   you remove it there.
 
 ### Added
+- Discord Rich Presence can show the album's cover again: Settings → System →
+  Discord → Show Cover links the album's front on the Cover Art Archive by its
+  MusicBrainz id, which Discord fetches. Aoide's icon stands in for an album
+  MusicBrainz doesn't know, and is the small picture when the playing badge is
+  off.
 - The sidebar shows each playlist's cover beside its name, small and
   rounded, from the same picture the Playlists page draws, or the playlist's
   glyph on a quiet square where it has none.

@@ -56,6 +56,12 @@ server, which asks LRCLIB and LibreTranslate itself when its admin has them on.
   Its sound track, if it has one, is never decoded or played.
 - With `XDG_RUNTIME_DIR` set, only that directory is searched for Discord's
   socket, and the socket must be owned by the user running the app.
+- Discord's cover, with Settings → System → Discord → *Show cover* on, is a
+  link to the Cover Art Archive built from the album's MusicBrainz release
+  (or release group) id, and only from one shaped as a MusicBrainz id. It
+  tells Discord, and whoever sees your status, which album plays; it carries
+  nothing about your server or your account. Discord fetches it; the app
+  never contacts the archive.
 - Log output from other libraries is held to warnings, since their debug lines
   can carry a stream URL and its token.
 - `unsafe` code is forbidden in every crate of the workspace.
