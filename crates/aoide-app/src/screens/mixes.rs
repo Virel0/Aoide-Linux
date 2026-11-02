@@ -1,5 +1,5 @@
 //! Mixes: describe a mood, get a queue. The work is the app's
-//! (`crate::mixes`, which holds the key); this screen holds the
+//! (`crate::mixes`, with the server's AI); this screen holds the
 //! description and the mix while it is looked at, played, kept or thrown
 //! away.
 
@@ -12,6 +12,7 @@ use crate::actions::PlayRequest;
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
 use crate::mixes::{Mix, Request};
+use crate::smart::Ai;
 use crate::theme;
 use crate::widgets::{self, ListStyle};
 
@@ -37,6 +38,23 @@ pub enum Message {
     Save,
     Saved(Result<String, String>),
     Discard,
+}
+
+/// Why Mixes aren't offered, and what would change that.
+fn unavailable(ai: Ai) -> Option<(&'static str, &'static str)> {
+    match ai {
+        Ai::Offered => None,
+        Ai::Off => Some((
+            "Your server has AI features off.",
+            "Mixes turn your description into rules with your server's AI; your library and \
+             your listening history pick the songs. Whoever runs the server can turn it on.",
+        )),
+        Ai::Missing => Some((
+            "Your server doesn't have AI mixes yet.",
+            "They come with a newer Melete. Once your server runs one, Mixes turn on the next \
+             time Aoide starts.",
+        )),
+    }
 }
 
 pub fn open() -> (State, Task<App>) {
@@ -122,24 +140,9 @@ impl State {
         let key = view.key;
         let send = move |m: Message| App::Page(key, PageMsg::Mixes(m));
         let mut body = column![widgets::title_bar("Mixes", view.can_go_back)].spacing(20);
-        if !view.smart_search {
+        if let Some((said, why)) = unavailable(view.ai) {
             return widgets::page(
-                body.push(
-                    column![
-                        text("Mixes need an OpenRouter key."),
-                        widgets::secondary(
-                            "A language model turns your description into rules; your library \
-                             and your listening history pick the songs. Add a key in Settings → \
-                             Smart search."
-                        )
-                        .size(13),
-                        button(text("Open settings").size(13))
-                            .style(theme::tonal)
-                            .padding([6, 12])
-                            .on_press(App::OpenSettings(super::settings::Category::SmartSearch,)),
-                    ]
-                    .spacing(10),
-                ),
+                body.push(column![text(said), widgets::secondary(why).size(13)].spacing(10)),
             );
         }
         let busy = self.is_loading();
@@ -166,8 +169,9 @@ impl State {
         );
         body = body.push(
             widgets::secondary(
-                "Only your description and your library's genre names go to OpenRouter. \
-                 Artists and albums you name are looked up on your server.",
+                "Your server's AI turns your description into rules, sending it and your \
+                 library's genre names to OpenRouter. Artists and albums you name are looked \
+                 up on your server.",
             )
             .size(12),
         );
@@ -301,6 +305,16 @@ mod tests {
             rejected: Vec::new(),
             missed: None,
         })
+    }
+
+    #[test]
+    fn mixes_say_why_the_server_doesnt_offer_them() {
+        assert_eq!(unavailable(Ai::Offered), None);
+        let (off, _) = unavailable(Ai::Off).unwrap();
+        assert_eq!(off, "Your server has AI features off.");
+        let (missing, why) = unavailable(Ai::Missing).unwrap();
+        assert_eq!(missing, "Your server doesn't have AI mixes yet.");
+        assert!(why.contains("newer Melete"), "{why}");
     }
 
     #[test]

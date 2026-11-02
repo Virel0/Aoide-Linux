@@ -1,5 +1,6 @@
-//! Mixes from a mood: a description goes to the model (`describe_mix`),
-//! which answers with smart rules and the names the description mentioned;
+//! Mixes from a mood: a description goes to the server's AI
+//! (`music_mix`), which answers with smart rules and the names the
+//! description mentioned; the rules are checked again here (`read_mix`), and
 //! the library and the listening history then pick the tracks.
 //!
 //! - **Names** ("Mara Vey", "Night Shift") are searched in Melete: the
@@ -22,21 +23,18 @@
 //! mix that comes back empty.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
-use aoide_integrations::openrouter::OpenRouter;
-use aoide_integrations::openrouter::mix_plan::{
+use aoide_integrations::music_ai::mix_plan::{
     MixPlan, describe_plan, described_genres, match_genres, missed_names_message, names_first,
     order_candidates, wants_rule_candidates,
 };
-use aoide_integrations::openrouter::smart_rules::{Match, SmartRules};
+use aoide_integrations::music_ai::smart_rules::{Match, SmartRules, read_mix};
 use aoide_melete::MeleteClient;
 use iced::Task;
 
 use crate::app::{App, Message as AppMessage};
-use crate::credentials::CredentialStore;
 use crate::playback::tracks::TrackMeta;
-use crate::smart::{Failure, read_key};
+use crate::smart::Failure;
 use crate::song_filter::SongFilter;
 use crate::store_worker::StoreHandle;
 
@@ -76,7 +74,8 @@ impl Mix {
     }
 }
 
-/// Requests from the Mixes screen, handled by the app (it holds the key).
+/// Requests from the Mixes screen, handled by the app (it holds the
+/// session).
 #[derive(Debug, Clone)]
 pub enum Request {
     Compose { page: u64, description: String },
@@ -120,26 +119,19 @@ async fn name_tracks(
     Ok(tracks)
 }
 
-/// A description, through the model, the library and the history, to a mix.
+/// A description, through the server's AI, the library and the history, to
+/// a mix.
 pub async fn compose(
-    openrouter: OpenRouter,
-    keyring: Arc<dyn CredentialStore>,
-    model: String,
     client: MeleteClient,
     store: StoreHandle,
     description: String,
 ) -> Result<Mix, Failure> {
-    let key = read_key(keyring).await.map_err(Failure::Other)?;
+    let answer = client.music_mix(&description).await.map_err(Failure::Ai)?;
+    let outcome = read_mix(&answer.names, answer.rules.as_ref(), &answer.rejected);
     let filters = crate::song_filter::library_filters(&client)
         .await
         .map_err(Failure::Server)?;
     let library_genres = filters.genres;
-    let outcome = openrouter
-        .describe_mix(&key, &model, &description, &library_genres)
-        .await;
-    if let Some(reason) = outcome.reason {
-        return Err(Failure::Other(reason));
-    }
     let genres = match_genres(&described_genres(outcome.rules.as_ref()), &library_genres);
     let plan = MixPlan {
         genres: genres.clone(),
@@ -341,37 +333,20 @@ impl App {
             return Task::none();
         };
         let asked = description.clone();
-        let openrouter = match crate::smart::client() {
-            Ok(client) => client,
-            Err(error) => {
-                return Task::done(AppMessage::Page(
-                    page,
-                    PageMsg::Mixes(M::Composed(asked, Err(error.into()))),
-                ));
-            }
-        };
         Task::perform(
             compose(
-                openrouter,
-                Arc::clone(&self.keyring),
-                self.config.system.smart_search.model().to_owned(),
                 signed.connection.client.clone(),
                 self.store.clone(),
                 description,
             ),
-            move |result| match result {
-                Err(Failure::Server(aoide_melete::Error::Unauthorized)) => {
-                    AppMessage::TokenRejected
-                }
-                result => AppMessage::Page(
-                    page,
-                    PageMsg::Mixes(M::Composed(
-                        asked.clone(),
-                        result.map(Box::new).map_err(crate::failure::Failure::from),
-                    )),
-                ),
-            },
+            std::convert::identity,
         )
+        .then(move |result| {
+            let asked = asked.clone();
+            crate::smart::deliver(result.map(Box::new), move |result| {
+                AppMessage::Page(page, PageMsg::Mixes(M::Composed(asked, result)))
+            })
+        })
     }
 
     /// Keeps a mix as a smart playlist named after its description.

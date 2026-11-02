@@ -379,8 +379,7 @@ fn file_section(app: &App) -> Element<'_, AppMessage> {
         "Settings file",
         file_rows,
         "Export writes these settings to a JSON file, to keep or to bring to another computer; \
-         Import reads one back. The file never holds your server, account, password, token or \
-         OpenRouter key.",
+         Import reads one back. The file never holds your server, account, password or token.",
     )
 }
 
@@ -466,7 +465,6 @@ mod tests {
         config.settings.lyric_offset_ms = 250;
         config.system.tray.show = true;
         config.system.discord.enabled = true;
-        config.system.smart_search.model = "test/model".into();
         config.system.log_level = LogLevel::Info;
         config.system.updates.state.last_checked = Some(1_700_000_000);
         config.system.updates.dismissed = Some("0.2.0".into());
@@ -501,9 +499,16 @@ mod tests {
         assert_eq!(value[FORMAT_KEY], 1);
         assert_eq!(value["settings"]["crossfade"], true);
         assert_eq!(value["system"]["tray"]["show"], true);
-        assert_eq!(value["system"]["smartSearch"]["model"], "test/model");
         assert_eq!(value["system"]["logLevel"], "info");
         assert_eq!(value["system"]["updates"]["check"], true);
+    }
+
+    #[test]
+    fn an_export_from_before_the_servers_ai_still_imports() {
+        let older = r#"{"aoideSettings":1,"settings":{"crossfade":true},"system":{"smartSearch":{"model":"openai/gpt-4o-mini"},"logLevel":"info"}}"#;
+        let imported = import(&Config::default(), older).unwrap();
+        assert!(imported.settings.crossfade);
+        assert_eq!(imported.system.log_level, LogLevel::Info);
     }
 
     #[test]
@@ -521,7 +526,6 @@ mod tests {
         assert_eq!(imported.settings, source.settings);
         assert_eq!(imported.system.tray, source.system.tray);
         assert_eq!(imported.system.discord, source.system.discord);
-        assert_eq!(imported.system.smart_search, source.system.smart_search);
         assert_eq!(imported.system.log_level, LogLevel::Info);
         assert_eq!(imported.sound.equalizer, source.sound.equalizer);
         assert_eq!(imported.interface, source.interface);

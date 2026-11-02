@@ -61,8 +61,7 @@
   <!-- social-info "intense" is "shares information identifiable to the
        user": Discord Rich Presence, off unless turned on, shows what is
        playing on the user's Discord profile. Without it the app would be
-       "mild" (online APIs: GitHub for the latest release
-       and, once given a key, OpenRouter). The rating says what the app can
+       "mild" (online APIs: GitHub for the latest release). The rating says what the app can
        do, not what it does by default. GPL-3.0 is the app's; OFL-1.1 is the
        bundled Inter font's. -->
   <content_rating type="oars-1.1">

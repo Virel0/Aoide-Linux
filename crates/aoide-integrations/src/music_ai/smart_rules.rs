@@ -1,5 +1,5 @@
-//! Smart playlist rules in the phone's own format, and turning a mood into
-//! them.
+//! Smart playlist rules in the phone's own format, and checking the ones the
+//! server's AI made from a mood.
 //!
 //! A mix is a rule set: describing a mood produces *rules*, the library and
 //! the listening history select the tracks, and the result can be kept as a
@@ -16,7 +16,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::json::{extract_object, whole_number};
+use super::json::whole_number;
 
 /// What a rule tests. Text fields take text, number fields whole numbers,
 /// date fields a time, and `liked` true or false; each kind has its own
@@ -371,7 +371,7 @@ fn problem(field: RuleField, op: &str, value: &Value) -> Option<String> {
     }
 }
 
-/// A model's rules, read.
+/// A mix's rules, read.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParsedRules {
     /// Artists, albums, bands, games, films or shows the description named,
@@ -380,7 +380,7 @@ pub struct ParsedRules {
     pub names: Vec<String>,
     /// Rules that were dropped, and why. Shown rather than swallowed.
     pub rejected: Vec<String>,
-    /// The rule set, with only the legal rules; `None` when the reply had no
+    /// The rule set, with only the legal rules; `None` when there was no
     /// rule set to read.
     pub rules: Option<SmartRules>,
 }
@@ -388,19 +388,15 @@ pub struct ParsedRules {
 /// A name shorter than this is punctuation or a stray letter.
 const MIN_NAME_LENGTH: usize = 2;
 
-/// Strings only, trimmed, at least two characters, each once. Anything else
-/// in the field is ignored: a stray number is no reason to lose the mix.
-fn read_names(value: Option<&Value>) -> Vec<String> {
-    let mut names: Vec<String> = Vec::new();
-    for candidate in value.and_then(Value::as_array).into_iter().flatten() {
-        let Some(name) = candidate.as_str().map(str::trim) else {
-            continue;
-        };
-        if name.chars().count() >= MIN_NAME_LENGTH && !names.iter().any(|n| n == name) {
-            names.push(name.to_owned());
+/// Trimmed, at least two characters, each once.
+fn read_names(names: &[String]) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for name in names.iter().map(|name| name.trim()) {
+        if name.chars().count() >= MIN_NAME_LENGTH && !kept.iter().any(|n| n == name) {
+            kept.push(name.to_owned());
         }
     }
-    names
+    kept
 }
 
 fn describe(value: Option<&Value>) -> String {
@@ -411,134 +407,81 @@ fn describe(value: Option<&Value>) -> String {
     }
 }
 
-/// Reads a model's reply into rules, keeping only what both apps evaluate.
+/// A mix as the server sent it (`names`, the rule set in the phone's format,
+/// and the rules it `rejected`), checked again here: the server's checks are
+/// a server's, and these rules run on this computer. Only the rules both
+/// apps evaluate are kept; each one left out joins the server's reasons.
+pub fn read_mix(names: &[String], rule_set: Option<&Value>, rejected: &[String]) -> ParsedRules {
+    let mut rejected = rejected.to_vec();
+    let rules = rule_set.and_then(|set| read_rule_set(set, &mut rejected));
+    ParsedRules {
+        names: read_names(names),
+        rejected,
+        rules,
+    }
+}
+
+/// The rule set with its legal rules, the reason for each other one added to
+/// `rejected`.
 ///
 /// `any` of nothing can only ever be empty, and an always-empty playlist is
 /// indistinguishable from a broken one, so it is refused, as the phone
 /// refuses it. `all` of nothing is every track, which is a real playlist.
-pub fn parse_rules(reply: &str) -> ParsedRules {
-    let Some(parsed) = extract_object(reply) else {
-        return ParsedRules {
-            names: Vec::new(),
-            rejected: vec!["The model did not return rules.".into()],
-            rules: None,
-        };
+fn read_rule_set(set: &Value, rejected: &mut Vec<String>) -> Option<SmartRules> {
+    let Some(set) = set.as_object() else {
+        rejected.push("The server's rules couldn't be read.".into());
+        return None;
     };
-    // Read before the rules are judged: a reply that names a band and gets
-    // its one rule wrong still names the band.
-    let names = read_names(parsed.get("names"));
-
-    let mut rejected = Vec::new();
-    let mut rules = Vec::new();
-    for candidate in parsed
+    let rules: Vec<SmartRule> = set
         .get("rules")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-    {
-        let raw_field = candidate.get("field");
-        let Some(field) = raw_field.and_then(Value::as_str).and_then(RuleField::parse) else {
-            rejected.push(format!("Unknown field {}", describe(raw_field)));
-            continue;
-        };
-        let op_text = describe(candidate.get("op"));
-        let value = candidate.get("value").cloned().unwrap_or(Value::Null);
-        if let Some(reason) = problem(field, &op_text, &value) {
-            rejected.push(reason);
-            continue;
-        }
-        let Some(op) = RuleOperator::parse(&op_text) else {
-            continue;
-        };
-        let value = match &value {
-            Value::Bool(b) => RuleValue::Flag(*b),
-            Value::String(s) => RuleValue::Text(s.clone()),
-            other => match whole_number(other) {
-                Some(n) => RuleValue::Number(n),
-                None => continue,
-            },
-        };
-        rules.push(SmartRule { field, op, value });
-    }
-
-    let match_ = if parsed.get("match").and_then(Value::as_str) == Some("any") {
+        .filter_map(|candidate| read_rule(candidate, rejected))
+        .collect();
+    let match_ = if set.get("match").and_then(Value::as_str) == Some("any") {
         Match::Any
     } else {
         Match::All
     };
     if match_ == Match::Any && rules.is_empty() {
         rejected.push("No usable rules.".into());
-        return ParsedRules {
-            names,
-            rejected,
-            rules: None,
-        };
+        return None;
     }
-    let limit = parsed
+    // Null, the server's "no cap", is no limit too.
+    let limit = set
         .get("limit")
         .and_then(whole_number)
         .filter(|&n| n > 0)
         .and_then(|n| u32::try_from(n).ok());
-
-    ParsedRules {
-        names,
-        rejected,
-        rules: Some(SmartRules {
-            limit,
-            match_,
-            rules,
-            sort: None,
-        }),
-    }
+    Some(SmartRules {
+        limit,
+        match_,
+        rules,
+        sort: None,
+    })
 }
 
-/// The instructions for turning a mood into rules. The library's genres go
-/// in for the same reason they do in search; the `names` paragraph is the
-/// phone's (`MixComposer.swift`), near enough word for word.
-pub fn build_mix_prompt(description: &str, library_genres: &[String]) -> String {
-    let genres = if library_genres.is_empty() {
-        "(none reported)".to_owned()
-    } else {
-        library_genres.join(", ")
+/// One rule, or `None` with the reason added to `rejected`.
+fn read_rule(candidate: &Value, rejected: &mut Vec<String>) -> Option<SmartRule> {
+    let raw_field = candidate.get("field");
+    let Some(field) = raw_field.and_then(Value::as_str).and_then(RuleField::parse) else {
+        rejected.push(format!("Unknown field {}", describe(raw_field)));
+        return None;
     };
-    [
-        "You turn a description of a mood into smart playlist rules.",
-        "You never choose songs. The rules select them.",
-        "",
-        "Reply with JSON only:",
-        r#"{"match":"all"|"any","limit":number,"rules":[{"field":…,"op":…,"value":…}],"names":[string]}"#,
-        "",
-        "When the description names a particular artist, album, band, game, film or",
-        "show, put that name in \"names\" exactly as written; the library will be",
-        "searched for it. Then ALSO describe the mood that thing implies, using",
-        "genres from the list: a war game or an action film implies driving genres",
-        "(rock, metal, electronic, soundtrack); a study session, a farming or",
-        "building game implies calm ones (lo-fi, ambient, jazz, classical, folk).",
-        "Someone naming a game wants music that fits playing it, not only its",
-        "soundtrack. Prefer two or three genres to one. \"names\" is [] when the",
-        "description names nothing.",
-        "",
-        "Fields and the operators each accepts:",
-        "  text  — title, artist, album, album_artist, genre",
-        "          is, isNot, contains, doesNotContain, beginsWith",
-        "  number — year, duration_ms, play_count, skip_count",
-        "          is, isNot, greaterThan, lessThan",
-        "  date  — last_played, first_played",
-        "          before, after, inTheLast, notInTheLast; value is a span like \"-30d\"",
-        "  flag  — liked; is, isNot; value is true or false",
-        "",
-        "Use the listening history — play_count, skip_count, last_played — to express",
-        "mood: \"something I have not heard in ages\" is last_played notInTheLast \"-6m\";",
-        "\"my favourites\" is liked is true or play_count greaterThan a few.",
-        "",
-        "genre values MUST come from this library, spelled exactly as given.",
-        "Set limit to a sensible mix length, usually 25 to 50.",
-        "",
-        &format!("This library's genres: {genres}"),
-        "",
-        &format!("Mood: {description}"),
-    ]
-    .join("\n")
+    let op_text = describe(candidate.get("op"));
+    let value = candidate.get("value").cloned().unwrap_or(Value::Null);
+    if let Some(reason) = problem(field, &op_text, &value) {
+        rejected.push(reason);
+        return None;
+    }
+    let op = RuleOperator::parse(&op_text)?;
+    let value = match &value {
+        Value::Bool(b) => RuleValue::Flag(*b),
+        Value::String(s) => RuleValue::Text(s.clone()),
+        other => RuleValue::Number(whole_number(other)?),
+    };
+    Some(SmartRule { field, op, value })
 }
 
 #[cfg(test)]
@@ -632,26 +575,66 @@ mod tests {
         }
     }
 
-    // Reading a model's rules.
+    // Reading the server's rules.
+
+    fn read(set: Value) -> ParsedRules {
+        read_mix(&[], Some(&set), &[])
+    }
+
+    fn named(names: &[&str], set: Value) -> ParsedRules {
+        let names: Vec<String> = names.iter().map(|n| (*n).to_owned()).collect();
+        read_mix(&names, Some(&set), &[])
+    }
 
     #[test]
     fn keeps_the_rules_that_work_and_says_why_it_dropped_the_rest() {
-        let parsed = parse_rules(
-            &json!({"match": "all", "rules": [
-                {"field": "genre", "op": "is", "value": "Jazz"},
-                {"field": "title", "op": "inTheLast", "value": "-30d"},
-            ]})
-            .to_string(),
-        );
+        let parsed = read(json!({"match": "all", "rules": [
+            {"field": "genre", "op": "is", "value": "Jazz"},
+            {"field": "title", "op": "inTheLast", "value": "-30d"},
+        ]}));
         assert_eq!(parsed.rules.unwrap().rules.len(), 1);
         assert_eq!(parsed.rejected.len(), 1);
     }
 
     #[test]
+    fn the_servers_reasons_come_first_then_the_apps_own() {
+        let set = json!({"match": "all", "limit": null, "rules": [
+            {"field": "duration_ms", "op": "beginsWith", "value": 3},
+        ]});
+        let parsed = read_mix(&[], Some(&set), &["mood is not a field".to_owned()]);
+        assert_eq!(
+            parsed.rejected,
+            [
+                "mood is not a field",
+                "beginsWith does not apply to duration_ms"
+            ]
+        );
+        assert!(parsed.rules.unwrap().rules.is_empty());
+    }
+
+    #[test]
+    fn no_rule_set_keeps_the_servers_reasons() {
+        let parsed = read_mix(
+            &["Helldivers 2".to_owned()],
+            None,
+            &["No usable rules.".to_owned()],
+        );
+        assert_eq!(parsed.rules, None);
+        assert_eq!(parsed.rejected, ["No usable rules."]);
+        assert_eq!(parsed.names, ["Helldivers 2"]);
+    }
+
+    #[test]
+    fn a_rule_set_that_is_not_an_object_is_refused() {
+        let parsed = read(json!([{"field": "genre", "op": "is", "value": "Jazz"}]));
+        assert_eq!(parsed.rules, None);
+        assert_eq!(parsed.rejected, ["The server's rules couldn't be read."]);
+    }
+
+    #[test]
     fn accepts_the_camel_case_spellings_the_phone_also_accepts() {
-        let parsed = parse_rules(
-            &json!({"match": "all", "rules": [{"field": "playCount", "op": "greaterThan", "value": 3}]})
-                .to_string(),
+        let parsed = read(
+            json!({"match": "all", "rules": [{"field": "playCount", "op": "greaterThan", "value": 3}]}),
         );
         let rules = parsed.rules.unwrap();
         assert_eq!(rules.rules[0].field, RuleField::PlayCount);
@@ -664,61 +647,40 @@ mod tests {
 
     #[test]
     fn refuses_any_with_no_usable_rules() {
-        let parsed = parse_rules(&json!({"match": "any", "rules": []}).to_string());
+        let parsed = read(json!({"match": "any", "rules": []}));
         assert_eq!(parsed.rules, None);
         assert_eq!(parsed.rejected, ["No usable rules."]);
     }
 
     #[test]
     fn allows_all_with_no_rules_which_is_the_whole_library() {
-        let parsed = parse_rules(&json!({"limit": 25, "match": "all", "rules": []}).to_string());
+        let parsed = read(json!({"limit": 25, "match": "all", "rules": []}));
         assert_eq!(parsed.rules.unwrap().limit, Some(25));
     }
 
     #[test]
     fn ignores_a_limit_that_is_not_a_positive_whole_number() {
-        for limit in [json!(0), json!(2.5), json!(-3), json!("25")] {
-            let parsed =
-                parse_rules(&json!({"limit": limit, "match": "all", "rules": []}).to_string());
+        for limit in [json!(null), json!(0), json!(2.5), json!(-3), json!("25")] {
+            let parsed = read(json!({"limit": limit, "match": "all", "rules": []}));
             assert_eq!(parsed.rules.unwrap().limit, None, "{limit}");
         }
     }
 
     #[test]
-    fn finds_json_wrapped_in_prose_or_a_fence() {
-        let body =
-            json!({"match": "all", "rules": [{"field": "genre", "op": "is", "value": "Jazz"}]})
-                .to_string();
+    fn no_limit_is_left_out_of_the_stored_rules() {
+        let rules = read(json!({"limit": null, "match": "all", "rules": []}))
+            .rules
+            .unwrap();
         assert_eq!(
-            parse_rules(&format!("```json\n{body}\n```"))
-                .rules
-                .unwrap()
-                .rules
-                .len(),
-            1
+            serde_json::to_string(&rules).unwrap(),
+            r#"{"match":"all","rules":[]}"#
         );
-        assert_eq!(
-            parse_rules(&format!("Here you go:\n{body}"))
-                .rules
-                .unwrap()
-                .rules
-                .len(),
-            1
-        );
-    }
-
-    #[test]
-    fn gives_up_rather_than_guessing_when_there_is_no_json() {
-        let parsed = parse_rules("I cannot help with that.");
-        assert_eq!(parsed.rules, None);
-        assert_eq!(parsed.rejected, ["The model did not return rules."]);
     }
 
     #[test]
     fn unknown_and_missing_fields_are_named_in_the_refusal() {
-        let parsed = parse_rules(
-            &json!({"match": "all", "rules": [{"field": "mood", "op": "is", "value": "x"}, {"op": "is"}, 7]})
-                .to_string(),
+        let parsed = read(
+            json!({"match": "all", "rules": [{"field": "mood", "op": "is", "value": "x"}, {"op": "is"}, 7]}),
         );
         assert_eq!(
             parsed.rejected,
@@ -734,100 +696,33 @@ mod tests {
 
     #[test]
     fn names_come_back_spelled_as_the_model_wrote_them() {
-        let parsed = parse_rules(
-            &json!({"match": "all", "names": ["Helldivers 2", "Nine Inch Nails"], "rules": []})
-                .to_string(),
+        let parsed = named(
+            &["Helldivers 2", "Nine Inch Nails"],
+            json!({"match": "all", "rules": []}),
         );
         assert_eq!(parsed.names, ["Helldivers 2", "Nine Inch Nails"]);
     }
 
     #[test]
-    fn names_are_an_empty_list_when_left_out_or_without_json() {
-        assert!(
-            parse_rules(&json!({"match": "all", "rules": []}).to_string())
-                .names
-                .is_empty()
-        );
-        assert!(parse_rules("no").names.is_empty());
+    fn names_are_an_empty_list_when_there_are_none() {
+        assert!(read(json!({"match": "all", "rules": []})).names.is_empty());
+        assert!(read_mix(&[], None, &[]).names.is_empty());
     }
 
     #[test]
     fn names_survive_the_rules_being_refused() {
-        let parsed = parse_rules(
-            &json!({"match": "any", "names": ["Helldivers 2"], "rules": []}).to_string(),
-        );
+        let parsed = named(&["Helldivers 2"], json!({"match": "any", "rules": []}));
         assert_eq!(parsed.rules, None);
         assert_eq!(parsed.names, ["Helldivers 2"]);
     }
 
     #[test]
-    fn names_drop_blanks_single_characters_repeats_and_non_strings() {
-        let parsed = parse_rules(
-            &json!({"match": "all", "names": [" Muse ", "", "x", 7, null, "Muse"], "rules": []})
-                .to_string(),
+    fn names_drop_blanks_single_characters_and_repeats() {
+        let parsed = named(
+            &[" Muse ", "", "x", "Muse"],
+            json!({"match": "all", "rules": []}),
         );
         assert_eq!(parsed.names, ["Muse"]);
-    }
-
-    #[test]
-    fn names_are_an_empty_list_when_the_field_is_not_a_list() {
-        let parsed =
-            parse_rules(&json!({"match": "all", "names": "Muse", "rules": []}).to_string());
-        assert!(parsed.names.is_empty());
-    }
-
-    // The mix prompt.
-
-    #[test]
-    fn the_mix_prompt_carries_the_librarys_own_genres() {
-        assert!(
-            build_mix_prompt("something calm", &["Jazz".into(), "Ambient".into()])
-                .contains("Jazz, Ambient")
-        );
-    }
-
-    #[test]
-    fn the_mix_prompt_tells_the_model_to_use_the_listening_history() {
-        let prompt = build_mix_prompt("something calm", &[]);
-        assert!(prompt.contains("play_count"));
-        assert!(prompt.contains("last_played"));
-    }
-
-    #[test]
-    fn the_mix_prompt_says_the_rules_select_not_the_model() {
-        assert!(build_mix_prompt("x", &[]).contains("never choose songs"));
-    }
-
-    #[test]
-    fn the_mix_prompt_asks_for_names_spelled_as_written() {
-        let prompt = build_mix_prompt("Helldivers 2 session music", &[]);
-        assert!(prompt.contains(r#""names":[string]"#));
-        assert!(prompt.contains("artist, album, band, game, film or"));
-        assert!(prompt.contains("exactly as written"));
-    }
-
-    #[test]
-    fn the_mix_prompt_asks_for_the_mood_a_named_thing_implies() {
-        let prompt = build_mix_prompt("x", &["Rock".into()]);
-        for phrase in [
-            "ALSO describe the mood that thing implies",
-            "war game or an action film implies driving genres",
-            "(rock, metal, electronic, soundtrack)",
-            "study session, a farming or",
-            "building game implies calm ones",
-            "(lo-fi, ambient, jazz, classical, folk)",
-            "wants music that fits playing it, not only its",
-            "Prefer two or three genres to one",
-        ] {
-            assert!(prompt.contains(phrase), "{phrase}");
-        }
-    }
-
-    #[test]
-    fn the_mix_prompt_varies_only_with_the_genres_and_the_mood() {
-        let a = build_mix_prompt("calm", &["Jazz".into()]);
-        let b = build_mix_prompt("calm", &["Jazz".into(), "Folk".into()]);
-        assert_eq!(b.replace("Jazz, Folk", "Jazz"), a);
     }
 
     // Rules the phone produces: the cross-app contract.
@@ -843,9 +738,13 @@ mod tests {
         r#"{"field":"liked","op":"is","value":true}]}"#
     );
 
+    fn from_the_phone() -> ParsedRules {
+        read(serde_json::from_str(FROM_THE_PHONE).unwrap())
+    }
+
     #[test]
     fn parses_the_phones_rules_without_dropping_one() {
-        let parsed = parse_rules(FROM_THE_PHONE);
+        let parsed = from_the_phone();
         assert!(parsed.rejected.is_empty());
         let rules = parsed.rules.unwrap();
         assert_eq!(rules.rules.len(), 5);
@@ -855,7 +754,7 @@ mod tests {
 
     #[test]
     fn keeps_every_value_at_the_type_the_phone_encoded_it_as() {
-        let rules = parse_rules(FROM_THE_PHONE).rules.unwrap().rules;
+        let rules = from_the_phone().rules.unwrap().rules;
         let value =
             |f: &dyn Fn(&SmartRule) -> bool| rules.iter().find(|r| f(r)).unwrap().value.clone();
         assert_eq!(
@@ -878,7 +777,7 @@ mod tests {
 
     #[test]
     fn writes_the_phones_rules_back_byte_for_byte() {
-        let rules = parse_rules(FROM_THE_PHONE).rules.unwrap();
+        let rules = from_the_phone().rules.unwrap();
         assert_eq!(serde_json::to_string(&rules).unwrap(), FROM_THE_PHONE);
         let back: SmartRules = serde_json::from_str(FROM_THE_PHONE).unwrap();
         assert_eq!(back, rules);

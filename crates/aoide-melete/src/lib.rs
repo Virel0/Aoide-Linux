@@ -33,11 +33,15 @@
 //! - **Lyrics:** [`MeleteClient::lyrics`], from a file beside the track, its
 //!   tags, or LRCLIB through the server; [`MeleteClient::lyrics_with`] adds
 //!   the server's translation and pronunciation of each line.
+//! - **Music by description:** [`MeleteClient::music_filters`] and
+//!   [`MeleteClient::music_mix`], through the server's AI;
+//!   [`MeleteClient::ai_enabled`] says whether it's on.
 
 #![warn(missing_docs)]
 #![warn(clippy::missing_errors_doc)]
 
 mod address;
+mod ai;
 mod auth;
 mod client;
 mod details;
@@ -54,6 +58,7 @@ mod request_imports;
 mod requests;
 
 pub use address::ServerAddress;
+pub use ai::{MusicFilters, MusicMix, MusicOrdering};
 pub use auth::{Credentials, Device, QuickConnectCode, ServerInfo, UserName};
 pub use client::MeleteClient;
 pub use details::ItemDetails;

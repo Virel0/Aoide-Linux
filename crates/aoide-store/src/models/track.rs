@@ -159,7 +159,7 @@ impl ContentKey {
 
 /// Diacritic- and case-insensitive folding, then trimmed, then one pass collapsing
 /// double spaces — the phone's order of operations.
-fn normalise(text: &str) -> String {
+pub fn normalise(text: &str) -> String {
     let folded: String = text
         .nfd()
         .filter(|c| !is_combining_mark(*c))

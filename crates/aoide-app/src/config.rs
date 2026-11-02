@@ -343,6 +343,21 @@ mod tests {
     }
 
     #[test]
+    fn a_file_from_before_the_servers_ai_still_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        fs::write(
+            &path,
+            br#"{"deviceId":"d","settings":{"crossfade":true},"system":{"tray":{"show":true},"smartSearch":{"model":"openai/gpt-4o-mini"}}}"#,
+        )
+        .unwrap();
+        let config = Config::load(&path);
+        assert_eq!(config.device_id, "d");
+        assert!(config.settings.crossfade);
+        assert!(config.system.tray.show);
+    }
+
+    #[test]
     fn out_of_range_values_are_pulled_back() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");

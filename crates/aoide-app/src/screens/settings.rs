@@ -39,7 +39,6 @@ pub enum Category {
     Sound,
     Lyrics,
     Infinity,
-    SmartSearch,
     Sync,
     Server,
     System,
@@ -47,13 +46,12 @@ pub enum Category {
 }
 
 impl Category {
-    pub const ALL: [Category; 10] = [
+    pub const ALL: [Category; 9] = [
         Category::General,
         Category::Playback,
         Category::Sound,
         Category::Lyrics,
         Category::Infinity,
-        Category::SmartSearch,
         Category::Sync,
         Category::Server,
         Category::System,
@@ -67,7 +65,6 @@ impl Category {
             Category::Sound => "Sound",
             Category::Lyrics => "Lyrics",
             Category::Infinity => "Infinity",
-            Category::SmartSearch => "Smart search",
             Category::Sync => "Sync",
             Category::Server => "Server",
             Category::System => "System",
@@ -229,11 +226,6 @@ pub fn view<'a>(
         ]
         .spacing(24)
         .into(),
-        Category::SmartSearch => crate::smart::settings_section(
-            &app.smart,
-            &app.config.system.smart_search,
-            app.failure_details,
-        ),
         Category::Sync => sync_section(sync),
         Category::Server => server_section(),
         Category::System => crate::system::settings_sections(app),

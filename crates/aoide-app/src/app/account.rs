@@ -75,6 +75,8 @@ pub(crate) struct Signed {
     pub info: Option<crate::info::Sheet>,
     /// Listening together with other devices.
     pub together: crate::together::Together,
+    /// Whether Search by description and Mixes are offered: the server's AI.
+    pub ai: crate::smart::Ai,
 }
 
 impl Signed {
@@ -117,6 +119,7 @@ impl Signed {
             discover: Default::default(),
             info: None,
             together: Default::default(),
+            ai: Default::default(),
         }
     }
 }
@@ -362,9 +365,10 @@ impl App {
         });
         let handoff =
             crate::handoff::Handoff::open(self.paths.as_ref(), &connection.account.server);
+        let client = connection.client.clone();
         self.session = Some(Signed::new(connection, sidecar, sync, handoff));
 
-        let mut tasks = Vec::new();
+        let mut tasks = vec![crate::smart::ask(client)];
         for effect in effects {
             match effect {
                 // The sync and everything that reads the store wait for the

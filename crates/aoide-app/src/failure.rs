@@ -103,24 +103,30 @@ pub fn sidecar_at(error: &aoide_sidecar::SidecarError, server: Option<&str>) -> 
     }
 }
 
-/// OpenRouter's error in words; its own text (the transport's, or what it
-/// said when it refused) goes to the details.
-pub fn openrouter(error: &aoide_integrations::openrouter::OpenRouterError) -> Failure {
-    use aoide_integrations::openrouter::OpenRouterError as E;
+/// The server's AI refusing or failing, in words; the server's own words go
+/// to the details.
+pub fn ai(error: &Error) -> Failure {
     let summary = match error {
-        E::Unreachable(_) => "Can't reach OpenRouter. Check this computer is online.",
-        E::Timeout => "OpenRouter didn't answer in time. Try again in a moment.",
-        E::Refused { .. } => "OpenRouter turned the request down. Check your key and credit.",
-        E::UnfamiliarReply => "OpenRouter sent an answer Aoide couldn't read.",
+        Error::Http { status: 503, .. } => "Your server has AI features off.",
+        Error::NotFound { .. } => "Your server doesn't have AI search and mixes yet.",
+        Error::Http { status: 400, .. } => "Describe it in 300 characters or fewer.",
+        Error::Http { status: 429, .. } => {
+            "Your server's AI is busy, or you've made this hour's 30 AI searches. Try again later."
+        }
+        Error::Http { status: 502, .. } => {
+            "Your server couldn't get an answer from its AI service. Try again later."
+        }
+        other => return describe(other),
     };
     Failure::new(summary, Some(error.to_string()))
 }
 
-/// A search or mix by description: the server's error, or OpenRouter's
-/// already in words.
+/// A search or mix by description: the server's AI's error, the server's,
+/// or the app's own words.
 impl From<crate::smart::Failure> for Failure {
     fn from(failure: crate::smart::Failure) -> Self {
         match failure {
+            crate::smart::Failure::Ai(error) => ai(&error),
             crate::smart::Failure::Server(error) => describe(&error),
             crate::smart::Failure::Other(words) => words.into(),
         }
@@ -236,6 +242,35 @@ mod tests {
             forbidden.summary,
             "Your server doesn't allow this account to do that."
         );
+    }
+
+    #[test]
+    fn the_servers_ai_refusing_is_put_in_words_without_its_status() {
+        let refused = |status| Error::Http {
+            status,
+            path: "api/v1/ai/music/mix".into(),
+            detail: Some("the server's own words".into()),
+        };
+        for (error, words) in [
+            (refused(503), "Your server has AI features off."),
+            (
+                Error::NotFound {
+                    path: "api/v1/ai/music/mix".into(),
+                },
+                "Your server doesn't have AI search and mixes yet.",
+            ),
+            (refused(400), "Describe it in 300 characters or fewer."),
+            (refused(429), "Your server's AI is busy"),
+            (refused(502), "Your server couldn't get an answer"),
+        ] {
+            let failure = ai(&error);
+            assert!(failure.summary.starts_with(words), "{}", failure.summary);
+            assert!(!failure.summary.contains("HTTP"), "{}", failure.summary);
+            assert!(!failure.summary.contains("404"), "{}", failure.summary);
+            assert_eq!(failure.details, Some(error.to_string()));
+        }
+        let unreachable = Error::Transport("refused".into());
+        assert_eq!(ai(&unreachable), describe(&unreachable));
     }
 
     #[test]

@@ -18,8 +18,6 @@ pub struct SystemSettings {
     pub tray: TraySettings,
     /// Discord Rich Presence; off unless turned on.
     pub discord: aoide_integrations::discord::PresenceOptions,
-    /// Settings → Smart Search's model (the key is in the keyring).
-    pub smart_search: crate::smart::SmartSettings,
     /// The update notice: whether to check, and what the last check found.
     pub updates: crate::updates::UpdateSettings,
     /// How much Aoide writes to standard error.
