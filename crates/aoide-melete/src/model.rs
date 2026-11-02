@@ -62,6 +62,10 @@ pub struct Item {
     pub liked: bool,
     /// A track's ISRC, when tagged.
     pub isrc: Option<String>,
+    /// An album's looping video, as a path on the server
+    /// ([`MeleteClient::motion_cover`](crate::MeleteClient::motion_cover)
+    /// reads it); `None` when it has none, and always on a track.
+    pub motion_cover: Option<String>,
 }
 
 /// The name a cover is cached under: Melete gives covers no version, and says
@@ -158,6 +162,9 @@ pub(crate) struct WireAlbum {
     pub tracks: i32,
     pub duration_seconds: Option<f64>,
     pub cover: Option<String>,
+    /// Servers before motion covers don't send it.
+    #[serde(default)]
+    pub motion_cover: Option<String>,
     #[serde(default, deserialize_with = "nullable")]
     pub genres: Vec<String>,
 }
@@ -214,6 +221,7 @@ impl From<WireTrack> for Item {
             has_cover: true,
             liked: track.liked,
             isrc: track.isrc,
+            motion_cover: None,
         }
     }
 }
@@ -240,6 +248,7 @@ impl From<WireAlbum> for Item {
             year: album.year,
             child_count: Some(album.tracks),
             has_cover: album.cover.is_some(),
+            motion_cover: album.motion_cover,
             ..Self::default()
         }
     }
@@ -363,6 +372,28 @@ mod tests {
                 id: "2".into(),
                 name: "Test Artist".into()
             }]
+        );
+    }
+
+    #[test]
+    fn an_album_carries_its_motion_cover_and_an_older_server_none() {
+        let mut json: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/album.json")).unwrap();
+        assert_eq!(
+            Item::from(WireAlbum::deserialize(&json).unwrap()).motion_cover,
+            None
+        );
+        json["motion_cover"] = "/api/v1/music/albums/2/motion".into();
+        assert_eq!(
+            Item::from(WireAlbum::deserialize(&json).unwrap())
+                .motion_cover
+                .as_deref(),
+            Some("/api/v1/music/albums/2/motion")
+        );
+        json.as_object_mut().unwrap().remove("motion_cover");
+        assert_eq!(
+            Item::from(WireAlbum::deserialize(&json).unwrap()).motion_cover,
+            None
         );
     }
 

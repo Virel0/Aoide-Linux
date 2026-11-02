@@ -19,6 +19,12 @@
 #                                    be the system's (glibc, the sound setup)
 #   libdbus-1                        on every desktop with a session bus,
 #                                    which the app needs anyway
+#   libgstreamer-1.0, libgstbase-1.0, motion covers, through iced_video_player:
+#   libgstapp-1.0, libgstvideo-1.0,   the system's GStreamer, whose plugins
+#   libglib-2.0, libgobject-2.0,      (and their H.264 decoder, gst-libav or
+#   libgio-2.0                        openh264) must match its libraries.
+#                                    Without the plugins, or with no H.264
+#                                    decoder, the still cover shows
 #
 # Everything else the window needs (Wayland or X11, xkbcommon, Vulkan or
 # EGL) is loaded at run time and must also be the system's, to match the

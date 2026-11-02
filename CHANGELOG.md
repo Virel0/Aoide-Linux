@@ -14,6 +14,10 @@ state of every feature in more detail.
 - The lyrics panel's Romaji switch is now Pronunciation, and covers Korean and
   Cyrillic too: each line in Latin letters, from Melete, with kanji read in
   context. Furigana are still worked out on this computer.
+- The app now needs GStreamer: the Arch package, the deb and the Flatpak
+  bring it. Melete's motion covers are H.264, which needs `gst-libav` on Arch
+  and `gstreamer1.0-libav` on Debian and Ubuntu; the Flatpak gets it from the
+  runtime's codecs extension.
 
 ### Removed
 - Settings → Lyrics → Find Lyrics on the Internet, and the LibreTranslate
@@ -33,6 +37,11 @@ state of every feature in more detail.
 - Requests lists those playlists with how many songs were asked for, asked
   already or not found, each song with what became of it, and Remove, which
   takes back the songs still waiting for approval.
+- Motion covers: an album with a looping video plays it, muted, over its
+  cover on the album's page and in the full-screen player, as on the iPhone.
+  Settings → General turns them off for this computer, and while your server
+  makes them from still covers, Ones your server made hides those on every
+  device. The still cover shows wherever a video can't play.
 
 ## [0.3.0] - 2026-10-31
 

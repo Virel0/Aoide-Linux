@@ -30,7 +30,7 @@ long-term branches.
 | The OpenRouter key, when set | The system keyring, write-only: the app never shows or logs them |
 | Settings, the server address, the username, the device id | `~/.config/aoide/config.json` |
 | Play history, Aoide playlists, taste flags, the sync log | `~/.local/share/aoide/aoide.sqlite` |
-| Artwork | `~/.cache/aoide` |
+| Artwork, and albums' motion covers (kept a week) | `~/.cache/aoide` |
 
 Settings → System → Export writes the settings to a file, never the account,
 the server, the device id, the token or a key. Signing out removes the token.
@@ -48,7 +48,12 @@ server, which asks LRCLIB and LibreTranslate itself when its admin has them on.
 - Redirects are followed only within the server's own scheme, host and port,
   so a redirect never carries the token to another origin.
 - Answers are capped: 64 MiB from Melete, 8 MB per artwork
-  image, 4 GiB for a stream's temporary file.
+  image, 32 MiB per motion cover, 4 GiB for a stream's temporary file.
+- A motion cover is read only from a plain path on the server's own address,
+  and kept only if it starts as an MP4 or WebM file does. It is decoded by
+  the system's GStreamer (in the Flatpak, the runtime's), so a video from the
+  server reaches GStreamer's demuxers and decoders: keep them up to date.
+  Its sound track, if it has one, is never decoded or played.
 - With `XDG_RUNTIME_DIR` set, only that directory is searched for Discord's
   socket, and the socket must be owned by the user running the app.
 - Log output from other libraries is held to warnings, since their debug lines

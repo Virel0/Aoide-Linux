@@ -22,14 +22,20 @@ pkgdesc="Aoide for Linux: a native music client for Melete with local playlists,
 arch=('x86_64')
 url="https://github.com/Virel0/Aoide-Linux"
 license=('GPL-3.0-or-later' 'OFL-1.1')
-# Linked: alsa-lib (sound), dbus (the keyring's Secret Service client).
-# Loaded at run time by the window toolkit: Wayland or X11, and xkbcommon.
-depends=('alsa-lib' 'dbus' 'gcc-libs' 'glibc'
+# Linked: alsa-lib (sound), dbus (the keyring's Secret Service client),
+# gstreamer, gst-plugins-base-libs and glib2 (motion covers, through
+# iced_video_player). Loaded at run time by the window toolkit: Wayland or X11,
+# and xkbcommon. GStreamer's plugins: gst-plugins-base for playbin and the
+# video conversion, gst-plugins-good for MP4 and WebM files and VP8/VP9.
+depends=('alsa-lib' 'dbus' 'gcc-libs' 'glibc' 'glib2'
+         'gstreamer' 'gst-plugins-base-libs' 'gst-plugins-base' 'gst-plugins-good'
          'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxi' 'libxrandr')
 makedepends=('cargo' 'pkgconf')
 optdepends=('org.freedesktop.secrets: keeps the sign-in between launches (GNOME Keyring or KWallet)'
-            'vulkan-driver: draws the window on the GPU; without one it is drawn in software'
-            'noto-fonts-cjk: shows Japanese, Chinese and Korean titles and lyrics (and furigana)')
+            'vulkan-driver: draws the window on the GPU; without one it is drawn in software, and motion covers stay still'
+            'noto-fonts-cjk: shows Japanese, Chinese and Korean titles and lyrics (and furigana)'
+            'gst-libav: plays motion covers in H.264, which is what Melete makes; without it the still cover shows'
+            'gst-plugin-openh264: plays H.264 motion covers instead of gst-libav')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # GitHub names the tarball's folder after the repository, not the package.

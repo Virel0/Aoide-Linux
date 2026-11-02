@@ -61,6 +61,10 @@ pub fn allowed(target: &str, level: Level, chosen: LevelFilter) -> bool {
     let ours = target == "aoide" || target.starts_with("aoide::") || target.starts_with("aoide_");
     let ceiling = if ours {
         chosen
+    } else if target == "iced_renderer::fallback" {
+        // Drawn in software, a motion cover's video can't be: this says so
+        // once a frame. The still cover shows instead.
+        chosen.min(LevelFilter::Error)
     } else {
         chosen.min(LevelFilter::Warn)
     };
@@ -129,6 +133,12 @@ mod tests {
         assert!(!allowed("hyper_util", Level::Info, LevelFilter::Debug));
         assert!(allowed("wgpu_core", Level::Warn, LevelFilter::Debug));
         assert!(!allowed("wgpu_core", Level::Warn, LevelFilter::Error));
+        // Once a frame in software rendering, while a motion cover shows.
+        assert!(!allowed(
+            "iced_renderer::fallback",
+            Level::Warn,
+            LevelFilter::Debug
+        ));
         // A crate whose name only starts like ours is not ours.
         assert!(!allowed("aoidex", Level::Info, LevelFilter::Info));
     }

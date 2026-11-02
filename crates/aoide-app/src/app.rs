@@ -72,6 +72,8 @@ pub struct App {
     /// The player bar's menus, the sleep timer, private listening, the
     /// full-screen player.
     pub(crate) listening: crate::listening::State,
+    /// Albums' looping videos over their covers.
+    pub(crate) motion: crate::motion::Motion,
 }
 
 /// An open page and its place in the stack.
@@ -178,6 +180,7 @@ pub enum Message {
     Info(crate::info::Msg),
     Rescan(crate::rescan::Msg),
     Together(crate::together::Msg),
+    Motion(crate::motion::Msg),
 }
 
 /// The player bar's controls.
@@ -206,6 +209,7 @@ impl App {
     ) -> (Self, Task<Message>) {
         let (store, notice) = open_store(paths.as_ref(), &config);
         let artwork = Artwork::new(paths.as_ref().map(|p| p.artwork_dir.clone()));
+        let motion = crate::motion::Motion::new(paths.as_ref().map(|p| p.motion_dir.clone()));
         let (playback, equaliser) = start_playback(&config);
         let notice = equaliser.or(notice);
         let keyring = keyring();
@@ -248,6 +252,7 @@ impl App {
             smart: crate::smart::State::default(),
             listening: crate::listening::State::default(),
             failure_details: false,
+            motion,
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
         let update = Task::done(Message::Update(crate::updates::Message::Tick));
@@ -276,6 +281,7 @@ impl App {
             self.listening_subscription(),
             self.together_subscription(),
             self.requests_subscription(),
+            self.motion_subscription(),
         ])
     }
 
@@ -313,7 +319,7 @@ impl App {
         if quiet {
             return task;
         }
-        Task::batch([task, self.fetch_artwork()])
+        Task::batch([task, self.fetch_artwork(), self.reconcile_motion()])
     }
 
     /// Routes each message to the feature that handles it.
@@ -398,6 +404,7 @@ impl App {
             Message::Info(message) => self.info(message),
             Message::Rescan(message) => self.rescan(message),
             Message::Together(message) => self.together(message),
+            Message::Motion(message) => self.motion(message),
         }
     }
 

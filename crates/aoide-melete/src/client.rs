@@ -285,6 +285,35 @@ impl MeleteClient {
     ) -> Result<()> {
         self.send(method, segments, query, None).await.map(drop)
     }
+
+    /// Reads a file the server serves, such as a video, with the token: its
+    /// bytes, or `None` once it passes `limit`. `path` names it in errors.
+    pub(crate) async fn download(
+        &self,
+        url: reqwest::Url,
+        limit: usize,
+        path: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        let mut request = self.http.get(url);
+        if let Some(credentials) = &self.credentials {
+            request = request.header(
+                AUTHORIZATION,
+                format!("Bearer {}", credentials.access_token),
+            );
+        }
+        let response = request.send().await.map_err(transport)?;
+        let status = response.status().as_u16();
+        if !(200..300).contains(&status) {
+            let body = read_capped(response, 64 << 10)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            // Never Ok: the status is outside 2xx.
+            return check_status(status, path, &body).map(|()| None);
+        }
+        read_capped(response, limit).await.map_err(transport)
+    }
 }
 
 #[cfg(test)]

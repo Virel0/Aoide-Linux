@@ -24,6 +24,16 @@
 # CI does the same (.github/workflows/release-flatpak.yml) and bundles the
 # result as aoide-linux.flatpak.
 #
+# Motion covers play on the runtime's GStreamer (iced_video_player links it;
+# the SDK has its headers): playbin, MP4, WebM, VP8 and VP9 are in the
+# runtime itself. H.264, which is what Melete makes, is not: the runtime's
+# gst-libav uses an FFmpeg built without patented decoders. Those come from
+# org.freedesktop.Platform.codecs-extra, an extension the 26.08 runtime
+# declares itself (lib/<arch>/codecs-extra, with its own add-ld-path, so
+# gst-libav finds the full FFmpeg there) and has on GST_PLUGIN_SYSTEM_PATH.
+# It has no no-autodownload, so Flatpak installs it with the runtime; nothing
+# is declared here. Where it's missing, the still cover shows.
+#
 # The id is io.github.Virel0.Aoide.Linux so it installs beside the Electron
 # app's Flatpak, io.github.Virel0.Aoide; they keep separate data.
 id: io.github.Virel0.Aoide.Linux

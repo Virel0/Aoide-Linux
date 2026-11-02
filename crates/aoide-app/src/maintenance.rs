@@ -144,6 +144,12 @@ pub fn caches(paths: &crate::config::Paths) -> Vec<Cache> {
         dir: paths.artwork_dir.clone(),
         clears: "the album covers kept on this computer; they are fetched again as they are shown",
     }];
+    all.push(Cache {
+        name: "Motion covers",
+        dir: paths.motion_dir.clone(),
+        clears: "albums' looping videos kept on this computer; they are fetched again as they \
+                 are shown",
+    });
     // Kept by versions that looked lyrics up on LRCLIB themselves; Melete does
     // that now, so this only holds what they left.
     if let Some(dir) = paths.artwork_dir.parent().map(|cache| cache.join("lyrics")) {
@@ -248,6 +254,10 @@ impl App {
             }
             Message::Clear(index) => self.clear_cache(index),
             Message::Cleared(name, result) => {
+                // Forgotten once the files are gone, so none is played again.
+                if name == "Motion covers" {
+                    self.motion.forget();
+                }
                 state.cleared = Some(match result {
                     Ok((0, _)) => Ok(format!("{name}: nothing to clear.")),
                     Ok((files, bytes)) => Ok(format!(
@@ -587,11 +597,12 @@ mod tests {
     }
 
     #[test]
-    fn the_caches_are_artwork_and_internet_lyrics() {
+    fn the_caches_are_artwork_motion_covers_and_internet_lyrics() {
         let paths = crate::config::Paths::under(Path::new("/c"), Path::new("/d"), Path::new("/k"));
         let all = caches(&paths);
-        assert_eq!(all.len(), 2);
+        assert_eq!(all.len(), 3);
         assert_eq!(all[0].dir, Path::new("/k/artwork"));
-        assert_eq!(all[1].dir, Path::new("/k/lyrics"));
+        assert_eq!(all[1].dir, Path::new("/k/motion"));
+        assert_eq!(all[2].dir, Path::new("/k/lyrics"));
     }
 }

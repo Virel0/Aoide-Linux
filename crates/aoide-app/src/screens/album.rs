@@ -1,5 +1,5 @@
-//! An album: its cover, artist and year, Play, Shuffle, Start radio and
-//! Favourite, and its tracks.
+//! An album: its cover (and motion cover), artist and year, Play, Shuffle,
+//! Start radio and Favourite, and its tracks.
 
 use aoide_melete::Item;
 use aoide_store::PlaySource;
@@ -158,11 +158,7 @@ impl State {
 
         let mut body = column![
             widgets::title_bar("", view.can_go_back),
-            row![
-                widgets::art(self.art.as_ref(), view.artwork, Length::Fixed(220.0), 10.0),
-                info.width(Length::Fill)
-            ]
-            .spacing(24),
+            row![self.cover(view), info.width(Length::Fill)].spacing(24),
         ]
         .spacing(16);
         if let Some(menu) = view
@@ -186,6 +182,22 @@ impl State {
             ),
         });
         crate::handoff::played_from(widgets::page(body), Some(self.context()))
+    }
+
+    /// The cover, with the album's motion cover over it while that plays.
+    fn cover<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
+        let (size, radius) = (220.0, 10.0);
+        let still = widgets::art(self.art.as_ref(), view.artwork, Length::Fixed(size), radius);
+        let handle = self.art.as_ref().and_then(|key| view.artwork.get(key));
+        crate::motion::over(view.motion, Some(&self.id), still, handle, size, radius)
+    }
+
+    /// The path of the album's motion cover once the album is here: `None`
+    /// while it loads, `Some(None)` when it has none.
+    pub fn motion_cover(&self) -> Option<Option<&str>> {
+        self.album
+            .as_ref()
+            .map(|album| album.motion_cover.as_deref())
     }
 
     /// Favourite, or Unfavourite once liked. Liking an album likes none of its songs.

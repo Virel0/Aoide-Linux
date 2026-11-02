@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: Install build tools
         run: |
-          pacman -Syu --noconfirm base-devel git rustup pkgconf alsa-lib dbus
+          pacman -Syu --noconfirm base-devel git rustup pkgconf alsa-lib dbus gstreamer gst-plugins-base-libs
           useradd -m builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
           sudo -u builder rustup default stable

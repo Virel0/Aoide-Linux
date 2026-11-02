@@ -139,6 +139,8 @@ pub struct Ctx<'a> {
 pub struct View<'a> {
     pub key: u64,
     pub artwork: &'a Artwork,
+    /// Albums' looping videos, for an album's header.
+    pub motion: &'a crate::motion::Motion,
     /// The id of what is playing, to mark its row.
     pub playing: Option<&'a str>,
     pub menu: Option<&'a Menu>,
