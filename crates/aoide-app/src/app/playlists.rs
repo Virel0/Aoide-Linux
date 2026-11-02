@@ -1,8 +1,9 @@
-//! The sidebar's playlists, read from the store.
+//! The sidebar's playlists, read from the store, and their covers.
 
 use iced::Task;
 
 use super::{App, Message};
+use crate::covers::{self, Resolved};
 use crate::screens::PlaylistSummary;
 
 impl App {
@@ -39,10 +40,33 @@ impl App {
         )
     }
 
+    /// The playlists read: listed, and their covers found for the sidebar.
     pub(super) fn playlists_loaded(&mut self, playlists: Vec<PlaylistSummary>) -> Task<Message> {
-        if let Some(signed) = self.session.as_mut() {
-            signed.playlists = playlists;
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        signed.playlists = playlists;
+        let ids = signed.playlists.iter().map(|p| p.id.clone()).collect();
+        let store = self.store.clone();
+        let shared = store.shared();
+        let blobs = covers::open_blobs(self.paths.as_ref());
+        Task::perform(
+            covers::resolve(store, shared, signed.sidecar.clone(), blobs, ids),
+            |found| Message::Covers(covers::Msg::Sidebar(Box::new(found))),
+        )
+    }
+
+    /// The sidebar's covers found: the chosen pictures into the artwork
+    /// cache, and the keys to draw.
+    pub(crate) fn sidebar_covers(&mut self, found: Resolved) -> Task<Message> {
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let Resolved { art, bytes } = found;
+        for (key, bytes) in bytes {
+            self.artwork.insert(key, bytes);
         }
+        signed.playlist_art = art;
         Task::none()
     }
 }

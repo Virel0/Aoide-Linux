@@ -115,6 +115,8 @@ pub enum Msg {
         key: u64,
         found: Box<Resolved>,
     },
+    /// Every playlist's cover, for the sidebar.
+    Sidebar(Box<Resolved>),
     /// Choose a picture for this playlist from a file.
     Choose {
         key: u64,
@@ -144,6 +146,7 @@ impl App {
         match message {
             Msg::Resolve { key, ids } => self.resolve_covers(key, ids),
             Msg::Resolved { key, found } => self.covers_resolved(key, *found),
+            Msg::Sidebar(found) => self.sidebar_covers(*found),
             Msg::Choose { key, playlist } => {
                 Task::perform(pick_picture("Choose a cover"), move |file| {
                     Message::Covers(Msg::Picked {

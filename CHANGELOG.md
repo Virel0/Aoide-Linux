@@ -27,6 +27,9 @@ state of every feature in more detail.
   you remove it there.
 
 ### Added
+- The sidebar shows each playlist's cover beside its name, small and
+  rounded, from the same picture the Playlists page draws, or the playlist's
+  glyph on a quiet square where it has none.
 - Requests keeps itself up to date while it's open, from Melete's request
   feed: no need to press Refresh to see a download move along.
 - Each request says more: where a download comes from (torrent or Soulseek),
