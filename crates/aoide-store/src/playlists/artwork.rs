@@ -8,7 +8,12 @@ use crate::Millis;
 use crate::error::Result;
 use crate::models::Playlist;
 use crate::record::placeholders;
+use crate::smart::Calendar;
 use crate::store::Store;
+
+/// How many matched tracks are looked up at a time while looking for a smart
+/// playlist's albums: the first few usually have them all.
+const ALBUM_LOOKUP: usize = 50;
 
 impl Store {
     /// Sets or clears the item whose cover stands in for a playlist's. `None` when the
@@ -71,5 +76,39 @@ impl Store {
             }
             Ok(covers)
         })
+    }
+
+    /// Up to `limit` distinct albums of what a smart playlist's rules match as of
+    /// `now`, in the rules' order, from the track cache: what its cover is drawn
+    /// from. Tracks the cache has no album for are passed over, and the matches
+    /// are looked up a few at a time, stopping once `limit` are found.
+    ///
+    /// # Errors
+    ///
+    /// As [`Store::resolve_smart`], and when the database fails.
+    pub fn smart_cover_albums(
+        &self,
+        playlist: &Playlist,
+        now: Millis,
+        calendar: Calendar,
+        limit: usize,
+    ) -> Result<Vec<String>> {
+        let matched = self.resolve_smart(playlist, now, calendar)?;
+        let mut albums: Vec<String> = Vec::new();
+        for chunk in matched.chunks(ALBUM_LOOKUP) {
+            if albums.len() >= limit {
+                break;
+            }
+            let cached = self.cached_tracks(chunk)?;
+            for id in chunk {
+                let Some(album) = cached.get(id).and_then(|t| t.album_id.as_ref()) else {
+                    continue;
+                };
+                if albums.len() < limit && !albums.contains(album) {
+                    albums.push(album.clone());
+                }
+            }
+        }
+        Ok(albums)
     }
 }

@@ -176,8 +176,7 @@ impl State {
         let open = self.moving.as_deref() == Some(playlist.id.as_str());
         let mut line = row![
             match self.covers.get(&playlist.id) {
-                Some(cover) =>
-                    widgets::art(Some(cover), view.artwork, iced::Length::Fixed(36.0), 4.0),
+                Some(cover) => widgets::cover(Some(cover), view.artwork, 36.0, 4.0),
                 None => container(icon(glyph, 22.0, Tone::Accent))
                     .width(36)
                     .align_x(Center)

@@ -42,7 +42,7 @@ pub(crate) struct Signed {
     pub next_key: u64,
     pub playlists: Vec<PlaylistSummary>,
     /// Each playlist's cover in the sidebar, once found.
-    pub playlist_art: HashMap<String, crate::artwork::ArtKey>,
+    pub playlist_art: HashMap<String, crate::covers::Cover>,
     pub menu: Option<Menu>,
     /// Favourites changed this session, over what the items said.
     pub favourites: HashMap<String, bool>,

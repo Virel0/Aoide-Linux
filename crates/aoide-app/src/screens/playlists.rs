@@ -92,7 +92,7 @@ pub struct State {
     new_name: String,
     error: Option<String>,
     /// Each playlist's cover, once found.
-    covers: HashMap<String, crate::artwork::ArtKey>,
+    covers: HashMap<String, crate::covers::Cover>,
     folders: Load<Folders>,
     /// The folder shown; `None` is the top level.
     folder: Option<String>,
@@ -109,7 +109,7 @@ pub enum Message {
     Create,
     Created(Result<String, String>),
     FindCovers,
-    Covers(HashMap<String, crate::artwork::ArtKey>),
+    Covers(HashMap<String, crate::covers::Cover>),
     Folders(Result<Vec<Folder>, String>),
     /// Show this folder (`None`: the top level).
     Enter(Option<String>),
@@ -188,7 +188,10 @@ fn change(
 impl State {
     /// The covers to draw, for the artwork cache.
     pub fn artwork(&self) -> Vec<crate::artwork::ArtKey> {
-        self.covers.values().cloned().collect()
+        self.covers
+            .values()
+            .flat_map(|cover| cover.keys().iter().cloned())
+            .collect()
     }
 
     pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {

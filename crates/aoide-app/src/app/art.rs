@@ -20,7 +20,12 @@ impl App {
         if let Some(nav) = &signed.nav {
             wanted.extend(nav.current().page.artwork());
         }
-        wanted.extend(signed.playlist_art.values().cloned());
+        wanted.extend(
+            signed
+                .playlist_art
+                .values()
+                .flat_map(|cover| cover.keys().iter().cloned()),
+        );
         if let Some(queue) = self.playback.queue() {
             let position = queue.position().unwrap_or(0);
             let first = position.saturating_sub(5);

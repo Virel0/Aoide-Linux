@@ -2,8 +2,8 @@
 
 use super::{links, pending, store};
 use crate::{
-    BlobDirectory, CoverError, MAX_IMAGE_BYTES, Playlist, PlaylistCover, Store, StoreError,
-    TrackRef, is_image_hash, new_id, now_millis, sniff_image_mime,
+    BlobDirectory, Calendar, CoverError, MAX_IMAGE_BYTES, Match, Playlist, PlaylistCover,
+    SmartRules, Store, StoreError, TrackRef, is_image_hash, new_id, now_millis, sniff_image_mime,
 };
 
 const PNG: &[u8] = &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
@@ -121,6 +121,44 @@ fn a_hash_that_is_not_a_hash_is_never_drawn_or_opened() {
     assert!(is_image_hash(&Store::image_hash(b"x")));
     assert!(!is_image_hash(&Store::image_hash(b"x").to_uppercase()));
     std::fs::remove_dir_all(blobs.root()).unwrap();
+}
+
+#[test]
+fn a_smart_playlists_albums_are_its_first_distinct_ones_in_its_order() {
+    let store = store();
+    let now = now_millis();
+    // Every track, by title: t1 to t7.
+    for (track, album) in [
+        ("t1", Some("al1")),
+        ("t2", Some("al1")),
+        ("t3", None),
+        ("t4", Some("al2")),
+        ("t5", Some("al3")),
+        ("t6", Some("al4")),
+        ("t7", Some("al5")),
+    ] {
+        cache(&store, track, album);
+    }
+    let every = SmartRules::new(Match::All, vec![], None, None).unwrap();
+    let list = store
+        .create_playlist("Everything", None, None, now)
+        .unwrap();
+    let smart = store
+        .record(list.setting_smart_rules(&every), false, now)
+        .unwrap();
+    let albums = |limit| {
+        store
+            .smart_cover_albums(&smart, now, Calendar::Local, limit)
+            .unwrap()
+    };
+    assert_eq!(albums(4), ["al1", "al2", "al3", "al4"]);
+    assert_eq!(albums(2), ["al1", "al2"]);
+    let plain = store.create_playlist("Mine", None, None, now).unwrap();
+    assert!(
+        store
+            .smart_cover_albums(&plain, now, Calendar::Local, 4)
+            .is_err()
+    );
 }
 
 // MARK: - A picture from a file

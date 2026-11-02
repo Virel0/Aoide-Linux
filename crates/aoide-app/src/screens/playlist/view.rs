@@ -21,12 +21,7 @@ impl State {
         let source = self.source();
         let mut body = column![
             row![
-                widgets::art(
-                    self.cover.as_ref(),
-                    view.artwork,
-                    Length::Fixed(180.0),
-                    10.0
-                ),
+                widgets::cover(self.cover.as_ref(), view.artwork, 180.0, 10.0),
                 self.head(view).width(Length::Fill)
             ]
             .spacing(24)
