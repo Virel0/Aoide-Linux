@@ -2,7 +2,8 @@
 //!
 //! A port of `PlayQueue.swift` in the iOS app: shuffle keeping the current song,
 //! repeat-one applying to a natural ending but not to a skip, the manual lane
-//! (Play Next and Play Last) that plays before the album resumes, and the render
+//! (Play Next and Play Last) that plays before the album resumes, repeat-all
+//! looping only what was picked once anything is queued by hand, and the render
 //! window the engine reads to decode ahead.
 
 use std::collections::HashMap;
@@ -51,7 +52,8 @@ pub enum RepeatMode {
     /// Play through once, then stop.
     #[default]
     Off,
-    /// Loop the whole queue.
+    /// Loop the whole queue, or only what was picked once songs are queued by
+    /// hand: see [`PlayQueue::advance_automatically`].
     All,
     /// Loop the current track.
     One,
@@ -90,6 +92,9 @@ pub struct PlayQueue<T> {
     position: Option<usize>,
     /// What happens at the end of a track or of the queue.
     pub repeat_mode: RepeatMode,
+    /// The entry playing started from: the song picked, or the first of a list.
+    /// With songs queued by hand, repeat-all loops it and them.
+    start_entry_id: Option<EntryId>,
     rng: SplitMix,
 }
 
@@ -100,6 +105,7 @@ impl<T> Default for PlayQueue<T> {
             unshuffled: None,
             position: None,
             repeat_mode: RepeatMode::Off,
+            start_entry_id: None,
             rng: SplitMix::seeded(),
         }
     }
@@ -209,6 +215,11 @@ impl<T: Clone> PlayQueue<T> {
     /// Replaces the queue. `index` is into `tracks` as given, before shuffling.
     /// What the listener queued by hand outlives the thing that was playing.
     pub fn load(&mut self, tracks: Vec<T>, index: usize, shuffled: bool) {
+        self.replace(tracks, index, shuffled);
+        self.start_entry_id = self.current().map(|entry| entry.id);
+    }
+
+    fn replace(&mut self, tracks: Vec<T>, index: usize, shuffled: bool) {
         let kept: Vec<QueueEntry<T>> = self.lane().to_vec();
         let new_entries: Vec<QueueEntry<T>> = tracks
             .into_iter()
@@ -247,6 +258,7 @@ impl<T: Clone> PlayQueue<T> {
         self.entries.clear();
         self.unshuffled = None;
         self.position = None;
+        self.start_entry_id = None;
     }
 
     /// Drops everything after the current track, which keeps playing.
@@ -267,6 +279,9 @@ impl<T: Clone> PlayQueue<T> {
     // Movement
 
     /// The current track finished on its own. Repeat-one applies here only.
+    /// Repeat-all with songs queued by hand loops only the picks: the song
+    /// playing started from and those songs. The rest of the album stays queued,
+    /// skipped while repeating, for when repeat is off.
     pub fn advance_automatically(&mut self) -> AdvanceOutcome {
         if self.position.is_none() {
             return AdvanceOutcome::Ended;
@@ -292,6 +307,13 @@ impl<T: Clone> PlayQueue<T> {
         let Some(position) = self.position else {
             return AdvanceOutcome::Ended;
         };
+        if self.loops_picks() {
+            let previous = self
+                .looped_indices()
+                .rfind(|&index| index < position)
+                .or_else(|| self.looped_indices().next_back());
+            return self.move_to(previous);
+        }
         if position > 0 {
             self.position = Some(position - 1);
             return AdvanceOutcome::Moved;
@@ -307,6 +329,13 @@ impl<T: Clone> PlayQueue<T> {
         let Some(position) = self.position else {
             return AdvanceOutcome::Ended;
         };
+        if wrapping && self.loops_picks() {
+            let next = self
+                .looped_indices()
+                .find(|&index| index > position)
+                .or_else(|| self.looped_indices().next());
+            return self.move_to(next);
+        }
         if position + 1 < self.entries.len() {
             self.position = Some(position + 1);
             return AdvanceOutcome::Moved;
@@ -316,6 +345,33 @@ impl<T: Clone> PlayQueue<T> {
             return AdvanceOutcome::Moved;
         }
         AdvanceOutcome::Ended
+    }
+
+    /// Whether repeat-all loops only what was picked: someone who picks a song
+    /// on an album and lines up others means to hear those again, not the rest
+    /// of the album. An album with nothing queued by hand repeats whole.
+    fn loops_picks(&self) -> bool {
+        self.repeat_mode == RepeatMode::All && self.entries.iter().any(|entry| entry.is_manual)
+    }
+
+    /// Indices of the picks repeat-all loops while [`Self::loops_picks`]: the
+    /// entry playing started from and the entries queued by hand.
+    fn looped_indices(&self) -> impl DoubleEndedIterator<Item = usize> + '_ {
+        self.entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.is_manual || Some(entry.id) == self.start_entry_id)
+            .map(|(index, _)| index)
+    }
+
+    fn move_to(&mut self, index: Option<usize>) -> AdvanceOutcome {
+        match index {
+            Some(index) => {
+                self.position = Some(index);
+                AdvanceOutcome::Moved
+            }
+            None => AdvanceOutcome::Ended,
+        }
     }
 
     /// Jump straight to a slot.
