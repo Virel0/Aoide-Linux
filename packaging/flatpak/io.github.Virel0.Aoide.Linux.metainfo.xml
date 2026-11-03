@@ -71,6 +71,11 @@
   <!-- Newest first. Add one for each tag before tagging it; the date is the
        release's. -->
   <releases>
+    <release version="0.4.0" date="2026-11-02" type="development">
+      <description>
+        <p>Motion covers, and the cover filling the full player. Lyrics, translation, pronunciation and search by description now come from your Melete server. Requests follow along live and say more, playlists can ask for their missing songs, smart playlists get mosaic covers, the sidebar shows playlist covers, Discord can show the album's cover, and profile pictures show.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-10-31" type="development">
       <description>
         <p>Ask your server for music it doesn't have: look an album, artist or song up from Search and ask for it, then follow it under Requests.</p>
