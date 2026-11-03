@@ -145,7 +145,7 @@ impl Store {
             .ok_or_else(|| PlaylistError::NoSuchItem(id.to_owned()).into())
     }
 
-    fn last_position(&self, playlist_id: &str) -> Result<Option<String>> {
+    pub(super) fn last_position(&self, playlist_id: &str) -> Result<Option<String>> {
         self.read(|conn| {
             last_key(
                 conn,
@@ -183,7 +183,7 @@ impl Store {
 }
 
 /// Appending counts upwards; inserting into the middle bisects what is left of the gap.
-fn positions(count: usize, lower: Option<&str>, upper: Option<&str>) -> Vec<String> {
+pub(super) fn positions(count: usize, lower: Option<&str>, upper: Option<&str>) -> Vec<String> {
     let Some(upper) = upper else {
         return FractionalIndex::sequence(lower, count);
     };

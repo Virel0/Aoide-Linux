@@ -1,15 +1,12 @@
 //! The playlist page as drawn: the cover and its tools, the title or the
-//! rename field, the notes, and the songs (with Up, Down and Remove while
-//! editing).
+//! rename field, the notes, and the songs (`songs`).
 
 use aoide_store::PlaySource;
 use iced::widget::{Column, Row, button, column, row, text, text_editor, text_input};
 use iced::{Center, Element, Length};
 
-use super::{LIST, Message, State};
-use crate::actions::PlayRequest;
+use super::{Message, State};
 use crate::app::Message as App;
-use crate::icons::{Icon, Tone, icon};
 use crate::playback::tracks::TrackMeta;
 use crate::screens::{Load, PageMsg, View};
 use crate::theme;
@@ -18,7 +15,6 @@ use crate::widgets;
 impl State {
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
         let key = view.key;
-        let source = self.source();
         let mut body = column![
             row![
                 widgets::cover(self.cover.as_ref(), view.artwork, 180.0, 10.0),
@@ -59,13 +55,10 @@ impl State {
             Load::Ready(tracks) if tracks.is_empty() && self.smart.is_some() => widgets::empty(
                 "Nothing matches its rules yet. Songs appear as your listening fits them.",
             ),
-            Load::Ready(tracks) if tracks.is_empty() => {
+            Load::Ready(_) if self.lines.is_empty() => {
                 widgets::empty("No songs yet. Add some from any song's … menu.")
             }
-            Load::Ready(tracks) if self.editing && self.smart.is_none() => {
-                self.editable(tracks, view)
-            }
-            Load::Ready(tracks) => widgets::track_list(tracks, view, LIST, source),
+            Load::Ready(tracks) => self.songs(tracks, view),
         });
         crate::handoff::played_from(widgets::page(body), self.context())
     }
@@ -77,7 +70,7 @@ impl State {
     }
 
     /// Plays from a smart playlist are filed as smart, as on the phone.
-    fn source(&self) -> PlaySource {
+    pub(super) fn source(&self) -> PlaySource {
         if self.smart.is_some() {
             PlaySource::Smart
         } else {
@@ -245,48 +238,5 @@ impl State {
                 .and_then(|t| t.album_id.clone().or_else(|| Some(t.id.clone())))
         });
         Some(context)
-    }
-
-    /// The songs with each entry's Up, Down and Remove.
-    fn editable<'a>(&'a self, tracks: &'a [TrackMeta], view: &View<'a>) -> Element<'a, App> {
-        let key = view.key;
-        let message = move |m: Message| App::Page(key, PageMsg::Playlist(m));
-        let small = |glyph: Icon, label: Option<App>| {
-            button(icon(glyph, 16.0, Tone::Secondary))
-                .padding(6)
-                .style(theme::row)
-                .on_press_maybe(label)
-        };
-        let mut list = Column::with_capacity(tracks.len()).spacing(2);
-        for (index, (track, entry)) in tracks.iter().zip(&self.entries).enumerate() {
-            let anchor = format!("{key}:{index}");
-            let play = move || App::Play(PlayRequest::from(tracks, index, PlaySource::Playlist));
-            let up = (index > 0).then(|| {
-                message(Message::Move {
-                    entry: entry.clone(),
-                    up: true,
-                })
-            });
-            let down = (index + 1 < tracks.len()).then(|| {
-                message(Message::Move {
-                    entry: entry.clone(),
-                    up: false,
-                })
-            });
-            list = list.push(
-                row![
-                    widgets::track_row(track, &anchor, view, LIST, play),
-                    small(Icon::Up, up),
-                    small(Icon::Down, down),
-                    small(Icon::Remove, Some(message(Message::Remove(entry.clone())))),
-                ]
-                .spacing(2)
-                .align_y(Center),
-            );
-            if let Some(menu) = view.menu.filter(|m| m.anchor == anchor) {
-                list = list.push(widgets::menu_strip(menu, view));
-            }
-        }
-        list.into()
     }
 }

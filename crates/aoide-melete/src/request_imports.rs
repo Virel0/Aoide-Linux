@@ -31,6 +31,14 @@ pub struct PlaylistImportSummary {
     pub unmatched: u32,
     /// Of those asked for, the ones still waiting for an admin.
     pub waiting: u32,
+    /// Tracks the library had already, put in the playlist as they are. Melete
+    /// 0.4.0 and later; 0 before.
+    #[serde(default)]
+    pub in_library: u32,
+    /// The Aoide playlist the import makes and fills, when it was asked to make
+    /// one (Melete 0.4.0 and later).
+    #[serde(default)]
+    pub playlist_id: Option<String>,
 }
 
 /// One track of an import.
@@ -42,7 +50,7 @@ pub struct PlaylistImportTrack {
     pub title: String,
     /// As the playlist names them.
     pub artist: Option<String>,
-    /// `pending`, `asked`, `already` or `unmatched`.
+    /// `pending`, `asked`, `already`, `unmatched` or `in_library`.
     pub state: String,
     /// Why it wasn't asked for, when unmatched.
     pub why: Option<String>,
@@ -69,7 +77,25 @@ impl MeleteClient {
     /// HTTP 400 as [`Error::Http`](crate::Error::Http) for a file that isn't a
     /// playlist; 409 when MusicBrainz is off; 413 past 8 MB.
     pub async fn import_playlist(&self, name: &str, csv: &str) -> Result<PlaylistImportSummary> {
-        let body = json!({ "name": name, "csv": csv });
+        self.send_import(json!({ "name": name, "csv": csv })).await
+    }
+
+    /// Imports a playlist as an Aoide playlist with every track of `csv` in it, in
+    /// order, named `name`: Melete makes it at once (its id is the summary's
+    /// `playlist_id`) and fills it as the import runs, a song the library has as a
+    /// track and any other as a waiting entry on its request.
+    ///
+    /// # Errors
+    ///
+    /// HTTP 400 or 422 as [`Error::Http`](crate::Error::Http) from a Melete before
+    /// 0.4.0, which doesn't know `make_playlist`; 403 for a user who may see only
+    /// some music libraries; otherwise as [`Self::import_playlist`].
+    pub async fn import_as_playlist(&self, name: &str, csv: &str) -> Result<PlaylistImportSummary> {
+        self.send_import(json!({ "name": name, "csv": csv, "make_playlist": true }))
+            .await
+    }
+
+    async fn send_import(&self, body: serde_json::Value) -> Result<PlaylistImportSummary> {
         self.send_decoded(
             Method::POST,
             &["api", "v1", "requests", "imports"],

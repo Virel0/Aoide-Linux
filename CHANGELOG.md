@@ -7,6 +7,29 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- Playlists can hold songs that aren't in your library yet. They show in
+  their place, greyed, with the artist and where their request stands
+  ("Waiting for approval", "Downloading from Soulseek, 40%", or "Not found"
+  and why when nothing could be asked for). They can't be played: Play,
+  Shuffle and the queue pass over them. Remove takes one out while editing.
+  Once the song arrives, the next sync turns it into a normal song in the
+  same place. Needs Melete 0.4.0.
+- Search's Ask for It can put a song you don't have in any of your own
+  playlists: Add to Playlist… asks for it if it isn't asked for already, and
+  the song waits in the playlist until it arrives.
+- An open playlist reads itself again after a sync brings changes, so a song
+  that arrives shows without leaving the page.
+
+### Changed
+- Importing a playlist saves all of it. Save sends every song to your
+  server, which makes the playlist with the songs you have and asks for the
+  rest, which wait in it until they arrive; the playlist then syncs in and
+  opens. "Ask your server for the N" is gone: saving does it. A server older
+  than Melete 0.4.0 (or one with MusicBrainz off, or that keeps Aoide's
+  playlists from your account) gets the old way: the songs found are saved
+  and the rest asked for on the Requests page.
+
 ## [0.4.0] - 2026-11-02
 
 ### Upgrading from 0.3.0

@@ -237,3 +237,64 @@ async fn a_playlist_is_imported_listed_read_and_removed() {
     assert_eq!(read.items[1].why.as_deref(), Some("no recording fits"));
     client.remove_playlist_import(4).await.unwrap();
 }
+
+#[tokio::test]
+async fn a_playlist_imported_as_a_playlist_names_the_playlist_melete_made() {
+    let server = MockServer::start().await;
+    let mut queued = import_summary();
+    queued["state"] = json!("queued");
+    queued["in_library"] = json!(1);
+    queued["playlist_id"] = json!("0B8A1E8B-B3DF-45A7-88E0-EA53F78393C3");
+    Mock::given(method("POST"))
+        .and(path("/api/v1/requests/imports"))
+        .and(body_json(json!({
+            "name": "Road trip", "csv": "Track Name\nCreep\n", "make_playlist": true,
+        })))
+        .respond_with(ResponseTemplate::new(202).set_body_json(queued))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    let started = client
+        .import_as_playlist("Road trip", "Track Name\nCreep\n")
+        .await
+        .unwrap();
+    assert_eq!(started.in_library, 1);
+    assert_eq!(
+        started.playlist_id.as_deref(),
+        Some("0B8A1E8B-B3DF-45A7-88E0-EA53F78393C3")
+    );
+}
+
+/// A Melete before 0.4.0 refuses the field it doesn't know, and says nothing of a
+/// playlist in a summary it does send.
+#[tokio::test]
+async fn an_older_server_refuses_make_playlist_and_its_summaries_still_read() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/requests/imports"))
+        .respond_with(
+            ResponseTemplate::new(400)
+                .set_body_json(json!({"error": "unknown field make_playlist"})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/requests/imports"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([import_summary()])))
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    let refused = client
+        .import_as_playlist("Road trip", "Track Name\nCreep\n")
+        .await;
+    assert!(
+        matches!(refused, Err(Error::Http { status: 400, .. })),
+        "{refused:?}"
+    );
+    let list = client.playlist_imports().await.unwrap();
+    assert_eq!(
+        (list[0].in_library, list[0].playlist_id.as_deref()),
+        (0, None)
+    );
+}

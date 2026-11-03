@@ -280,7 +280,8 @@ pub fn local_playlist_ids(
         .items(id)
         .map_err(|e| e.to_string())?
         .iter()
-        .filter(|item| !item.is_unresolved())
+        // A song not in the library yet has no track to play.
+        .filter(|item| !item.is_unresolved() && !item.is_waiting())
         .map(|item| item.linked_jellyfin_id().to_owned())
         .collect();
     Ok(Some((ids, false)))

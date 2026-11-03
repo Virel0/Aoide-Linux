@@ -62,8 +62,8 @@ pub use history::{
 pub use images::{IMAGE_GRACE_DAYS, ImageBlob};
 pub use json::canonical_json;
 pub use models::{
-    AlbumLike, ContentKey, Folder, Like, Op, OpKind, PlayEvent, PlaySource, Playlist, PlaylistItem,
-    QueueState, TrackFlags, TrackRef, normalise,
+    AlbumLike, ContentKey, Folder, Like, Op, OpKind, PendingSong, PlayEvent, PlaySource, Playlist,
+    PlaylistItem, QueueState, TrackFlags, TrackRef, normalise,
 };
 pub use play_definition::{PlayClassifier, PlayOutcome};
 pub use playlists::{PlaylistError, RelinkReport, TrackLink, UNRESOLVED_PREFIX};

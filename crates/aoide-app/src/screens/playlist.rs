@@ -4,11 +4,14 @@
 //! A smart playlist is its rules, evaluated against the local history when
 //! the page opens (`Store::resolve_smart`): its songs are listed in the
 //! rules' order and cannot be moved or removed one by one.
+//!
+//! A song not in the library yet (a waiting entry) is listed in its place,
+//! greyed, with where its request stands; it can't be played, only removed.
 
 use std::collections::HashMap;
 
-use aoide_melete::Item;
-use aoide_store::{Playlist, PlaylistItem};
+use aoide_melete::{Item, MusicRequest};
+use aoide_store::{PendingSong, Playlist, PlaylistItem};
 use iced::Task;
 use iced::widget::text_editor;
 
@@ -18,7 +21,11 @@ use crate::failure::Failure;
 use crate::playback::tracks::TrackMeta;
 use crate::widgets::ListStyle;
 
+mod songs;
 mod view;
+mod waiting;
+
+use waiting::Line;
 
 #[derive(Debug)]
 pub struct State {
@@ -32,6 +39,12 @@ pub struct State {
     entries: Vec<String>,
     /// Entries whose track the server no longer has.
     missing: usize,
+    /// Songs not in the library yet, each with its entry, in the playlist's order.
+    waiting: Vec<(String, PendingSong)>,
+    /// Every listed song in the playlist's order, tracks and waiting ones.
+    lines: Vec<Line>,
+    /// This user's music requests by id, for where each waiting song stands.
+    requests: HashMap<i64, MusicRequest>,
     renaming: Option<String>,
     confirm_delete: bool,
     error: Option<String>,
@@ -76,7 +89,10 @@ pub fn read_rows(store: &aoide_store::Store, id: &str, now: i64) -> aoide_store:
 #[derive(Debug, Clone)]
 pub enum Message {
     Rows(Result<Box<Rows>, String>),
+    /// Read the playlist again: a sync changed what is stored.
+    Reload,
     Tracks(Result<Vec<Item>, Failure>),
+    Requests(Result<Vec<MusicRequest>, Failure>),
     Rename,
     RenameText(String),
     SaveName,
@@ -118,6 +134,9 @@ pub fn open(ctx: &Ctx<'_>, id: &str) -> (State, Task<App>) {
         tracks: Load::Loading,
         entries: Vec::new(),
         missing: 0,
+        waiting: Vec::new(),
+        lines: Vec::new(),
+        requests: HashMap::new(),
         renaming: None,
         confirm_delete: false,
         error: None,
@@ -202,6 +221,14 @@ impl State {
                 Task::none()
             }
             Message::Rows(Ok(rows)) => self.rows(*rows, ctx),
+            Message::Reload => self.load_rows(ctx),
+            Message::Requests(result) => {
+                // Without them a waiting song says only that it was asked for.
+                if let Ok(requests) = result {
+                    self.requests = requests.into_iter().map(|r| (r.id, r)).collect();
+                }
+                Task::none()
+            }
             Message::FindCover => self.find_cover(ctx.key),
             Message::Cover(cover) => {
                 self.cover = cover;
@@ -291,11 +318,7 @@ impl State {
             }
             None => {
                 self.smart = None;
-                items
-                    .iter()
-                    .filter(|item| !item.is_unresolved())
-                    .map(|item| item.linked_jellyfin_id().to_owned())
-                    .collect()
+                waiting::track_ids(&items)
             }
         };
         self.items = items;
@@ -307,6 +330,7 @@ impl State {
                 move |r| PageMsg::Playlist(Message::Tracks(r)),
             ),
             self.find_cover(ctx.key),
+            self.find_requests(ctx),
         ])
     }
 
@@ -321,6 +345,8 @@ impl State {
                     .collect();
                 self.missing = ids.len() - tracks.len();
                 self.entries.clear();
+                self.waiting.clear();
+                self.lines = (0..tracks.len()).map(Line::Track).collect();
                 self.tracks = Load::Ready(tracks);
             }
             (Ok(found), None) => {
@@ -328,18 +354,12 @@ impl State {
                     .iter()
                     .map(|item| (item.id.clone(), TrackMeta::from_item(item)))
                     .collect();
-                let (entries, tracks): (Vec<String>, Vec<TrackMeta>) = self
-                    .items
-                    .iter()
-                    .filter(|item| !item.is_unresolved())
-                    .filter_map(|item| {
-                        let track = found.get(item.linked_jellyfin_id())?;
-                        Some((item.id.clone(), track.clone()))
-                    })
-                    .unzip();
-                self.missing = self.items.len() - entries.len();
-                self.entries = entries;
-                self.tracks = Load::Ready(tracks);
+                let arranged = waiting::arrange(&self.items, &found);
+                self.missing = self.items.len() - arranged.entries.len() - arranged.waiting.len();
+                self.entries = arranged.entries;
+                self.waiting = arranged.waiting;
+                self.lines = arranged.lines;
+                self.tracks = Load::Ready(arranged.tracks);
             }
             (Err(error), _) => self.tracks = Load::Failed(error),
         }
@@ -391,20 +411,23 @@ impl State {
             let item = self.items.remove(from);
             self.items.insert(index.min(self.items.len()), item);
         }
+        self.relines();
         self.write(ctx, move |store, id, now| {
             store.move_item(&entry, id, index, now).map(|_| false)
         })
     }
 
     fn remove_entry(&mut self, entry: String, ctx: &Ctx<'_>) -> Task<App> {
-        let Some(at) = self.entries.iter().position(|e| *e == entry) else {
+        if let Some(at) = self.entries.iter().position(|e| *e == entry) {
+            self.entries.remove(at);
+            if let Load::Ready(tracks) = &mut self.tracks {
+                tracks.remove(at);
+            }
+            self.items.retain(|i| i.id != entry);
+            self.relines();
+        } else if !self.remove_waiting(&entry) {
             return Task::none();
-        };
-        self.entries.remove(at);
-        if let Load::Ready(tracks) = &mut self.tracks {
-            tracks.remove(at);
         }
-        self.items.retain(|i| i.id != entry);
         self.write(ctx, move |store, _, now| {
             store.remove_item(&entry, now).map(|()| false)
         })
@@ -427,85 +450,4 @@ impl State {
 }
 
 #[cfg(test)]
-mod tests {
-    use aoide_store::PlaySource;
-
-    use super::*;
-
-    #[test]
-    fn a_smart_playlist_is_evaluated_from_the_history_on_open() {
-        let store = aoide_store::Store::in_memory("desk").unwrap();
-        let now = 1_792_540_800_000;
-        let created = store.ensure_built_in_playlists(now).unwrap();
-        assert!(!created.is_empty());
-        let heavy = aoide_store::BuiltInPlaylist::HeavyRotation;
-        // Played often, lately: Heavy Rotation's kind of song.
-        let track = aoide_store::TrackRef::new("t1", "k1", "Lantern", "Mara Vey", "Saltwater", now);
-        store.cache_tracks(&[track]).unwrap();
-        let link = aoide_store::TrackLink::new("t1", "k1");
-        for n in 0..6 {
-            let at = now - (n + 1) * 3_600_000;
-            store
-                .record_play(
-                    &link,
-                    at,
-                    180_000,
-                    Some(180_000),
-                    PlaySource::Album,
-                    Some(true),
-                )
-                .unwrap();
-        }
-        let (playlist, items, smart) = read_rows(&store, heavy.id(), now).unwrap();
-        assert!(playlist.unwrap().is_smart);
-        assert!(items.is_empty(), "rules, not entries");
-        assert_eq!(smart.unwrap().unwrap(), ["t1"]);
-        let plain = store.create_playlist("Mine", None, None, now).unwrap();
-        assert!(read_rows(&store, &plain.id, now).unwrap().2.is_none());
-    }
-
-    fn ids(names: &[&str]) -> Vec<String> {
-        names.iter().map(|n| (*n).to_owned()).collect()
-    }
-
-    #[test]
-    fn a_step_lands_beside_its_listed_neighbour_past_missing_entries() {
-        // "x" is an entry the server no longer has; it is not listed.
-        let all = ids(&["a", "x", "b", "c"]);
-        assert_eq!(move_index(&all, "b", "a", true), Some(0));
-        assert_eq!(move_index(&all, "a", "b", false), Some(2));
-        assert_eq!(move_index(&all, "c", "b", true), Some(2));
-        assert_eq!(move_index(&all, "b", "c", false), Some(3));
-        assert_eq!(move_index(&all, "b", "gone", true), None);
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn a_move_writes_one_entry_and_lands_where_shown() {
-        let store = crate::store_worker::StoreHandle::in_memory("device-1").unwrap();
-        store
-            .call(|w| {
-                let list = w.store.create_playlist("Set", None, None, 1).unwrap();
-                let link = |id: &str| aoide_store::TrackLink::new(id.to_owned(), format!("k-{id}"));
-                let added = w
-                    .store
-                    .add_tracks(&["a", "x", "b", "c"].map(link), &list.id, 1)
-                    .unwrap();
-                let all: Vec<String> = added.iter().map(|i| i.id.clone()).collect();
-                let before = w.store.pending_op_count().unwrap();
-                // "c" steps up past "b"; "x" (not listed) stays between a and b.
-                let index = move_index(&all, &all[3], &all[2], true).unwrap();
-                w.store.move_item(&all[3], &list.id, index, 2).unwrap();
-                assert_eq!(w.store.pending_op_count().unwrap(), before + 1);
-                let order: Vec<String> = w
-                    .store
-                    .items(&list.id)
-                    .unwrap()
-                    .into_iter()
-                    .map(|i| i.jellyfin_id)
-                    .collect();
-                assert_eq!(order, ["a", "x", "c", "b"]);
-            })
-            .await
-            .unwrap();
-    }
-}
+mod tests;

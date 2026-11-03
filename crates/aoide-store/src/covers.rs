@@ -295,7 +295,8 @@ impl Store {
     }
 
     /// For each playlist, the first live entry's album id from the track cache, or
-    /// the entry's own track id when the cache does not know the album.
+    /// the entry's own track id when the cache does not know the album. Entries
+    /// waiting for their song have neither, so they are passed over.
     fn first_track_art(&self, playlist_ids: &[String]) -> Result<HashMap<String, String>> {
         if playlist_ids.is_empty() {
             return Ok(HashMap::new());
@@ -306,7 +307,7 @@ impl Store {
                 let mut statement = conn.prepare(&format!(
                     "SELECT i.playlistId, i.jellyfinId, t.albumId FROM playlistItem i \
                      LEFT JOIN track t ON t.jellyfinId = i.jellyfinId \
-                     WHERE i.deleted = 0 AND i.playlistId IN ({}) \
+                     WHERE i.deleted = 0 AND i.pending IS NULL AND i.playlistId IN ({}) \
                      ORDER BY i.playlistId, i.position, i.rowid",
                     placeholders(chunk.len())
                 ))?;

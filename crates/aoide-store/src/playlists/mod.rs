@@ -5,6 +5,7 @@ mod folders;
 mod items;
 mod playlist;
 mod relink;
+mod waiting;
 
 pub use relink::{RelinkReport, TrackLink, UNRESOLVED_PREFIX};
 

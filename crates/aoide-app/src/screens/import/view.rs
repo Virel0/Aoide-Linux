@@ -5,7 +5,6 @@ use aoide_sidecar::{ImportMatch, ImportResult, ImportedPlaylist};
 use iced::widget::{Column, Row, button, column, container, row, text, text_input};
 use iced::{Center, Element, Fill};
 
-use super::ask::Asking;
 use super::{Message, State, Step, line, summary};
 use crate::app::Message as App;
 use crate::screens::{PageMsg, View};
@@ -18,7 +17,9 @@ impl State {
             widgets::title_bar("Import a playlist", view.can_go_back),
             widgets::secondary(
                 "Bring a playlist from Spotify or another service. Aoide looks for each song \
-                 in your library and saves the ones it finds as an Aoide playlist."
+                 in your library, then saves the playlist with every song in it: your \
+                 server asks for the ones you don't have, and they wait in the playlist \
+                 until they arrive."
             )
             .size(13),
         ]
@@ -31,7 +32,7 @@ impl State {
                     "Looking for the songs in your library: {done} of {total}…"
                 )));
             }
-            Step::Saving => body = body.push(widgets::secondary("Saving…")),
+            Step::Saving(_) => body = body.push(widgets::secondary("Saving…")),
             Step::Matched(found) => body = body.push(self.matched(&found.0, &found.1, view)),
         }
         if let Some(error) = &self.error {
@@ -51,8 +52,8 @@ impl State {
     ) -> Element<'a, App> {
         let key = view.key;
         let message = move |m: Message| App::Page(key, PageMsg::Import(m));
-        let found = result.found_ids().len();
-        let ready = found > 0 && !self.name.trim().is_empty();
+        let total = result.matches.len();
+        let ready = !self.name.trim().is_empty();
         let mut column = column![text(summary(result)).size(16)].spacing(14);
         if playlist.is_truncated {
             column = column.push(
@@ -69,7 +70,7 @@ impl State {
                     .on_input(move |s| message(Message::Name(s)))
                     .padding(8)
                     .style(theme::field),
-                button(text(match found {
+                button(text(match total {
                     1 => "Save 1 song".to_owned(),
                     n => format!("Save {n} songs"),
                 }))
@@ -80,7 +81,22 @@ impl State {
             .spacing(10)
             .align_y(Center),
         );
-        column = column.push(tools(result, key, self.asking));
+        let missing = result.missing().len();
+        if missing > 0 {
+            column = column.push(
+                widgets::secondary(match missing {
+                    1 => "The song not in your library is asked for, and waits in the \
+                          playlist until it arrives."
+                        .to_owned(),
+                    n => format!(
+                        "The {n} songs not in your library are asked for, and wait in the \
+                         playlist until they arrive."
+                    ),
+                })
+                .size(13),
+            );
+        }
+        column = column.push(tools(result, key));
         let (have, lack): (Vec<&ImportMatch>, Vec<&ImportMatch>) =
             result.matches.iter().partition(|m| m.found.is_some());
         if !lack.is_empty() {
@@ -105,8 +121,8 @@ impl State {
     }
 }
 
-/// Start Over, and Copy Missing Songs and Ask Your Server for Them when some are.
-fn tools(result: &ImportResult, key: u64, asking: Asking) -> Row<'_, App> {
+/// Start Over, and Copy Missing Songs when some are.
+fn tools(result: &ImportResult, key: u64) -> Row<'_, App> {
     let message = move |m: Message| App::Page(key, PageMsg::Import(m));
     let mut tools = row![
         button(text("Start over").size(13))
@@ -121,19 +137,6 @@ fn tools(result: &ImportResult, key: u64, asking: Asking) -> Row<'_, App> {
                 .style(theme::tonal)
                 .padding([6, 12])
                 .on_press(message(Message::CopyMissing)),
-        );
-        let missing = result.missing().len();
-        let label = match asking {
-            Asking::Sending => "Asking…".to_owned(),
-            Asking::Sent => "Asked for".to_owned(),
-            Asking::Not if missing == 1 => "Ask your server for it".to_owned(),
-            Asking::Not => format!("Ask your server for the {missing}"),
-        };
-        tools = tools.push(
-            button(text(label).size(13))
-                .style(theme::tonal)
-                .padding([6, 12])
-                .on_press_maybe((asking == Asking::Not).then(|| message(Message::AskForMissing))),
         );
     }
     tools
