@@ -12,6 +12,8 @@ use iced::Task;
 
 use super::{Ctx, Load, PageMsg};
 use crate::app::{App, Message as AppMessage};
+use crate::artwork::ArtKey;
+use crate::avatars;
 use crate::users::{self, ServerUser, Users};
 
 mod view;
@@ -244,6 +246,11 @@ fn load(
 }
 
 impl State {
+    /// The pictures of the people the page names.
+    pub fn artwork(&self) -> Vec<ArtKey> {
+        avatars::keys(self.known().iter().map(|u| u.avatar_url.as_deref()))
+    }
+
     fn known(&self) -> &[ServerUser] {
         match self.snapshot.ready().map(|s| &s.users) {
             Some(Users::Listed(list) | Users::Typed(list)) => list,
@@ -354,10 +361,12 @@ mod tests {
             ServerUser {
                 id: "u2".into(),
                 name: "robin".into(),
+                avatar_url: None,
             },
             ServerUser {
                 id: "u3".into(),
                 name: "sam".into(),
+                avatar_url: None,
             },
         ];
         assert_eq!(

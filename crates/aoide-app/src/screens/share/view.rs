@@ -6,6 +6,7 @@ use iced::{Center, Element, Fill};
 
 use super::{Message, Snapshot, State, describe_share};
 use crate::app::Message as AppMessage;
+use crate::artwork::Artwork;
 use crate::screens::{Load, PageMsg, View};
 use crate::users::{self, ServerUser, Users};
 use crate::{theme, widgets};
@@ -29,7 +30,10 @@ impl State {
             Load::Ready(snapshot) => snapshot,
         };
         body = body.push(section("Shared with", self.shared_with(snapshot, view.key)));
-        body = body.push(section("Share with", self.people(snapshot, view.key)));
+        body = body.push(section(
+            "Share with",
+            self.people(snapshot, view.artwork, view.key),
+        ));
         if let Some(note) = &self.note {
             body = body.push(match note {
                 Ok(note) => widgets::secondary(note.as_str()).size(13).into(),
@@ -115,13 +119,18 @@ impl State {
 
     /// Whom to share with: the server's other users, each with Share, or a
     /// field to type one in where the server doesn't list them.
-    fn people<'a>(&'a self, snapshot: &'a Snapshot, key: u64) -> Element<'a, AppMessage> {
+    fn people<'a>(
+        &'a self,
+        snapshot: &'a Snapshot,
+        artwork: &'a Artwork,
+        key: u64,
+    ) -> Element<'a, AppMessage> {
         let message = move |m: Message| AppMessage::Page(key, PageMsg::Share(m));
         let edit = checkbox(self.can_edit)
             .label("They can edit it")
             .on_toggle(move |on| message(Message::CanEdit(on)));
         match &snapshot.users {
-            Users::Listed(list) => self.listed_users(snapshot, list, edit, key),
+            Users::Listed(list) => self.listed_users(snapshot, list, edit, artwork, key),
             Users::Typed(_) => {
                 let ready = !self.typed.trim().is_empty() && !self.busy;
                 column![
@@ -157,6 +166,7 @@ impl State {
         snapshot: &'a Snapshot,
         list: &'a [ServerUser],
         edit: impl Into<Element<'a, AppMessage>>,
+        artwork: &'a Artwork,
         key: u64,
     ) -> Element<'a, AppMessage> {
         let message = move |m: Message| AppMessage::Page(key, PageMsg::Share(m));
@@ -178,6 +188,7 @@ impl State {
         for user in candidates {
             people = people.push(
                 row![
+                    widgets::avatar(&user.name, user.avatar_url.as_deref(), artwork, 28.0),
                     text(user.name.as_str()).size(14).width(Fill),
                     button(text("Share").size(13))
                         .style(theme::filled)
@@ -186,6 +197,7 @@ impl State {
                             (!self.busy).then(|| message(Message::With(user.id.clone())))
                         ),
                 ]
+                .spacing(10)
                 .align_y(Center),
             );
         }

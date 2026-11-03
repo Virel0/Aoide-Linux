@@ -362,9 +362,8 @@ impl Page {
             Page::Discover(state) => state.artwork(),
             Page::Favourites(state) => state.artwork(),
             Page::Replay(state) => state.artwork(),
-            Page::SyncStatus(_) | Page::Share(_) | Page::Import(_) | Page::Requests(_) => {
-                Vec::new()
-            }
+            Page::Share(state) => state.artwork(),
+            Page::SyncStatus(_) | Page::Import(_) | Page::Requests(_) => Vec::new(),
             Page::Playlists(state) => state.artwork(),
             Page::Collections(state) => state.artwork(),
             Page::Mixes(state) => state.artwork(),

@@ -67,6 +67,7 @@ mod tests {
         ServerUser {
             id: id.into(),
             name: name.into(),
+            avatar_url: None,
         }
     }
 

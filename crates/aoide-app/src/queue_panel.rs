@@ -36,7 +36,11 @@ fn small(glyph: Icon, message: Option<Message>) -> Element<'static, Message> {
 }
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
-    column![crate::together::view(&signed.together), queue(app)].into()
+    column![
+        crate::together::view(&signed.together, &app.artwork),
+        queue(app)
+    ]
+    .into()
 }
 
 fn queue(app: &App) -> Element<'_, Message> {

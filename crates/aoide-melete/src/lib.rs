@@ -25,6 +25,8 @@
 //!   [`MeleteClient::music_requests`] and [`MeleteClient::withdraw_request`].
 //! - **Get Info:** [`MeleteClient::item_details`].
 //! - **Sharing:** [`MeleteClient::user_directory`] names whom to share with.
+//! - **Profile pictures:** [`MeleteClient::me`] for the signed-in user's, and
+//!   [`MeleteClient::avatar_url`] for the address of anyone's.
 //! - **Playing:** [`MeleteClient::play`] for a stream link,
 //!   [`MeleteClient::cover_url`] for covers, [`MeleteClient::motion_cover`]
 //!   for an album's looping video and [`MeleteClient::motion_cover_choice`]
@@ -54,6 +56,7 @@ mod maintenance;
 mod media;
 mod model;
 mod motion;
+mod profile;
 mod request_imports;
 mod requests;
 
@@ -70,6 +73,7 @@ pub use lyrics::{LyricLine, LyricWord, Lyrics, LyricsAnswer, LyricsAsk};
 pub use media::{Stream, StreamFormat};
 pub use model::{COVER_TAG, Item, ItemKind, NameId, Page};
 pub use motion::{MOTION_COVER_MAX_BYTES, MotionCoverChoice};
+pub use profile::Me;
 pub use request_imports::{
     PlaylistImport, PlaylistImportSummary, PlaylistImportTrack, playlist_csv,
 };

@@ -38,6 +38,11 @@ state of every feature in more detail.
   until you remove it there.
 
 ### Added
+- Profile pictures from Melete: yours beside your name in Settings → Account,
+  each person's in a playlist's Share with list, and the others' in a Listen
+  Together session once the server sends them. Someone without a picture, or
+  a server from before profile pictures, shows the name's first letter in a
+  round tile.
 - Discord Rich Presence can show the album's cover again: Settings → System →
   Discord → Show Cover links the album's front on the Cover Art Archive by its
   MusicBrainz id, which Discord fetches. Aoide's icon stands in for an album
