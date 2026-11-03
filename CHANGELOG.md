@@ -7,35 +7,14 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
-### Changed
-- Search by description and Mixes go through your server's AI: Melete sends
-  the words to OpenRouter with its own key, so this computer holds no key and
-  never contacts OpenRouter. They're offered while the server has AI on, and
-  turn on by themselves at the next start once it runs a Melete with music AI.
-- Search by description keeps only what your words say: a genre only when
-  you name it, years only with a number or a decade, likes only when you ask
-  for favourites, and a name only when you typed it. A song name no longer
-  turns into a whole genre's worth of songs.
-- The full player shows the cover, still or moving, edge to edge across the
-  whole window, fading into the song and the controls along the foot.
-- Lyrics, their translation and their pronunciation all come from Melete.
-  The server looks lyrics up on LRCLIB when it has none of its own, and
-  translates through the LibreTranslate it has set up.
-- The lyrics panel's Romaji switch is now Pronunciation, and covers Korean and
-  Cyrillic too: each line in Latin letters, from Melete, with kanji read in
-  context. Furigana are still worked out on this computer.
-- The app now needs GStreamer: the Arch package, the deb and the Flatpak
-  bring it. Melete's motion covers are H.264, which needs `gst-libav` on Arch
-  and `gstreamer1.0-libav` on Debian and Ubuntu; the Flatpak gets it from the
-  runtime's codecs extension.
+## [0.4.0] - 2026-11-02
 
-### Removed
-- Settings → Lyrics → Find Lyrics on the Internet, and the LibreTranslate
-  server and key: Melete does both. A key you saved stays in the keyring until
-  you remove it there.
-- Settings → Smart search: the OpenRouter key, the model list and the model
-  choice. Melete does both features now. A key you saved stays in the keyring
-  until you remove it there.
+### Upgrading from 0.3.0
+The app now needs GStreamer, for motion covers. The Arch package, the deb and
+the Flatpak bring it. H.264 motion covers also need `gst-libav` on Arch or
+`gstreamer1.0-libav` on Debian and Ubuntu; without it the still cover shows.
+An OpenRouter or LibreTranslate key you saved stays in the keyring until you
+remove it: Melete does both now.
 
 ### Added
 - Profile pictures from Melete: yours beside your name in Settings → Account,
@@ -73,6 +52,36 @@ state of every feature in more detail.
   Settings → General turns them off for this computer, and while your server
   makes them from still covers, Ones your server made hides those on every
   device. The still cover shows wherever a video can't play.
+
+### Changed
+- Search by description and Mixes go through your server's AI: Melete sends
+  the words to OpenRouter with its own key, so this computer holds no key and
+  never contacts OpenRouter. They're offered while the server has AI on, and
+  turn on by themselves at the next start once it runs a Melete with music AI.
+- Search by description keeps only what your words say: a genre only when
+  you name it, years only with a number or a decade, likes only when you ask
+  for favourites, and a name only when you typed it. A song name no longer
+  turns into a whole genre's worth of songs.
+- The full player shows the cover, still or moving, edge to edge across the
+  whole window, fading into the song and the controls along the foot.
+- Lyrics, their translation and their pronunciation all come from Melete.
+  The server looks lyrics up on LRCLIB when it has none of its own, and
+  translates through the LibreTranslate it has set up.
+- The lyrics panel's Romaji switch is now Pronunciation, and covers Korean and
+  Cyrillic too: each line in Latin letters, from Melete, with kanji read in
+  context. Furigana are still worked out on this computer.
+- The app now needs GStreamer: the Arch package, the deb and the Flatpak
+  bring it. Melete's motion covers are H.264, which needs `gst-libav` on Arch
+  and `gstreamer1.0-libav` on Debian and Ubuntu; the Flatpak gets it from the
+  runtime's codecs extension.
+
+### Removed
+- Settings → Lyrics → Find Lyrics on the Internet, and the LibreTranslate
+  server and key: Melete does both. A key you saved stays in the keyring until
+  you remove it there.
+- Settings → Smart search: the OpenRouter key, the model list and the model
+  choice. Melete does both features now. A key you saved stays in the keyring
+  until you remove it there.
 
 ## [0.3.0] - 2026-10-31
 
@@ -226,7 +235,8 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.0...v0.1.1
