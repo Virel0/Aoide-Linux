@@ -7,6 +7,8 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-03
+
 ### Added
 - Playlists can hold songs that aren't in your library yet. They show in
   their place, greyed, with the artist and where their request stands
@@ -264,7 +266,8 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.1.1...v0.2.0
