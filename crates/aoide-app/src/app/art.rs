@@ -1,9 +1,11 @@
-//! The covers on screen: which are wanted, and their downloads.
+//! The covers and profile pictures on screen: which are wanted, and their
+//! downloads.
 
 use iced::Task;
 
 use super::{App, Message};
 use crate::artwork::{self, ArtKey};
+use crate::avatars;
 
 impl App {
     pub(super) fn artwork_arrived(&mut self, key: ArtKey, bytes: Option<Vec<u8>>) -> Task<Message> {
@@ -39,12 +41,29 @@ impl App {
                 }
             }
         }
+        wanted.extend(avatars::keys(
+            std::iter::once(signed.avatar.as_deref()).chain(
+                signed
+                    .together
+                    .session
+                    .iter()
+                    .flat_map(|s| s.members.iter().map(|m| m.avatar_url.as_deref())),
+            ),
+        ));
         self.artwork.want(wanted);
         let client = signed.connection.client.clone();
         let authorization = client.authorization();
         let dir = self.artwork.dir().map(ToOwned::to_owned);
         Task::batch(self.artwork.next_batch().into_iter().map(|key| {
-            let url = client.cover_url(&key.item).to_string();
+            let url = match avatars::path_of(&key) {
+                None => client.cover_url(&key.item),
+                Some(path) => match client.avatar_url(path) {
+                    Some(url) => url,
+                    // Not a path on this server: nothing to fetch.
+                    None => return Task::done(Message::Artwork(key, None)),
+                },
+            }
+            .to_string();
             let dir = dir.clone();
             let done = key.clone();
             Task::perform(

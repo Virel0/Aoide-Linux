@@ -160,6 +160,8 @@ pub enum Message {
     Tray(crate::tray::Message),
     Discord(crate::discord::Message),
     Smart(crate::smart::Message),
+    /// The signed-in person's profile picture, as `/api/v1/me` gave it.
+    MyAvatar(Option<String>),
     Mixes(crate::mixes::Request),
     Update(crate::updates::Message),
     Palette(crate::palette::Message),
@@ -384,6 +386,12 @@ impl App {
             Message::Tray(message) => self.tray_message(message),
             Message::Discord(message) => self.discord_message(message),
             Message::Smart(message) => self.smart_message(message),
+            Message::MyAvatar(path) => {
+                if let Some(signed) = self.session.as_mut() {
+                    signed.avatar = path;
+                }
+                Task::none()
+            }
             Message::Mixes(request) => self.mix_request(request),
             Message::Update(message) => self.update_message(message),
             Message::Palette(message) => self.palette_message(message),

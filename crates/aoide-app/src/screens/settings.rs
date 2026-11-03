@@ -229,7 +229,7 @@ pub fn view<'a>(
         Category::Sync => sync_section(sync),
         Category::Server => server_section(),
         Category::System => crate::system::settings_sections(app),
-        Category::Account => account_section(state, account, key),
+        Category::Account => account_section(state, account, app, key),
     };
     let pane = column![
         text(state.category.title()).size(20).font(widgets::BOLD),
@@ -484,19 +484,30 @@ fn sync_section(sync: crate::sync::Status<'_>) -> Element<'_, App> {
     section("", rows, "")
 }
 
-fn account_section<'a>(state: &State, account: Option<&'a Account>, key: u64) -> Element<'a, App> {
+fn account_section<'a>(
+    state: &State,
+    account: Option<&'a Account>,
+    app: &'a crate::app::App,
+    key: u64,
+) -> Element<'a, App> {
     let message = move |m: Message| App::Page(key, PageMsg::Settings(m));
     let mut account_rows = column![];
     if let Some(account) = account {
+        let picture = app.session.as_ref().and_then(|s| s.avatar.as_deref());
         account_rows = account_rows
             .push(row![
                 text("Server").width(Fill),
                 widgets::secondary(account.server.as_str())
             ])
-            .push(row![
-                text("Signed in as").width(Fill),
-                widgets::secondary(account.username.as_str())
-            ]);
+            .push(
+                row![
+                    text("Signed in as").width(Fill),
+                    widgets::avatar(&account.username, picture, &app.artwork, 22.0),
+                    widgets::secondary(account.username.as_str())
+                ]
+                .spacing(8)
+                .align_y(Center),
+            );
     }
     account_rows = account_rows.push(if state.confirm_sign_out {
         Element::from(

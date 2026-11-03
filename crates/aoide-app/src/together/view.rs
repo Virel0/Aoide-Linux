@@ -1,19 +1,24 @@
 //! Listen Together at the top of the queue panel: start a session with this
-//! queue or join one by its code; once in one, its code, who's in it, and
-//! Leave (and End for whoever started it).
+//! queue or join one by its code; once in one, its code, who's in it (with
+//! their pictures), and Leave (and End for whoever started it).
 
-use iced::widget::{button, column, row, text, text_input};
+use aoide_melete::ListenSession;
+use iced::widget::{Row, button, column, row, text, text_input};
 use iced::{Center, Element, Fill};
 
 use super::{Msg, Together};
 use crate::app::Message;
+use crate::artwork::Artwork;
 use crate::{theme, widgets};
 
 fn send(msg: Msg) -> Message {
     Message::Together(msg)
 }
 
-pub fn view(together: &Together) -> Element<'_, Message> {
+/// How big a member's picture is, beside the line naming them.
+const FACE: f32 = 18.0;
+
+pub fn view<'a>(together: &'a Together, artwork: &'a Artwork) -> Element<'a, Message> {
     let body = match &together.session {
         None => outside(together),
         Some(session) => {
@@ -25,10 +30,20 @@ pub fn view(together: &Together) -> Element<'_, Message> {
                 .filter(|m| !m.you)
                 .map(|m| format!("{} on {}", m.username, m.device))
                 .collect();
-            let who = if others.is_empty() {
-                "Nobody else yet. Share the code.".to_owned()
+            let who: Element<'_, Message> = if others.is_empty() {
+                widgets::secondary("Nobody else yet. Share the code.")
+                    .size(11)
+                    .into()
             } else {
-                format!("With {}.", others.join(", "))
+                row![
+                    faces(session, artwork),
+                    widgets::secondary(format!("With {}.", others.join(", ")))
+                        .size(11)
+                        .width(Fill),
+                ]
+                .spacing(6)
+                .align_y(Center)
+                .into()
             };
             let mut actions = row![
                 button(text("Leave").size(12))
@@ -54,7 +69,7 @@ pub fn view(together: &Together) -> Element<'_, Message> {
                     text(session.code.as_str()).size(15).font(widgets::BOLD),
                 ]
                 .align_y(Center),
-                widgets::secondary(who).size(11),
+                who,
                 actions,
             ]
             .spacing(6)
@@ -66,6 +81,22 @@ pub fn view(together: &Together) -> Element<'_, Message> {
         strip = strip.push(widgets::secondary(problem.as_str()).size(11));
     }
     strip.padding(iced::Padding::ZERO.bottom(8)).into()
+}
+
+/// One picture (or initial) for each other person in the session, however
+/// many of their devices are in it.
+fn faces<'a>(session: &'a ListenSession, artwork: &'a Artwork) -> Row<'a, Message> {
+    let mut named: Vec<&str> = Vec::new();
+    let mut faces = Row::new().spacing(4);
+    for member in session.members.iter().filter(|m| !m.you) {
+        if named.contains(&member.username.as_str()) {
+            continue;
+        }
+        named.push(&member.username);
+        let path = member.avatar_url.as_deref();
+        faces = faces.push(widgets::avatar(&member.username, path, artwork, FACE));
+    }
+    faces
 }
 
 /// Start, or a code to join with.

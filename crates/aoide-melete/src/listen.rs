@@ -71,6 +71,10 @@ pub struct ListenMember {
     pub device: String,
     /// The device asking.
     pub you: bool,
+    /// Where the user's profile picture is fetched from; `None` without one,
+    /// or from a server that doesn't send it.
+    #[serde(default)]
+    pub avatar_url: Option<String>,
 }
 
 /// A session with the server's clock when it answered, to set this device's

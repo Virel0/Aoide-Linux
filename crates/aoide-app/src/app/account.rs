@@ -77,6 +77,8 @@ pub(crate) struct Signed {
     pub together: crate::together::Together,
     /// Whether Search by description and Mixes are offered: the server's AI.
     pub ai: crate::smart::Ai,
+    /// The signed-in person's profile picture (an `avatar_url`), once asked.
+    pub avatar: Option<String>,
 }
 
 impl Signed {
@@ -120,6 +122,7 @@ impl Signed {
             info: None,
             together: Default::default(),
             ai: Default::default(),
+            avatar: None,
         }
     }
 }
@@ -368,7 +371,10 @@ impl App {
         let client = connection.client.clone();
         self.session = Some(Signed::new(connection, sidecar, sync, handoff));
 
-        let mut tasks = vec![crate::smart::ask(client)];
+        let mut tasks = vec![
+            crate::avatars::ask(client.clone()),
+            crate::smart::ask(client),
+        ];
         for effect in effects {
             match effect {
                 // The sync and everything that reads the store wait for the

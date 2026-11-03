@@ -101,12 +101,18 @@ pub struct UserName {
     pub id: String,
     /// Their username.
     pub name: String,
+    /// Where their profile picture is fetched from (see
+    /// [`avatar_url`](MeleteClient::avatar_url)); `None` without one.
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct WireUserName {
     id: i64,
     username: String,
+    /// Absent from servers before profile pictures.
+    #[serde(default)]
+    avatar_url: Option<String>,
 }
 
 /// `LoginResponse`: the token, shown only here, and who it signs in.
@@ -261,6 +267,7 @@ impl MeleteClient {
             .map(|user| UserName {
                 id: user.id.to_string(),
                 name: user.username,
+                avatar_url: user.avatar_url,
             })
             .collect())
     }
