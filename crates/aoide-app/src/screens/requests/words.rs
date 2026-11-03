@@ -277,6 +277,8 @@ mod tests {
             already: 3,
             unmatched: 5,
             waiting: 4,
+            in_library: 0,
+            playlist_id: None,
         };
         assert_eq!(
             import_tally(&import),

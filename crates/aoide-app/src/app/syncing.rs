@@ -4,6 +4,7 @@ use aoide_store::SyncReport;
 use iced::Task;
 
 use super::{App, Message};
+use crate::screens::{Page, PageMsg, playlist};
 use crate::sync;
 
 impl App {
@@ -61,9 +62,28 @@ impl App {
         signed.sync_status = Some(result.as_ref().map(sync::describe).map_err(Clone::clone));
         let panels = self.refresh_sync_panels();
         if changed {
-            Task::batch([self.load_playlists(), panels])
+            Task::batch([self.load_playlists(), self.reload_playlist_pages(), panels])
         } else {
             panels
         }
+    }
+
+    /// Every open playlist page, asked to read its playlist again: a sync
+    /// changed the store, perhaps bringing a waiting song's track.
+    fn reload_playlist_pages(&mut self) -> Task<Message> {
+        let Some(nav) = self.session.as_mut().and_then(|s| s.nav.as_mut()) else {
+            return Task::none();
+        };
+        let keys: Vec<u64> = nav
+            .iter_mut()
+            .filter(|e| matches!(e.page, Page::Playlist(_)))
+            .map(|e| e.key)
+            .collect();
+        Task::batch(keys.into_iter().map(|key| {
+            Task::done(Message::Page(
+                key,
+                PageMsg::Playlist(playlist::Message::Reload),
+            ))
+        }))
     }
 }

@@ -10,6 +10,8 @@ use crate::json::flag as lenient;
 use crate::new_id;
 use crate::record::{Record, SyncRecord, flag, int, opt_text, text};
 
+use super::pending::{PendingSong, WireItem};
+
 /// A folder in the playlist tree. Merged field by field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -267,29 +269,33 @@ impl SyncRecord for Playlist {
     }
 }
 
-/// One entry in a playlist. Merged whole-row.
+/// One entry in a playlist: a track, or a song still waiting to arrive (`pending`).
+/// Merged whole-row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(try_from = "WireItem", into = "WireItem")]
 pub struct PlaylistItem {
     /// The row id.
     pub id: String,
     /// The playlist it belongs to.
     pub playlist_id: String,
     /// The track's id, or the last one that resolved with
-    /// [`crate::UNRESOLVED_PREFIX`] before it when the track has gone missing.
+    /// [`crate::UNRESOLVED_PREFIX`] before it when the track has gone missing. Empty
+    /// while the entry is waiting for its song.
     pub jellyfin_id: String,
     /// Stored beside the id because Melete ids belong to the file: a rescan after
-    /// files move mints new ones, and without this every entry would dangle.
+    /// files move mints new ones, and without this every entry would dangle. Empty
+    /// while the entry is waiting for its song.
     pub content_key: String,
     /// A `FractionalIndex` key, not an integer.
     pub position: String,
     /// When the row last changed, in milliseconds since the epoch.
     pub updated_at: Millis,
     /// Whether the entry has been removed (a tombstone).
-    #[serde(deserialize_with = "lenient::deserialize")]
     pub deleted: bool,
     /// The device that made the last change.
     pub origin_device: String,
+    /// The song this entry waits for, until the library has it; `None` for a track.
+    pub pending: Option<PendingSong>,
 }
 
 impl PlaylistItem {
@@ -311,6 +317,7 @@ impl PlaylistItem {
             updated_at,
             deleted: false,
             origin_device: origin_device.into(),
+            pending: None,
         }
     }
 }
@@ -327,6 +334,7 @@ impl Record for PlaylistItem {
         "updatedAt",
         "deleted",
         "originDevice",
+        "pending",
     ];
 
     fn from_row(row: &Row<'_>) -> rusqlite::Result<Self> {
@@ -339,6 +347,7 @@ impl Record for PlaylistItem {
             updated_at: row.get("updatedAt")?,
             deleted: row.get("deleted")?,
             origin_device: row.get("originDevice")?,
+            pending: row.get("pending")?,
         })
     }
 
@@ -352,6 +361,7 @@ impl Record for PlaylistItem {
             int(self.updated_at),
             flag(self.deleted),
             text(&self.origin_device),
+            opt_text(&self.pending.as_ref().map(PendingSong::to_column)),
         ]
     }
 

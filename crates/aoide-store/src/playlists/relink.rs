@@ -38,7 +38,7 @@ impl From<&TrackRef> for TrackLink {
 /// that has to surface as "3 songs in this playlist are missing".
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RelinkReport {
-    /// Entries examined — every live playlist row.
+    /// Entries examined — every live playlist row but those waiting for their song.
     pub checked: usize,
     /// Rewritten to a new id found by content key.
     pub relinked: usize,
@@ -94,8 +94,10 @@ impl Store {
         resolve: impl Fn(&str) -> Option<String>,
         now: Millis,
     ) -> Result<RelinkReport> {
-        let items =
-            self.read(|conn| PlaylistItem::fetch_where(conn, "deleted = 0 ORDER BY rowid", []))?;
+        // A waiting entry has no track to lose: Melete swaps its track in.
+        let items = self.read(|conn| {
+            PlaylistItem::fetch_where(conn, "deleted = 0 AND pending IS NULL ORDER BY rowid", [])
+        })?;
         let mut report = RelinkReport {
             checked: items.len(),
             ..RelinkReport::default()

@@ -2,7 +2,8 @@
 //! words looked up on MusicBrainz through the server (albums, artists and
 //! songs), each marked in the library, wanted or asked for already, else with
 //! Ask. Looked up only when asked: MusicBrainz is slow and paced, and a lookup
-//! at every pause in typing would be both.
+//! at every pause in typing would be both. A song can also be put in a playlist
+//! before it arrives (`playlists`).
 
 use aoide_melete::{Candidate, MusicRequest, RequestKind};
 use iced::widget::{button, column, row, text};
@@ -13,6 +14,8 @@ use crate::failure::Failure;
 use crate::screens::{Ctx, Load, PageMsg, View, fetch};
 use crate::{theme, widgets};
 
+mod playlists;
+
 /// One lookup: its words, what it found, and what was asked for since.
 #[derive(Debug)]
 pub struct Asking {
@@ -22,6 +25,14 @@ pub struct Asking {
     asked: Vec<(usize, Result<MusicRequest, String>)>,
     /// An ask on its way, by place in `found`.
     asking: Option<usize>,
+    /// The song whose playlists are open to add it to, by place in `found`.
+    choosing: Option<usize>,
+    /// What is typed to find a playlist among many.
+    filter: String,
+    /// A song on its way into a playlist, by place in `found`.
+    adding: Option<usize>,
+    /// Put in a playlist from here, by place: the playlist's name, or why not.
+    added: Vec<(usize, Result<String, String>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +41,16 @@ pub enum Message {
     Found(String, Result<Vec<Candidate>, Failure>),
     Ask(usize),
     Asked(usize, Result<Box<MusicRequest>, Failure>),
+    /// Show or hide the playlists to add the song at this place to.
+    Choose(usize),
+    Filter(String),
+    /// Put the song at `place` in the playlist `id`, named `name`.
+    AddTo {
+        place: usize,
+        id: String,
+        name: String,
+    },
+    Added(usize, Result<Box<playlists::Added>, String>),
 }
 
 fn wrap(message: Message) -> PageMsg {
@@ -58,6 +79,10 @@ pub fn look_up(term: String, ctx: &Ctx<'_>) -> (Asking, Task<App>) {
         found: Load::Loading,
         asked: Vec::new(),
         asking: None,
+        choosing: None,
+        filter: String::new(),
+        adding: None,
+        added: Vec::new(),
     };
     (asking, task)
 }
@@ -90,12 +115,27 @@ impl Asking {
             }
             Message::Asked(place, result) => {
                 self.asking = None;
-                self.asked.retain(|(p, _)| *p != place);
-                self.asked
-                    .push((place, result.map(|r| *r).map_err(|e| e.to_string())));
+                self.answer(place, result.map(|r| *r).map_err(|e| e.to_string()));
                 Task::none()
             }
+            Message::Choose(place) => {
+                self.choosing = (self.choosing != Some(place)).then_some(place);
+                self.filter.clear();
+                Task::none()
+            }
+            Message::Filter(filter) => {
+                self.filter = filter;
+                Task::none()
+            }
+            Message::AddTo { place, id, name } => self.add(place, id, name, ctx),
+            Message::Added(place, result) => self.added(place, result),
         }
+    }
+
+    /// What asking for the candidate at `place` came to.
+    fn answer(&mut self, place: usize, answer: Result<MusicRequest, String>) {
+        self.asked.retain(|(p, _)| *p != place);
+        self.asked.push((place, answer));
     }
 
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
@@ -106,12 +146,14 @@ impl Asking {
             Load::Ready(found) if found.is_empty() => {
                 widgets::empty("MusicBrainz has nothing by that name.")
             }
-            Load::Ready(found) => column(
-                found
-                    .iter()
-                    .enumerate()
-                    .map(|(place, candidate)| self.row(place, candidate, view.key)),
-            )
+            Load::Ready(found) => column(found.iter().enumerate().map(|(place, candidate)| {
+                let row = self.row(place, candidate, view.key);
+                if self.choosing == Some(place) {
+                    column![row, self.choices(place, view)].spacing(6).into()
+                } else {
+                    row
+                }
+            }))
             .spacing(8)
             .into(),
         };
@@ -156,7 +198,15 @@ impl Asking {
                     .into()
             }
         };
-        row![words, side].spacing(12).align_y(Center).into()
+        let side = match self.added_note(place) {
+            Some(added) => column![side, note(added)].spacing(2).into(),
+            None => side,
+        };
+        let mut line = row![words].spacing(12).align_y(Center);
+        if let Some(add) = self.add_button(place, candidate, key) {
+            line = line.push(add);
+        }
+        line.push(side).into()
     }
 }
 

@@ -2,9 +2,12 @@
 //! embed page, the first 100 tracks, no account) or a CSV export (Exportify's
 //! columns and the other tools' names for them). The tracks are matched
 //! against the library by Melete's `POST /aoide/match`, or by the shared
-//! rules over its search when that can't be reached; then what was found
-//! is saved as an Aoide playlist, and what was not can be copied as text or
-//! asked for from the server.
+//! rules over its search when that can't be reached, to show what the
+//! library has. Saving sends the whole playlist to Melete, which makes it an
+//! Aoide playlist with every song in it: those the library lacks are asked
+//! for and wait in it until they arrive (Melete 0.4.0). An older server gets
+//! the songs found saved here, and the rest asked for on their own. What was
+//! not found can also be copied as text.
 
 use aoide_melete::{Item, ListQuery, MeleteClient};
 use aoide_sidecar::{
@@ -130,7 +133,8 @@ pub enum Step {
         total: usize,
     },
     Matched(Box<(ImportedPlaylist, ImportResult)>),
-    Saving,
+    /// Saving what was matched, kept to go back to.
+    Saving(Box<(ImportedPlaylist, ImportResult)>),
 }
 
 #[derive(Debug)]
@@ -154,11 +158,12 @@ pub enum Message {
     Progress(usize, usize),
     Matched(Box<(ImportedPlaylist, ImportResult)>),
     Name(String),
+    /// Sends the whole playlist to the server to be made there.
     Save,
+    /// What the server said to it.
+    Sent(ask::Sent),
     Saved(Result<String, String>),
     CopyMissing,
-    /// Asks the server for the songs not found.
-    AskForMissing,
     Asked(Result<(), String>),
     StartOver,
 }
@@ -283,7 +288,8 @@ impl State {
                 self.name = name;
                 Task::none()
             }
-            Message::Save => self.save(ctx),
+            Message::Save => self.send_whole(ctx),
+            Message::Sent(sent) => self.sent(sent, ctx),
             Message::Saved(Ok(id)) => {
                 // Back from the new playlist lands on a fresh import.
                 self.step = Step::Start;
@@ -293,6 +299,7 @@ impl State {
                     .chain(Task::done(App::Open(Route::Playlist { id })))
             }
             Message::Saved(Err(error)) => {
+                self.back_to_matched();
                 self.error = Some(format!("The playlist couldn't be saved: {error}"));
                 Task::none()
             }
@@ -303,7 +310,6 @@ impl State {
                 self.note = Some("The missing songs are on the clipboard.".to_owned());
                 iced::clipboard::write(missing_text(&found.1))
             }
-            Message::AskForMissing => self.ask_for_missing(ctx),
             Message::Asked(result) => {
                 self.asked(result);
                 Task::none()
@@ -333,7 +339,8 @@ impl State {
         Task::done(App::ImportMatch(key, Box::new(playlist)))
     }
 
-    /// Saves the songs found as an Aoide playlist under the name typed.
+    /// Saves the songs found as an Aoide playlist under the name typed: what
+    /// a server older than Melete 0.4.0 gets.
     fn save(&mut self, ctx: &Ctx<'_>) -> Task<App> {
         let Step::Matched(found) = &self.step else {
             return Task::none();
@@ -343,7 +350,7 @@ impl State {
         if ids.is_empty() || name.is_empty() {
             return Task::none();
         }
-        self.step = Step::Saving;
+        self.begin_saving();
         let client = ctx.client.clone();
         let store = ctx.store.clone();
         let key = ctx.key;

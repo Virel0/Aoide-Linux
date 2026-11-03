@@ -22,6 +22,7 @@ mod taste_parity;
 mod taste_profile;
 mod track_cache;
 mod track_flags;
+mod waiting;
 
 use std::collections::BTreeSet;
 

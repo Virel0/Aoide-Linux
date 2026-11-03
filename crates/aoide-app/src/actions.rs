@@ -96,7 +96,8 @@ pub async fn collection_tracks(
                     w.store.items(&id).map(|items| {
                         items
                             .iter()
-                            .filter(|item| !item.is_unresolved())
+                            // A song not in the library yet has no track to play.
+                            .filter(|item| !item.is_unresolved() && !item.is_waiting())
                             .map(|item| item.linked_jellyfin_id().to_owned())
                             .collect::<Vec<_>>()
                     })

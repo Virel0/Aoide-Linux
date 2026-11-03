@@ -1,0 +1,110 @@
+{
+  "cursor": 106,
+  "hasMore": false,
+  "ops": [
+    {
+      "authorUserId": "1",
+      "createdAt": 1793671979054,
+      "deviceId": "token-1",
+      "entity": "playlists",
+      "entityId": "0B8A1E8B-B3DF-45A7-88E0-EA53F78393C3",
+      "opId": "0C3264EC-BC7F-4B2D-BC93-15E5B577D1CE",
+      "operation": "upsert",
+      "payload": {
+        "deleted": false,
+        "fieldUpdatedAt": {
+          "deleted": 1793671979054,
+          "id": 1793671979054,
+          "isSmart": 1793671979054,
+          "name": 1793671979054,
+          "originDevice": 1793671979054,
+          "sortIndex": 1793671979054,
+          "updatedAt": 1793671979054
+        },
+        "id": "0B8A1E8B-B3DF-45A7-88E0-EA53F78393C3",
+        "isSmart": false,
+        "name": "Pending probe",
+        "originDevice": "token-1",
+        "sortIndex": "X",
+        "updatedAt": 1793671979054
+      },
+      "receivedAt": 1793671979054,
+      "seq": 103
+    },
+    {
+      "authorUserId": "1",
+      "createdAt": 1793671983440,
+      "deviceId": "melete",
+      "entity": "playlist_items",
+      "entityId": "4DDD98DA-9A44-4EB7-AFF4-89EEF8134A74",
+      "opId": "FA0AFE7D-FACF-477A-BBFA-00A8429E01A2",
+      "operation": "upsert",
+      "payload": {
+        "contentKey": "test artist|first album|opening|20",
+        "deleted": false,
+        "id": "4DDD98DA-9A44-4EB7-AFF4-89EEF8134A74",
+        "jellyfinId": "2",
+        "originDevice": "melete",
+        "playlistId": "0B8A1E8B-B3DF-45A7-88E0-EA53F78393C3",
+        "position": "V",
+        "updatedAt": 1793671983440
+      },
+      "receivedAt": 1793671983440,
+      "seq": 104
+    },
+    {
+      "authorUserId": "1",
+      "createdAt": 1793671986055,
+      "deviceId": "melete",
+      "entity": "playlist_items",
+      "entityId": "F1E0C716-429E-4BA5-B34A-0B234D2DB064",
+      "opId": "C01FDB2D-8156-4C4A-9259-E99DD13FBE58",
+      "operation": "upsert",
+      "payload": {
+        "deleted": false,
+        "id": "F1E0C716-429E-4BA5-B34A-0B234D2DB064",
+        "originDevice": "melete",
+        "pending": {
+          "album": "OK Computer",
+          "artist": "Radiohead",
+          "durationMs": null,
+          "requestId": 5,
+          "title": "No Surprises",
+          "why": null
+        },
+        "playlistId": "0B8A1E8B-B3DF-45A7-88E0-EA53F78393C3",
+        "position": "W",
+        "updatedAt": 1793671986055
+      },
+      "receivedAt": 1793671986055,
+      "seq": 105
+    },
+    {
+      "authorUserId": "1",
+      "createdAt": 1793671986934,
+      "deviceId": "melete",
+      "entity": "playlist_items",
+      "entityId": "517159EF-7350-4993-AEB5-913FA05C431F",
+      "opId": "FBD4005E-96A8-413A-90FA-B180F96CC2C3",
+      "operation": "upsert",
+      "payload": {
+        "deleted": false,
+        "id": "517159EF-7350-4993-AEB5-913FA05C431F",
+        "originDevice": "melete",
+        "pending": {
+          "album": null,
+          "artist": "Nobody At All",
+          "durationMs": null,
+          "requestId": null,
+          "title": "Xyzzy Nothing",
+          "why": "no recording on MusicBrainz has its title, artist and length"
+        },
+        "playlistId": "0B8A1E8B-B3DF-45A7-88E0-EA53F78393C3",
+        "position": "X",
+        "updatedAt": 1793671986934
+      },
+      "receivedAt": 1793671986934,
+      "seq": 106
+    }
+  ]
+}

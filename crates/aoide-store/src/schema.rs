@@ -8,7 +8,7 @@
 
 use rusqlite::{Connection, Transaction};
 
-const MIGRATIONS: &[(&str, &str)] = &[
+pub(crate) const MIGRATIONS: &[(&str, &str)] = &[
     (
         "v1",
         r#"
@@ -235,6 +235,14 @@ const MIGRATIONS: &[(&str, &str)] = &[
             "deleted" BOOLEAN NOT NULL DEFAULT 0,
             "originDevice" TEXT NOT NULL
         );
+        "#,
+    ),
+    (
+        "v11",
+        r#"
+        -- A song an entry waits for, as its payload's JSON; null for a track. A waiting
+        -- entry keeps empty strings in "jellyfinId" and "contentKey".
+        ALTER TABLE "playlistItem" ADD COLUMN "pending" TEXT;
         "#,
     ),
 ];
