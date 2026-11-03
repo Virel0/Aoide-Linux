@@ -494,3 +494,95 @@ fn a_track_is_edited_in_place_and_in_the_order_shuffle_restores() {
     assert_eq!(order, [1, 2, 30, 4]);
     assert!(!queue.edit_track(aoide_audio::EntryId(u64::MAX), |t| *t = 0));
 }
+
+// Repeating what was picked (RepeatPicksTests in the iOS app)
+
+/// An album started from its second song, with two songs queued by hand.
+fn picked() -> PlayQueue<String> {
+    let mut queue = loaded(&["a1", "a2", "a3", "a4"], 1);
+    queue.append(tracks(&["x", "y"]));
+    queue.repeat_mode = RepeatMode::All;
+    queue
+}
+
+#[test]
+fn repeat_all_loops_the_song_started_from_and_the_songs_queued_by_hand() {
+    let mut queue = picked();
+    let mut heard = vec![current(&queue).unwrap().to_owned()];
+    for _ in 0..6 {
+        assert_eq!(queue.advance_automatically(), AdvanceOutcome::Moved);
+        heard.push(current(&queue).unwrap().to_owned());
+    }
+    assert_eq!(heard, ["a2", "x", "y", "a2", "x", "y", "a2"]);
+    assert_eq!(
+        titles(&queue),
+        ["a1", "a2", "x", "y", "a3", "a4"],
+        "the album stays queued"
+    );
+}
+
+#[test]
+fn next_and_previous_move_through_the_picks_wrapping_both_ways() {
+    let mut queue = picked();
+    assert_eq!(queue.skip_to_previous(), AdvanceOutcome::Moved);
+    assert_eq!(current(&queue), Some("y"));
+    assert_eq!(queue.skip_to_next(), AdvanceOutcome::Moved);
+    assert_eq!(current(&queue), Some("a2"));
+}
+
+#[test]
+fn with_repeat_off_the_album_carries_on_after_the_picks() {
+    let mut queue = picked();
+    queue.repeat_mode = RepeatMode::Off;
+    let mut heard = vec![current(&queue).unwrap().to_owned()];
+    while queue.advance_automatically() == AdvanceOutcome::Moved {
+        heard.push(current(&queue).unwrap().to_owned());
+    }
+    assert_eq!(heard, ["a2", "x", "y", "a3", "a4"]);
+}
+
+#[test]
+fn an_album_with_nothing_queued_by_hand_still_repeats_whole() {
+    let mut queue = loaded(&["a1", "a2", "a3"], 1);
+    queue.repeat_mode = RepeatMode::All;
+    queue.advance_automatically();
+    assert_eq!(queue.advance_automatically(), AdvanceOutcome::Moved);
+    assert_eq!(current(&queue), Some("a1"));
+}
+
+#[test]
+fn turned_on_while_an_album_song_plays_the_next_song_is_the_next_pick() {
+    let mut queue = picked();
+    queue.repeat_mode = RepeatMode::Off;
+    for _ in 0..3 {
+        queue.advance_automatically();
+    }
+    assert_eq!(current(&queue), Some("a3"));
+    queue.repeat_mode = RepeatMode::All;
+    assert_eq!(queue.advance_automatically(), AdvanceOutcome::Moved);
+    assert_eq!(current(&queue), Some("a2"));
+}
+
+#[test]
+fn the_render_window_follows_the_loop_of_picks() {
+    let queue = picked();
+    assert_eq!(
+        queue
+            .render_window(4)
+            .iter()
+            .map(|s| s.track.as_str())
+            .collect::<Vec<_>>(),
+        ["a2", "x", "y", "a2"]
+    );
+}
+
+#[test]
+fn found_songs_are_not_picks_and_are_not_looped() {
+    let mut queue = picked();
+    queue.extend(tracks(&["f"]));
+    queue.advance_automatically();
+    queue.advance_automatically();
+    assert_eq!(current(&queue), Some("y"));
+    assert_eq!(queue.advance_automatically(), AdvanceOutcome::Moved);
+    assert_eq!(current(&queue), Some("a2"));
+}

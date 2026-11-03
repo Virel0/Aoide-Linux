@@ -83,6 +83,12 @@ remove it: Melete does both now.
   choice. Melete does both features now. A key you saved stays in the keyring
   until you remove it there.
 
+### Fixed
+- Repeat now repeats the queue you made. Once you've added songs with Play
+  Next or Play Last, repeat loops the song you started from and the songs you
+  added, instead of going back through the rest of the album; that stays in the
+  queue for when repeat is off. An album with nothing added still repeats whole.
+
 ## [0.3.0] - 2026-10-31
 
 ### Added
