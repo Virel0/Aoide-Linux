@@ -1,9 +1,11 @@
 //! Aoide's integrations with services outside the music server, each
-//! independent of the others and of the UI:
+//! independent of the others and of the UI, and the app's half of the
+//! server's music AI:
 //!
 //! - [`discord`]: Discord Rich Presence over Discord's local socket.
-//! - [`openrouter`]: search by description and mixes from a mood, through
-//!   OpenRouter; the model only translates words into filters and rules.
+//! - [`music_ai`]: whether a phrase is worth a search by description, and a
+//!   mix's rules checked and resolved; Melete's AI turns the words into
+//!   filters and rules.
 //! - [`translate`]: whether lyrics are worth translating, worked out on this
 //!   machine; the server translates them.
 //! - [`update`]: whether a newer release is out on GitHub, at most daily.
@@ -22,7 +24,7 @@
 
 pub mod discord;
 mod links;
-pub mod openrouter;
+pub mod music_ai;
 pub mod translate;
 pub mod update;
 

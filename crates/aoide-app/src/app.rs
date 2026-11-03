@@ -65,8 +65,6 @@ pub struct App {
     pub(crate) session: Option<Signed>,
     /// The tray and the other services of Settings → System.
     pub(crate) system: crate::system::State,
-    /// Smart search's key and model picker.
-    pub(crate) smart: crate::smart::State,
     /// A failure's details are shown (until another page opens).
     pub(crate) failure_details: bool,
     /// The player bar's menus, the sleep timer, private listening, the
@@ -229,7 +227,6 @@ impl App {
             ),
         };
         let system = crate::system::State::new(&desktop, &config);
-        let key = crate::smart::load_key(Arc::clone(&keyring));
         let app = Self {
             login: login::State::new(config.last_server.clone()),
             quick: None,
@@ -249,7 +246,6 @@ impl App {
             phase,
             session: None,
             system,
-            smart: crate::smart::State::default(),
             listening: crate::listening::State::default(),
             failure_details: false,
             motion,
@@ -257,7 +253,7 @@ impl App {
         let theme = iced::system::theme().map(Message::ThemeChanged);
         let update = Task::done(Message::Update(crate::updates::Message::Tick));
         let listening = crate::listening::boot();
-        (app, Task::batch([theme, restore, key, update, listening]))
+        (app, Task::batch([theme, restore, update, listening]))
     }
 
     pub fn title(&self) -> String {

@@ -1,5 +1,5 @@
 use super::*;
-use aoide_integrations::openrouter::smart_rules::{
+use aoide_integrations::music_ai::smart_rules::{
     RuleField, RuleOperator, RuleSort, RuleValue, SmartRule, SortDirection,
 };
 
@@ -394,10 +394,9 @@ async fn liked_is_read_from_the_stores_own_likes() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_mood_becomes_a_mix_with_the_names_first_and_the_hidden_left_out() {
-    use crate::credentials::MemoryStore;
     use crate::test_json::{page, track as json_track};
     use serde_json::json;
-    use wiremock::matchers::{method, path, query_param};
+    use wiremock::matchers::{body_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
     let server = MockServer::start().await;
     let get = |p: &str| Mock::given(method("GET")).and(path(p.to_owned()));
@@ -467,15 +466,20 @@ async fn a_mood_becomes_a_mix_with_the_names_first_and_the_hidden_left_out() {
         .expect(1)
         .mount(&server)
         .await;
-    let reply = json!({"match": "all", "limit": 4, "names": ["Mara Vey"],
+    // The server's AI: a rule it should have refused is refused here.
+    let rules = json!({"match": "all", "limit": 4,
         "rules": [{"field": "genre", "op": "is", "value": "folk"},
                   {"field": "last_played", "op": "notInTheLast", "value": "-6m"},
                   {"field": "duration_ms", "op": "beginsWith", "value": 3}]});
     Mock::given(method("POST"))
-        .and(path("/api/v1/chat/completions"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "choices": [{"message": {"content": reply.to_string()}}]
-        })))
+        .and(path("/api/v1/ai/music/mix"))
+        .and(body_json(
+            json!({"description": "forgotten folk and Mara Vey"}),
+        ))
+        .respond_with(ok(
+            json!({"names": ["Mara Vey"], "rules": rules, "rejected": []}),
+        ))
+        .expect(1)
         .mount(&server)
         .await;
 
@@ -488,10 +492,6 @@ async fn a_mood_becomes_a_mix_with_the_names_first_and_the_hidden_left_out() {
         })
         .await
         .unwrap();
-    let keyring: Arc<dyn CredentialStore> = Arc::new(MemoryStore::default());
-    keyring
-        .set(aoide_integrations::openrouter::KEYRING_ENTRY, "sk-or-test")
-        .unwrap();
     let client = MeleteClient::new(
         aoide_melete::ServerAddress::parse(&server.uri()).unwrap(),
         aoide_melete::Device::new("Test", "device-1"),
@@ -502,16 +502,9 @@ async fn a_mood_becomes_a_mix_with_the_names_first_and_the_hidden_left_out() {
         access_token: "tok".into(),
         username: "tester".into(),
     });
-    let mix = compose(
-        OpenRouter::with_base_url(&format!("{}/api/v1/", server.uri())).unwrap(),
-        keyring,
-        "test/model".into(),
-        client,
-        store.clone(),
-        "forgotten folk and Mara Vey".into(),
-    )
-    .await
-    .unwrap();
+    let mix = compose(client, store.clone(), "forgotten folk and Mara Vey".into())
+        .await
+        .unwrap();
     let ids: Vec<&str> = mix.tracks.iter().map(|t| t.id.as_str()).collect();
     assert_eq!(&ids[..2], ["11", "12"], "the names come first: {ids:?}");
     assert_eq!(ids.len(), 4, "cut at the rules' limit: {ids:?}");
@@ -529,6 +522,35 @@ async fn a_mood_becomes_a_mix_with_the_names_first_and_the_hidden_left_out() {
         .await
         .unwrap();
     assert_eq!(cached, 5);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_server_without_ai_mixes_yet_is_learnt_and_said_in_words() {
+    use wiremock::matchers::path;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(path("/api/v1/ai/music/mix"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+            "error": "not found"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = MeleteClient::new(
+        aoide_melete::ServerAddress::parse(&server.uri()).unwrap(),
+        aoide_melete::Device::new("Test", "device-1"),
+    )
+    .unwrap();
+    let store = StoreHandle::in_memory("device-1").unwrap();
+    let failed = compose(client, store, "forgotten folk".into())
+        .await
+        .unwrap_err();
+    assert_eq!(failed.availability(), Some(crate::smart::Ai::Missing));
+    let words = crate::failure::Failure::from(failed);
+    assert_eq!(
+        words.summary,
+        "Your server doesn't have AI search and mixes yet."
+    );
 }
 
 #[test]

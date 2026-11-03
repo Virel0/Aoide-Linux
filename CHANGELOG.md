@@ -8,6 +8,14 @@ state of every feature in more detail.
 ## [Unreleased]
 
 ### Changed
+- Search by description and Mixes go through your server's AI: Melete sends
+  the words to OpenRouter with its own key, so this computer holds no key and
+  never contacts OpenRouter. They're offered while the server has AI on, and
+  turn on by themselves at the next start once it runs a Melete with music AI.
+- Search by description keeps only what your words say: a genre only when
+  you name it, years only with a number or a decade, likes only when you ask
+  for favourites, and a name only when you typed it. A song name no longer
+  turns into a whole genre's worth of songs.
 - The full player shows the cover, still or moving, edge to edge across the
   whole window, fading into the song and the controls along the foot.
 - Lyrics, their translation and their pronunciation all come from Melete.
@@ -25,6 +33,9 @@ state of every feature in more detail.
 - Settings → Lyrics → Find Lyrics on the Internet, and the LibreTranslate
   server and key: Melete does both. A key you saved stays in the keyring until
   you remove it there.
+- Settings → Smart search: the OpenRouter key, the model list and the model
+  choice. Melete does both features now. A key you saved stays in the keyring
+  until you remove it there.
 
 ### Added
 - Discord Rich Presence can show the album's cover again: Settings → System →

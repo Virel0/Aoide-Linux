@@ -22,8 +22,8 @@ workspace = true
 
 [dependencies]
 aoide-audio = { path = "../aoide-audio" }
-# Discord Rich Presence, OpenRouter (search by description, mixes), the update
-# notice, and the lyrics' language (the server translates them).
+# Discord Rich Presence, the update notice, the lyrics' language (the server
+# translates them), and checking the rules of a mix the server's AI made.
 aoide-integrations = { path = "../aoide-integrations" }
 aoide-melete = { path = "../aoide-melete" }
 # Telling Japanese lyrics by their kana, readings for furigana, and LRC

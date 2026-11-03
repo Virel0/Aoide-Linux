@@ -46,4 +46,4 @@ pub use history::{PlayEvent, PlaySource};
 pub use op::{Op, OpKind};
 pub use queue::QueueState;
 pub use taste::{Like, TrackFlags};
-pub use track::{ContentKey, TrackRef};
+pub use track::{ContentKey, TrackRef, normalise};

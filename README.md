@@ -46,7 +46,7 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 ### Library
 - **Home**: jump back in to the last albums and playlists, or pick up what another device was playing; shelves of recently added, played and released, most played, random albums and genres
 - Albums, artists, songs, genres, liked songs, and **collections**: saved filters by genre, year and like
-- Search as you type; **search by description** through OpenRouter once you add a key
+- Search as you type; **search by description** through your server's AI, when it has it on
 - **Command palette** on Ctrl+K: every screen, the player's controls, and songs, albums and artists
 - Get info on any song: format, bit rate, sample rate, bit depth, channels
 - **Motion covers**: an album's looping video plays, muted, over its cover on its page and in the full-screen player
@@ -80,7 +80,7 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 - **Infinity** keeps the queue going with songs your server picks, or whole albums
 - **Discover**: 30 songs you own and haven't heard through, new each Monday
 - Radio from any song, album, artist, genre or playlist
-- Mixes from a described mood, through OpenRouter
+- Mixes from a described mood, through your server's AI
 
 ### Sync through Melete
 - Playlists, folders, likes, taste flags and the play history, between the Linux app and the iPhone app
@@ -197,12 +197,12 @@ to other services only for the features below.
 | Where | What is sent | When |
 |---|---|---|
 | Your Melete server | Sign-in, library requests, streams, albums' motion covers and whether you see the ones it made, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover, and your language when you turn on Translate | Always; *Private listening* keeps plays out of the sync log; Settings → General → *Motion covers* off asks for no videos |
-| [OpenRouter](https://openrouter.ai) | The phrase you typed, or a mix's description, with your library's genre names | Only with a key set, and only when you press the button |
+| Your Melete server, for search by description and mixes | The phrase you typed, or a mix's description. Your server sends it, with your library's genre names, to [OpenRouter](https://openrouter.ai) under its own key; this computer never contacts OpenRouter | Only when you press the button, and only while your server has AI on |
 | Discord, through its local socket | The song, artist and album; with *Show cover*, a link to the album's cover on the [Cover Art Archive](https://coverartarchive.org), which names its MusicBrainz id. Discord fetches the picture; this computer never contacts the archive | Only while Rich Presence is on; the cover only with *Show cover* on |
 | GitHub's API | One unauthenticated request for the latest release, with a fixed user agent, at most once a day | On by default; Settings → System → Updates → *Check for updates* |
 | Spotify | A request for the public playlist page you paste | Only when you import a playlist |
 
-What stays on the computer: the sign-in token and any API keys in the system
+What stays on the computer: the sign-in token in the system
 keyring (the Secret Service, or the Secret portal inside the Flatpak); settings
 in `~/.config/aoide/config.json`; the play history, playlists, taste flags and
 sync log in `~/.local/share/aoide/aoide.sqlite`; artwork and motion covers in `~/.cache/aoide`. [SECURITY.md](SECURITY.md) has the details.
@@ -240,7 +240,7 @@ and the packaging checks.
 | `aoide-store` | Local SQLite store: history, playlists, taste flags, op log |
 | `aoide-audio` | Decoding, output, gapless, crossfade, loudness |
 | `aoide-mpris` | The Linux desktop: MPRIS media controls, tray icon, single instance, sleep inhibit |
-| `aoide-integrations` | Services outside the server: Discord Rich Presence, OpenRouter (search by description, mixes), the lyrics' language, update notice |
+| `aoide-integrations` | Services outside the server: Discord Rich Presence, the lyrics' language, update notice; and checking the rules of a mix the server's AI made |
 | `aoide-app` | The iced application; motion covers play on GStreamer through iced_video_player |
 
 What is ported from the Electron app, and what is still to come, is in

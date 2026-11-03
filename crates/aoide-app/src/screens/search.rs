@@ -136,7 +136,7 @@ impl State {
             }
             Message::Describe => {
                 let phrase = self.term.trim().to_owned();
-                if !aoide_integrations::openrouter::smart_search::looks_like_a_phrase(&phrase) {
+                if !aoide_integrations::music_ai::phrase::looks_like_a_phrase(&phrase) {
                     return Task::none();
                 }
                 self.described = Some((phrase.clone(), Load::Loading));
@@ -294,15 +294,19 @@ impl State {
     }
 
     /// "Search by description" and what it found: offered for a phrase of
-    /// three words or more when an OpenRouter key is set. The phrase stays
-    /// on this computer until the button is pressed.
+    /// three words or more while the server's AI is. The phrase stays on
+    /// this computer until the button is pressed. A server without it, or
+    /// with it off, leaves the plain search alone, saying nothing.
     fn describe_view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
-        use aoide_integrations::openrouter::smart_search::looks_like_a_phrase;
+        use aoide_integrations::music_ai::phrase::looks_like_a_phrase;
         let key = view.key;
         let term = self.term.trim();
-        let shown = self.described.as_ref().filter(|(phrase, _)| phrase == term);
         let mut part = column![].spacing(12);
-        if view.smart_search && looks_like_a_phrase(term) && shown.is_none() {
+        if !view.ai.offered() {
+            return part.into();
+        }
+        let shown = self.described.as_ref().filter(|(phrase, _)| phrase == term);
+        if looks_like_a_phrase(term) && shown.is_none() {
             part = part.push(
                 button(text("Search by description").size(13))
                     .style(theme::tonal)
@@ -312,7 +316,7 @@ impl State {
         }
         match shown.map(|(_, found)| found) {
             None => {}
-            Some(Load::Loading) => part = part.push(widgets::secondary("Asking OpenRouter…")),
+            Some(Load::Loading) => part = part.push(widgets::secondary("Asking your server…")),
             Some(Load::Failed(error)) => {
                 part = part.push(widgets::failure(
                     error,

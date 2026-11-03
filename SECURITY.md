@@ -27,21 +27,25 @@ long-term branches.
 | What | Where |
 |---|---|
 | The Melete sign-in token | The system keyring: the Secret Service (GNOME Keyring, KWallet, KeePassXC), or the Secret portal inside the Flatpak |
-| The OpenRouter key, when set | The system keyring, write-only: the app never shows or logs them |
 | Settings, the server address, the username, the device id | `~/.config/aoide/config.json` |
 | Play history, Aoide playlists, taste flags, the sync log | `~/.local/share/aoide/aoide.sqlite` |
 | Artwork, and albums' motion covers (kept a week) | `~/.cache/aoide` |
 
 Settings → System → Export writes the settings to a file, never the account,
-the server, the device id, the token or a key. Signing out removes the token.
+the server, the device id or the token. Signing out removes the token.
+
+There is no OpenRouter key on this computer: search by description and mixes
+go through your server, which holds its own key. A key saved by an earlier
+version stays in the keyring, unused, until you remove it there.
 
 ## What the app sends, and to whom
 
 The README's [Privacy](README.md#privacy) section lists every service the app
 talks to, what it sends and when. In short: your Melete server always; GitHub's release API by default, with a
-switch to turn it off; OpenRouter, Discord and Spotify only when you set them up
-or use the feature. Lyrics, their translation and pronunciation come from your
-server, which asks LRCLIB and LibreTranslate itself when its admin has them on.
+switch to turn it off; Discord and Spotify only when you set them up or use the
+feature. Lyrics, their translation and pronunciation come from your server,
+which asks LRCLIB and LibreTranslate itself when its admin has them on; search
+by description and mixes go to your server too, which asks OpenRouter itself.
 
 ## Hardening in the code
 

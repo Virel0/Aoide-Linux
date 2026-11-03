@@ -6,8 +6,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::playback::tracks::TrackMeta;
 use crate::song_filter::SongFilter;
-use aoide_integrations::openrouter::mix_plan::match_genres;
-use aoide_integrations::openrouter::smart_rules::{
+use aoide_integrations::music_ai::mix_plan::match_genres;
+use aoide_integrations::music_ai::smart_rules::{
     Match, RuleField, RuleOperator, RuleValue, SmartRule, SmartRules, SortDirection,
 };
 

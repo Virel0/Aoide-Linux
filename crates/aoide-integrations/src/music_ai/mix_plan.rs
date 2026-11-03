@@ -222,7 +222,7 @@ pub fn missed_names_message(missed: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openrouter::smart_rules::Match;
+    use crate::music_ai::smart_rules::Match;
 
     fn strings(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| (*s).to_owned()).collect()
