@@ -87,15 +87,26 @@ pub enum Msg {
     FullLayout(crate::full_player::Layout),
     /// V in the full player: the next layout.
     NextLayout,
-    /// The playing cover, blurred for the full player's ground (`None` when
-    /// it couldn't be read).
-    Backdrop(crate::artwork::ArtKey, Option<iced::widget::image::Handle>),
+    FullGround(crate::full_player::Ground),
+    /// B in the full player: the next ground.
+    NextGround,
+    /// The playing cover made into the full player's ground (`None` when it
+    /// couldn't be read).
+    Backdrop(crate::artwork::ArtKey, Option<crate::full_player::Made>),
+    /// The full player's clock: its ground moves, its controls may hide.
+    FullTick(std::time::Instant),
+    /// The pointer moved or a key was pressed over the full player.
+    FullStirred,
+    FullFocus(bool),
 }
 
 /// Messages that come many times a second and change no artwork: the app
 /// skips its after-every-message work for them.
 pub fn is_quiet(message: &Message) -> bool {
-    matches!(message, Message::Listening(Msg::SleepTick))
+    matches!(
+        message,
+        Message::Listening(Msg::SleepTick | Msg::FullTick(_) | Msg::FullStirred)
+    )
 }
 
 /// What runs at launch.
@@ -155,9 +166,14 @@ impl App {
             Msg::OpenFull => self.open_full_player(),
             Msg::CloseFull => self.close_full_player(),
             Msg::MadeFullscreen => self.with_full(|full| full.made_fullscreen = true),
-            Msg::FullLayout(layout) => self.with_full(|full| full.layout = layout),
-            Msg::NextLayout => self.with_full(|full| full.layout = full.layout.next()),
+            Msg::FullLayout(layout) => self.set_full_layout(layout),
+            Msg::NextLayout => self.set_full_layout(self.config.interface.full_layout.next()),
+            Msg::FullGround(ground) => self.set_full_ground(ground),
+            Msg::NextGround => self.set_full_ground(self.config.interface.full_ground.next()),
             Msg::Backdrop(key, made) => self.backdrop_made(key, made),
+            Msg::FullTick(now) => self.full_tick(now),
+            Msg::FullStirred => self.full_stirred(),
+            Msg::FullFocus(focused) => self.full_focus(focused),
             Msg::SleepMinutes(typed) => {
                 self.listening.sleep_minutes = typed;
                 Task::none()

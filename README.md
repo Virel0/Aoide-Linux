@@ -57,8 +57,8 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 - Crossfade (8 s, or 4 s between songs at the same tempo) and Keep albums whole
 - Level volume to −18 LUFS from Melete's measurements, ReplayGain tags otherwise; Skip silence
 - Ten-band equaliser with 14 presets, a compressor, an output device picker, optional transcoding
-- Sleep timer, private listening, and a full-screen player on the blurred cover, in three
-  layouts: beside the synced lyrics, a card alone, or a wide card
+- Sleep timer, private listening, and a full-screen player on the blurred cover or a background
+  moving in its colours, in three layouts: beside the synced lyrics, a card alone, or a wide card
 
 ### Lyrics
 - Synced lyrics from Melete: follow along, click a line to seek, adjust the timing

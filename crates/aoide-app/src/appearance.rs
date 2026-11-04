@@ -23,6 +23,9 @@ pub struct InterfaceSettings {
     pub furigana: bool,
     /// Albums' looping videos over their covers, on this computer.
     pub motion_covers: bool,
+    /// The full player's layout and ground, as last chosen.
+    pub full_layout: crate::full_player::Layout,
+    pub full_ground: crate::full_player::Ground,
 }
 
 impl Default for InterfaceSettings {
@@ -34,6 +37,8 @@ impl Default for InterfaceSettings {
             romaji: false,
             furigana: false,
             motion_covers: true,
+            full_layout: crate::full_player::Layout::default(),
+            full_ground: crate::full_player::Ground::default(),
         }
     }
 }
@@ -379,6 +384,8 @@ mod tests {
             romaji: true,
             furigana: true,
             motion_covers: false,
+            full_layout: crate::full_player::Layout::Wide,
+            full_ground: crate::full_player::Ground::Aurora,
         };
         let json = serde_json::to_string(&changed).unwrap();
         let back: InterfaceSettings = serde_json::from_str(&json).unwrap();

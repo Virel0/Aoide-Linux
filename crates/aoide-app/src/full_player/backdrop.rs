@@ -1,7 +1,8 @@
 //! The full player's ground: the playing song's cover, shrunk, blurred and
 //! darkened off the UI thread, then drawn stretched across the window (the
-//! stretching smooths it further). Made once per cover; the one before stays
-//! until the new one is ready.
+//! stretching smooths it further), with its main colours for the moving
+//! grounds. Made once per cover; the one before stays until the new one is
+//! ready.
 
 use iced::Task;
 use iced::widget::image::Handle;
@@ -18,6 +19,15 @@ const SIGMA: f32 = 9.0;
 /// The brightest a pixel may be, as linear light: white words read on it at
 /// 4.5:1 or better ((1 + 0.05) / (0.18 + 0.05) ≈ 4.6).
 const CAP: f32 = 0.18;
+
+/// A cover made into the ground.
+#[derive(Debug, Clone)]
+pub struct Made {
+    /// Blurred and darkened.
+    pub still: Handle,
+    /// Its four main colours, as linear light, most of the cover first.
+    pub palette: [[f32; 3]; 4],
+}
 
 impl App {
     /// Starts blurring the playing song's cover when it isn't the one the
@@ -49,11 +59,16 @@ impl App {
         full.backdrop_for = Some(key.clone());
         Task::perform(
             async move {
-                tokio::task::spawn_blocking(move || blurred(&bytes))
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|(width, height, pixels)| Handle::from_rgba(width, height, pixels))
+                tokio::task::spawn_blocking(move || {
+                    let (width, height, pixels, palette) = blurred(&bytes)?;
+                    Some(Made {
+                        still: Handle::from_rgba(width, height, pixels),
+                        palette,
+                    })
+                })
+                .await
+                .ok()
+                .flatten()
             },
             move |made| Message::Listening(Msg::Backdrop(key, made)),
         )
@@ -61,7 +76,7 @@ impl App {
 
     /// A blurred cover is ready: it becomes the ground if it is still the
     /// playing song's.
-    pub(crate) fn backdrop_made(&mut self, key: ArtKey, made: Option<Handle>) -> Task<Message> {
+    pub(crate) fn backdrop_made(&mut self, key: ArtKey, made: Option<Made>) -> Task<Message> {
         if let Some(full) = self.listening.full.as_mut()
             && full.backdrop_for.as_ref() == Some(&key)
         {
@@ -71,15 +86,24 @@ impl App {
     }
 }
 
+/// A blurred cover: its width, height, RGBA pixels, and main colours.
+type Blurred = (u32, u32, Vec<u8>, [[f32; 3]; 4]);
+
 /// `cover` (an encoded image) shrunk to `SIDE`, blurred and held under
-/// `CAP`: its width, height and RGBA pixels. `None` for what isn't an image.
-fn blurred(cover: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+/// `CAP`, with its main colours taken before darkening. `None` for what
+/// isn't an image.
+fn blurred(cover: &[u8]) -> Option<Blurred> {
     let small = image::load_from_memory(cover).ok()?.thumbnail(SIDE, SIDE);
     let mut soft = imageops::blur(&small.to_rgba8(), SIGMA);
+    let light: Vec<[f32; 3]> = soft
+        .pixels()
+        .map(|p| [0, 1, 2].map(|i| to_linear(p.0[i])))
+        .collect();
+    let palette = super::palette::main_colours(&light);
     for pixel in soft.pixels_mut() {
         darken(&mut pixel.0);
     }
-    Some((soft.width(), soft.height(), soft.into_raw()))
+    Some((soft.width(), soft.height(), soft.into_raw(), palette))
 }
 
 /// Scales a pixel's light down to `CAP` when it is brighter, keeping its hue.
@@ -135,14 +159,15 @@ mod tests {
 
     #[test]
     fn a_cover_comes_back_small_and_in_its_shape() {
-        let (width, height, pixels) = blurred(&png(1000, 500, [40, 60, 90, 255])).expect("blurred");
+        let (width, height, pixels, _) =
+            blurred(&png(1000, 500, [40, 60, 90, 255])).expect("blurred");
         assert_eq!((width, height), (SIDE, SIDE / 2));
         assert_eq!(pixels.len(), (width * height * 4) as usize);
     }
 
     #[test]
     fn even_a_white_cover_is_dark_enough_for_white_words() {
-        let (_, _, pixels) = blurred(&png(300, 300, [255, 255, 255, 255])).expect("blurred");
+        let (_, _, pixels, _) = blurred(&png(300, 300, [255, 255, 255, 255])).expect("blurred");
         for pixel in pixels.as_chunks::<4>().0 {
             let light = luminance([0, 1, 2].map(|i| to_linear(pixel[i])));
             // A byte's rounding, no more, over the cap.

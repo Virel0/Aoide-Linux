@@ -302,6 +302,8 @@ mod tests {
                 romaji: true,
                 furigana: false,
                 motion_covers: false,
+                full_layout: crate::full_player::Layout::Card,
+                full_ground: crate::full_player::Ground::Still,
             },
             collections: Vec::new(),
             activity: Some("gaming".into()),

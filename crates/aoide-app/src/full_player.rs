@@ -1,18 +1,28 @@
-//! The full-screen player: the cover blurred across the whole window, and a
-//! frosted card holding the cover (still or moving), the song, the seek bar
-//! and the transport. Three layouts, which V goes through: the card beside
-//! the synced lyrics, the card alone, and a wide card with the song large.
-//! It is always dark, whatever the app's mode, as its words sit on the
-//! darkened cover. The window goes full screen with it; Esc leaves.
+//! The full-screen player: the cover blurred across the whole window (or a
+//! ground moving in its colours), and a frosted card holding the cover
+//! (still or moving), the song, the seek bar and the transport. Three
+//! layouts, which V goes through: the card beside the synced lyrics, the card
+//! alone, and a wide card with the song large; B goes through the grounds.
+//! Both are remembered. The controls and the pointer hide after a few still
+//! seconds while the music plays. It is always dark, whatever the app's
+//! mode, as its words sit on the darkened cover. The window goes full
+//! screen with it; Esc leaves.
 
 mod backdrop;
+mod clock;
 mod glass;
+mod ground;
 mod lyrics;
+mod palette;
 
-use iced::keyboard::{self, Key, key::Named};
+use std::time::Instant;
+
 use iced::theme::Mode;
-use iced::widget::{Row, button, column, container, image, row, space, stack, text, themer};
-use iced::{Center, ContentFit, Element, Fill, Subscription, Task, window};
+use iced::widget::{
+    Row, button, column, container, image, mouse_area, row, shader, space, stack, text, themer,
+};
+use iced::{Center, ContentFit, Element, Fill, Length, Task, mouse, window};
+use serde::{Deserialize, Serialize};
 
 use crate::app::{App, Message, Signed};
 use crate::artwork::ArtKey;
@@ -20,8 +30,11 @@ use crate::icons::{Icon, Tone, icon};
 use crate::listening::Msg;
 use crate::{theme, widgets};
 
+pub use backdrop::Made;
+
 /// How the player is laid out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Layout {
     /// The card beside the lyrics; the card alone when the song has none.
     #[default]
@@ -51,16 +64,78 @@ impl Layout {
     }
 }
 
-#[derive(Debug, Default)]
+/// What lies behind the card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Ground {
+    /// The blurred cover, still.
+    Still,
+    /// The cover's colours folding slowly over each other.
+    #[default]
+    Silk,
+    /// Curtains of its colours drifting over its darkest.
+    Aurora,
+    /// Clouds of its colours spreading in dark water.
+    Ink,
+}
+
+impl Ground {
+    /// The ground B moves to.
+    pub fn next(self) -> Self {
+        match self {
+            Self::Still => Self::Silk,
+            Self::Silk => Self::Aurora,
+            Self::Aurora => Self::Ink,
+            Self::Ink => Self::Still,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Still => "Still",
+            Self::Silk => "Silk",
+            Self::Aurora => "Aurora",
+            Self::Ink => "Ink",
+        }
+    }
+
+    pub fn moves(self) -> bool {
+        self != Self::Still
+    }
+}
+
+#[derive(Debug)]
 pub struct FullPlayer {
-    pub layout: Layout,
     /// The window went full screen for this player (it wasn't already), so
     /// leaving puts it back.
     pub made_fullscreen: bool,
-    /// The cover the blurred ground was last asked for.
+    /// The cover the ground was last asked for.
     backdrop_for: Option<ArtKey>,
-    /// That cover, blurred, once made.
-    backdrop: Option<image::Handle>,
+    /// That cover, blurred, and its colours, once made.
+    backdrop: Option<backdrop::Made>,
+    /// Seconds the moving ground has moved: only while the music plays.
+    clock: f32,
+    last_tick: Option<Instant>,
+    /// When the pointer last moved or a key was pressed.
+    last_stirred: Instant,
+    /// The controls and the pointer are hidden (only while playing).
+    still: bool,
+    focused: bool,
+}
+
+impl FullPlayer {
+    fn new(now: Instant) -> Self {
+        Self {
+            made_fullscreen: false,
+            backdrop_for: None,
+            backdrop: None,
+            clock: 0.0,
+            last_tick: None,
+            last_stirred: now,
+            still: false,
+            focused: true,
+        }
+    }
 }
 
 impl App {
@@ -69,7 +144,7 @@ impl App {
         if self.listening.full.is_some() {
             return Task::none();
         }
-        self.listening.full = Some(FullPlayer::default());
+        self.listening.full = Some(FullPlayer::new(Instant::now()));
         // Full screen only from a window: one the listener already made full
         // screen is left as it is, and stays so afterwards.
         let fullscreen = window::latest().and_then(|id| {
@@ -95,90 +170,101 @@ impl App {
         }
     }
 
-    /// Esc and V, while the full player is open.
-    pub(crate) fn full_player_subscription(&self) -> Subscription<Message> {
-        if self.listening.full.is_none() {
-            return Subscription::none();
-        }
-        keyboard::listen().filter_map(|event| match event {
-            keyboard::Event::KeyPressed { key, modifiers, .. } => key_message(&key, modifiers),
-            _ => None,
-        })
+    /// A layout chosen, kept for next time.
+    pub(crate) fn set_full_layout(&mut self, layout: Layout) -> Task<Message> {
+        self.config.interface.full_layout = layout;
+        self.save_config();
+        Task::none()
     }
-}
 
-/// What a key does in the full player: Esc leaves, V (alone) changes the
-/// layout.
-fn key_message(key: &Key, modifiers: keyboard::Modifiers) -> Option<Message> {
-    match key.as_ref() {
-        Key::Named(Named::Escape) => Some(Message::Listening(Msg::CloseFull)),
-        Key::Character(c)
-            if c.eq_ignore_ascii_case("v")
-                && !modifiers.command()
-                && !modifiers.control()
-                && !modifiers.alt() =>
-        {
-            Some(Message::Listening(Msg::NextLayout))
-        }
-        _ => None,
+    /// A ground chosen, kept for next time.
+    pub(crate) fn set_full_ground(&mut self, ground: Ground) -> Task<Message> {
+        self.config.interface.full_ground = ground;
+        self.save_config();
+        Task::none()
     }
 }
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Element<'a, Message> {
     let current = app.playback.current().map(|(_, q)| &q.meta);
-    let middle: Element<'a, Message> = match full.layout {
+    let controls = !full.still || !app.playback.is_playing();
+    let interface = &app.config.interface;
+    let middle: Element<'a, Message> = match interface.full_layout {
         Layout::Lyrics => match lyrics::side(app, signed, current) {
             Some(side) => row![
-                glass::card(app, signed, current),
+                glass::card(app, signed, current, controls),
                 container(side).width(Fill).max_width(820.0),
             ]
             .spacing(72)
             .padding([0, 48])
             .align_y(Center)
             .into(),
-            None => glass::card(app, signed, current),
+            None => glass::card(app, signed, current, controls),
         },
-        Layout::Card => glass::card(app, signed, current),
-        Layout::Wide => glass::wide(app, signed, current),
+        Layout::Card => glass::card(app, signed, current, controls),
+        Layout::Wide => glass::wide(app, signed, current, controls),
+    };
+    let top: Element<'a, Message> = if controls {
+        top_bar(interface.full_layout, interface.full_ground)
+    } else {
+        space().height(TOP_BAR).into()
     };
     let page = stack![
-        ground(full),
-        column![top_bar(full), container(middle).center(Fill)]
+        ground(full, interface.full_ground),
+        column![top, container(middle).center(Fill)]
             .spacing(10)
             .padding(24),
     ];
-    let dark = crate::appearance::in_mode(Mode::Dark, &app.config.interface);
+    let page = mouse_area(page).interaction(if controls {
+        mouse::Interaction::None
+    } else {
+        mouse::Interaction::Hidden
+    });
+    let dark = crate::appearance::in_mode(Mode::Dark, interface);
     themer(Some(dark), page).into()
 }
 
-/// The blurred cover across the window, or the plain dark page until it is
-/// made.
-fn ground(full: &FullPlayer) -> Element<'_, Message> {
-    let picture: Element<'_, Message> = match &full.backdrop {
-        Some(blurred) => image(blurred.clone())
-            .width(Fill)
-            .height(Fill)
-            .content_fit(ContentFit::Cover)
-            .filter_method(image::FilterMethod::Linear)
-            .into(),
-        None => space().width(Fill).height(Fill).into(),
+/// The top bar's height, kept while it is hidden so nothing moves.
+const TOP_BAR: f32 = 34.0;
+
+/// The blurred cover across the window, with the moving ground over it when
+/// one is chosen; the plain dark page until the cover is made.
+fn ground(full: &FullPlayer, chosen: Ground) -> Element<'_, Message> {
+    let Some(made) = &full.backdrop else {
+        return container(space().width(Fill).height(Fill))
+            .style(theme::page)
+            .into();
     };
-    container(picture)
+    let still = image(made.still.clone())
         .width(Fill)
         .height(Fill)
-        .style(theme::page)
-        .into()
+        .content_fit(ContentFit::Cover)
+        .filter_method(image::FilterMethod::Linear);
+    if !chosen.moves() {
+        return still.into();
+    }
+    let moving = shader(ground::Program {
+        ground: chosen,
+        palette: made.palette,
+        clock: full.clock,
+    })
+    .width(Fill)
+    .height(Fill);
+    stack![still, moving].into()
 }
 
-/// Close, the hint, and the three layouts.
-fn top_bar(full: &FullPlayer) -> Element<'_, Message> {
-    let switch = |layout: Layout| {
-        let on = full.layout == layout;
+/// Close, the hint, the three layouts and the ground.
+fn top_bar<'a>(layout: Layout, chosen: Ground) -> Element<'a, Message> {
+    let switch = |each: Layout| {
         Element::from(
-            button(text(layout.label()).size(13))
+            button(text(each.label()).size(13))
                 .padding([6, 12])
-                .style(if on { theme::row_selected } else { theme::row })
-                .on_press(Message::Listening(Msg::FullLayout(layout))),
+                .style(if each == layout {
+                    theme::row_selected
+                } else {
+                    theme::row
+                })
+                .on_press(Message::Listening(Msg::FullLayout(each))),
         )
     };
     row![
@@ -191,10 +277,15 @@ fn top_bar(full: &FullPlayer) -> Element<'_, Message> {
         .style(theme::row)
         .on_press(Message::Listening(Msg::CloseFull)),
         crate::shell::gap(),
-        widgets::secondary("V changes the layout \u{b7} Esc leaves").size(11),
+        widgets::secondary("V layout \u{b7} B background \u{b7} Esc leaves").size(11),
         Row::with_children(Layout::ALL.map(switch)).spacing(6),
+        button(text(format!("Background: {}", chosen.label())).size(13))
+            .padding([6, 12])
+            .style(theme::row)
+            .on_press(Message::Listening(Msg::FullGround(chosen.next()))),
     ]
     .spacing(12)
+    .height(Length::Fixed(TOP_BAR))
     .align_y(Center)
     .into()
 }
@@ -218,24 +309,33 @@ mod tests {
     }
 
     #[test]
-    fn v_alone_changes_the_layout_and_esc_leaves() {
-        let none = keyboard::Modifiers::empty();
-        let v = Key::Character("v".into());
-        assert!(matches!(
-            key_message(&v, none),
-            Some(Message::Listening(Msg::NextLayout))
-        ));
-        assert!(matches!(
-            key_message(&Key::Character("V".into()), keyboard::Modifiers::SHIFT),
-            Some(Message::Listening(Msg::NextLayout))
-        ));
-        // Ctrl+V and the like are someone else's.
-        assert!(key_message(&v, keyboard::Modifiers::CTRL).is_none());
-        assert!(key_message(&v, keyboard::Modifiers::ALT).is_none());
-        assert!(matches!(
-            key_message(&Key::Named(Named::Escape), none),
-            Some(Message::Listening(Msg::CloseFull))
-        ));
-        assert!(key_message(&Key::Character("x".into()), none).is_none());
+    fn b_goes_through_the_grounds_and_only_still_stands_still() {
+        let mut ground = Ground::Still;
+        let mut seen = Vec::new();
+        for _ in 0..4 {
+            seen.push(ground);
+            ground = ground.next();
+        }
+        assert_eq!(ground, Ground::Still);
+        assert_eq!(
+            seen,
+            [Ground::Still, Ground::Silk, Ground::Aurora, Ground::Ink]
+        );
+        assert_eq!(
+            seen.iter().filter(|g| g.moves()).count(),
+            3,
+            "every ground but Still moves"
+        );
+    }
+
+    #[test]
+    fn the_choices_are_kept_by_name() {
+        assert_eq!(serde_json::to_string(&Layout::Wide).unwrap(), "\"wide\"");
+        assert_eq!(
+            serde_json::to_string(&Ground::Aurora).unwrap(),
+            "\"aurora\""
+        );
+        let back: Ground = serde_json::from_str("\"ink\"").unwrap();
+        assert_eq!(back, Ground::Ink);
     }
 }

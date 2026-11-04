@@ -1,6 +1,7 @@
 //! The frosted card: the cover (with its motion cover over it), the song,
 //! the seek bar and the transport. Upright on its own or beside the lyrics;
-//! wide, with the song large, in the wide layout.
+//! wide, with the song large, in the wide layout. While the controls are
+//! hidden the transport's place stays, empty, so nothing moves.
 
 use iced::widget::{column, container, row, slider, space, text};
 use iced::{Center, Element, Fill, Length};
@@ -17,11 +18,15 @@ const CARD: f32 = 420.0;
 const COVER: f32 = 356.0;
 const WIDE_COVER: f32 = 300.0;
 
-/// The upright card.
+/// The transport's height: the play button and its padding.
+const TRANSPORT: f32 = 52.0;
+
+/// The upright card; `controls` false hides the transport.
 pub fn card<'a>(
     app: &'a App,
     signed: &'a Signed,
     current: Option<&'a TrackMeta>,
+    controls: bool,
 ) -> Element<'a, Message> {
     let words = column![
         text(title(current))
@@ -39,7 +44,7 @@ pub fn card<'a>(
         cover(app, current, COVER),
         words,
         scrubber(app, signed, current),
-        transport(&app.playback),
+        transport(&app.playback, controls),
     ]
     .spacing(18)
     .align_x(Center);
@@ -55,13 +60,14 @@ pub fn wide<'a>(
     app: &'a App,
     signed: &'a Signed,
     current: Option<&'a TrackMeta>,
+    controls: bool,
 ) -> Element<'a, Message> {
     let words = column![
         text(title(current)).size(46).font(widgets::BOLD),
         widgets::secondary(byline(current)).size(24),
         space().height(20),
         container(scrubber(app, signed, current)).max_width(620.0),
-        transport(&app.playback),
+        transport(&app.playback, controls),
     ]
     .spacing(8)
     .width(Fill);
@@ -136,8 +142,12 @@ fn scrubber<'a>(app: &App, signed: &Signed, current: Option<&TrackMeta>) -> Elem
     .into()
 }
 
-/// Shuffle, Previous, Play or Pause, Next and Repeat.
-fn transport<'a>(playback: &crate::playback::Playback) -> Element<'a, Message> {
+/// Shuffle, Previous, Play or Pause, Next and Repeat; their place, empty,
+/// while the controls are hidden.
+fn transport<'a>(playback: &crate::playback::Playback, shown: bool) -> Element<'a, Message> {
+    if !shown {
+        return space().height(TRANSPORT).into();
+    }
     let control = |glyph: Icon, size: f32, on: bool, message: Transport| {
         iced::widget::button(icon(
             glyph,
@@ -177,6 +187,7 @@ fn transport<'a>(playback: &crate::playback::Playback) -> Element<'a, Message> {
         ),
     ]
     .spacing(14)
+    .height(TRANSPORT)
     .align_y(Center)
     .into()
 }

@@ -15,6 +15,12 @@ state of every feature in more detail.
   middle, its translation or reading under it), the card alone, and a wide
   card with the song large. It replaces the edge-to-edge cover and the
   visualiser.
+- Behind the card, a still blur or one of three moving backgrounds drawn
+  from the cover's own colours: Silk, Aurora and Ink. B goes through them,
+  and they move only while the music plays and the window has focus.
+- The controls and the pointer hide after three still seconds while the music
+  plays, and come back with a move of the mouse or a key.
+- The layout and background chosen are kept for next time.
 
 ### Fixed
 - Waiting songs an earlier build set aside as unreadable come back into their
