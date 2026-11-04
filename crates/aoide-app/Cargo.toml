@@ -50,7 +50,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 # pipeline with no sound (src/motion/video.rs).
 iced_video_player = "0.6"
 gstreamer = "0.23"
-gstreamer-app = "0.23"
+gstreamer-app = "0.25"
 # The log facade (already in the tree through iced); the app's own logger is logging.rs.
 log = "0.4.34"
 # Artwork downloads. The same TLS stack as every other crate: rustls on ring, never
