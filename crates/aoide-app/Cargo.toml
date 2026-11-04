@@ -49,7 +49,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 # crate has. gstreamer and gstreamer-app are its own, named here to build a
 # pipeline with no sound (src/motion/video.rs).
 iced_video_player = "0.6"
-gstreamer = "0.23"
+gstreamer = "0.25"
 gstreamer-app = "0.23"
 # The log facade (already in the tree through iced); the app's own logger is logging.rs.
 log = "0.4.34"
