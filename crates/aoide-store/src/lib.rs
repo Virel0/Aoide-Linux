@@ -27,6 +27,7 @@ mod images;
 mod json;
 mod merge;
 mod models;
+mod pending_replay;
 mod play_definition;
 mod playlists;
 mod quarantine;
