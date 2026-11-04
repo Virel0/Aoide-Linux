@@ -44,8 +44,6 @@ pub enum Icon {
     Moon,
     Private,
     Expand,
-    Visualizer,
-    Artwork,
     Sparkle,
     Radio,
     Folder,
@@ -147,10 +145,6 @@ fn source(icon: Icon) -> String {
             r#"<path d="M3 12s3.5-6 9-6c1.6 0 3 .5 4.2 1.2M21 12s-3.5 6-9 6c-1.6 0-3-.5-4.2-1.2M9.9 9.9a3 3 0 0 0 4.2 4.2M4 20L20 4" {STROKE}/>"#
         ),
         Icon::Expand => format!(r#"<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" {STROKE}/>"#),
-        Icon::Visualizer => format!(r#"<path d="M5 20v-6M9.5 20V8M14 20v-9M18.5 20V4" {STROKE}/>"#),
-        Icon::Artwork => format!(
-            r#"<rect x="4" y="4" width="16" height="16" rx="3" {STROKE}/><circle cx="12" cy="12" r="3" {STROKE}/>"#
-        ),
         Icon::Sparkle => r#"<path d="M10 3l1.9 5.6L17.5 10.5l-5.6 1.9L10 18l-1.9-5.6L2.5 10.5l5.6-1.9z" fill="black"/><path d="M18 14l.9 2.6 2.6.9-2.6.9L18 21l-.9-2.6-2.6-.9 2.6-.9z" fill="black"/>"#.to_owned(),
         Icon::Folder => format!(
             r#"<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" {STROKE}/>"#
@@ -162,7 +156,7 @@ fn source(icon: Icon) -> String {
     format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">{body}</svg>"#)
 }
 
-const ALL: [Icon; 40] = [
+const ALL: [Icon; 38] = [
     Icon::Play,
     Icon::Pause,
     Icon::Next,
@@ -198,8 +192,6 @@ const ALL: [Icon; 40] = [
     Icon::Moon,
     Icon::Private,
     Icon::Expand,
-    Icon::Visualizer,
-    Icon::Artwork,
     Icon::Sparkle,
     Icon::Radio,
     Icon::Folder,

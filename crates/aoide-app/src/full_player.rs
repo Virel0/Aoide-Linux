@@ -1,103 +1,66 @@
-//! The full-screen player: the cover, still or moving, edge to edge across
-//! the whole window, fading into the song, the seek bar and the transport
-//! along the foot (or the visualizer in the middle instead); the window goes
-//! full screen with it. Esc leaves.
-//!
-//! The visualizer reads the engine's tap (`aoide_audio::Visualizer`) about
-//! 30 times a second, and only while it is on screen, something is playing
-//! and the window isn't minimised: otherwise nothing ticks at all.
+//! The full-screen player: the cover blurred across the whole window, and a
+//! frosted card holding the cover (still or moving), the song, the seek bar
+//! and the transport. Three layouts, which V goes through: the card beside
+//! the synced lyrics, the card alone, and a wide card with the song large.
+//! It is always dark, whatever the app's mode, as its words sit on the
+//! darkened cover. The window goes full screen with it; Esc leaves.
 
-use std::time::Duration;
+mod backdrop;
+mod glass;
+mod lyrics;
 
-use aoide_audio::{Visualizer, VisualizerConfig};
-use iced::widget::{button, canvas, column, container, row, slider, space, stack, text};
-use iced::{
-    Center, Element, Fill, Length, Point, Rectangle, Renderer, Size, Subscription, Task, Theme,
-    keyboard, mouse, window,
-};
+use iced::keyboard::{self, Key, key::Named};
+use iced::theme::Mode;
+use iced::widget::{Row, button, column, container, image, row, space, stack, text, themer};
+use iced::{Center, ContentFit, Element, Fill, Subscription, Task, window};
 
-use crate::app::{App, Message, Signed, Transport};
+use crate::app::{App, Message, Signed};
 use crate::artwork::ArtKey;
 use crate::icons::{Icon, Tone, icon};
 use crate::listening::Msg;
-use crate::playback::tracks::TrackMeta;
 use crate::{theme, widgets};
 
-/// About 30 frames a second.
-pub const FRAME: Duration = Duration::from_millis(33);
-/// How many bars the visualizer draws.
-pub const BARS: usize = 48;
-
-/// What fills the middle.
+/// How the player is laid out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Show {
+pub enum Layout {
+    /// The card beside the lyrics; the card alone when the song has none.
     #[default]
-    Artwork,
-    Visualizer,
+    Lyrics,
+    Card,
+    Wide,
+}
+
+impl Layout {
+    const ALL: [Self; 3] = [Self::Lyrics, Self::Card, Self::Wide];
+
+    /// The layout V moves to.
+    pub fn next(self) -> Self {
+        match self {
+            Self::Lyrics => Self::Card,
+            Self::Card => Self::Wide,
+            Self::Wide => Self::Lyrics,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Lyrics => "Lyrics",
+            Self::Card => "Card",
+            Self::Wide => "Wide",
+        }
+    }
 }
 
 #[derive(Debug, Default)]
 pub struct FullPlayer {
-    pub show: Show,
-    /// The bars as last read, 0 to 1, low to high.
-    pub bars: Vec<f32>,
-    /// The window is minimised (asked while it is out of focus).
-    pub hidden: bool,
-    pub focused: bool,
+    pub layout: Layout,
     /// The window went full screen for this player (it wasn't already), so
     /// leaving puts it back.
     pub made_fullscreen: bool,
-    reader: Option<Reader>,
-}
-
-/// The visualizer, made the first time it is shown.
-struct Reader(Visualizer);
-
-impl std::fmt::Debug for Reader {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Visualizer")
-    }
-}
-
-impl FullPlayer {
-    pub fn new() -> Self {
-        Self {
-            focused: true,
-            ..Self::default()
-        }
-    }
-
-    /// Whether the visualizer should be read now: it is showing, the
-    /// window can be seen, and the music is moving.
-    pub fn animates(&self, playing: bool) -> bool {
-        self.show == Show::Visualizer && !self.hidden && playing
-    }
-}
-
-/// The bars' rectangles in a `size` canvas: `levels` side by side with a gap
-/// a third of a bar, each rising from the bottom by its level (a sliver for
-/// silence, so the shape stays).
-pub fn bar_rects(levels: &[f32], size: Size) -> Vec<Rectangle> {
-    if levels.is_empty() || size.width <= 0.0 || size.height <= 0.0 {
-        return Vec::new();
-    }
-    let n = levels.len() as f32;
-    // n bars and n − 1 gaps of a third: width = n·w + (n − 1)·w/3.
-    let bar = size.width / (n + (n - 1.0) / 3.0);
-    let gap = bar / 3.0;
-    levels
-        .iter()
-        .enumerate()
-        .map(|(i, level)| {
-            let height = (level.clamp(0.0, 1.0) * size.height).max(2.0);
-            Rectangle {
-                x: i as f32 * (bar + gap),
-                y: size.height - height,
-                width: bar,
-                height,
-            }
-        })
-        .collect()
+    /// The cover the blurred ground was last asked for.
+    backdrop_for: Option<ArtKey>,
+    /// That cover, blurred, once made.
+    backdrop: Option<image::Handle>,
 }
 
 impl App {
@@ -106,10 +69,10 @@ impl App {
         if self.listening.full.is_some() {
             return Task::none();
         }
-        self.listening.full = Some(FullPlayer::new());
+        self.listening.full = Some(FullPlayer::default());
         // Full screen only from a window: one the listener already made full
         // screen is left as it is, and stays so afterwards.
-        window::latest().and_then(|id| {
+        let fullscreen = window::latest().and_then(|id| {
             window::mode(id).then(move |mode| {
                 if mode == window::Mode::Windowed {
                     window::set_mode::<Message>(id, window::Mode::Fullscreen)
@@ -118,7 +81,9 @@ impl App {
                     Task::none()
                 }
             })
-        })
+        });
+        // The lyrics layout needs them, whether or not the panel is open.
+        Task::batch([fullscreen, self.track_changed()])
     }
 
     pub(crate) fn close_full_player(&mut self) -> Task<Message> {
@@ -130,129 +95,91 @@ impl App {
         }
     }
 
-    /// One visualizer frame.
-    pub(crate) fn visual_frame(&mut self) {
-        let tap = self.playback.visualizer_tap();
-        let Some(full) = self.listening.full.as_mut() else {
-            return;
-        };
-        if full.reader.is_none() {
-            let Some(tap) = tap else {
-                return;
-            };
-            full.reader = Some(Reader(Visualizer::new(
-                tap,
-                VisualizerConfig {
-                    bands: BARS,
-                    ..VisualizerConfig::default()
-                },
-            )));
-        }
-        if let Some(Reader(visualizer)) = full.reader.as_mut() {
-            let frame = visualizer.read();
-            full.bars.clear();
-            full.bars.extend_from_slice(frame.levels);
-        }
-    }
-
-    /// The full player's clock, keys and window watch, while it is open.
+    /// Esc and V, while the full player is open.
     pub(crate) fn full_player_subscription(&self) -> Subscription<Message> {
-        let Some(full) = &self.listening.full else {
+        if self.listening.full.is_none() {
             return Subscription::none();
-        };
-        let mut subscriptions = vec![
-            keyboard::listen().filter_map(|event| match event {
-                keyboard::Event::KeyPressed {
-                    key: keyboard::Key::Named(keyboard::key::Named::Escape),
-                    ..
-                } => Some(Message::Listening(Msg::CloseFull)),
-                _ => None,
-            }),
-            window::events().filter_map(|(_, event)| match event {
-                window::Event::Focused => Some(Message::Listening(Msg::WindowFocus(true))),
-                window::Event::Unfocused => Some(Message::Listening(Msg::WindowFocus(false))),
-                _ => None,
-            }),
-        ];
-        if full.animates(self.playback.is_playing()) {
-            subscriptions
-                .push(iced::time::every(FRAME).map(|_| Message::Listening(Msg::VisualFrame)));
         }
-        // Out of focus it may be minimised, which no event says: ask now
-        // and then, at a rate that costs nothing.
-        if full.show == Show::Visualizer && !full.focused {
-            subscriptions.push(
-                iced::time::every(Duration::from_secs(1))
-                    .map(|_| Message::Listening(Msg::CheckHidden)),
-            );
-        }
-        Subscription::batch(subscriptions)
-    }
-
-    pub(crate) fn check_hidden(&self) -> Task<Message> {
-        window::latest().and_then(|id| {
-            window::is_minimized(id)
-                .map(|minimised| Message::Listening(Msg::WindowHidden(minimised.unwrap_or(false))))
+        keyboard::listen().filter_map(|event| match event {
+            keyboard::Event::KeyPressed { key, modifiers, .. } => key_message(&key, modifiers),
+            _ => None,
         })
+    }
+}
+
+/// What a key does in the full player: Esc leaves, V (alone) changes the
+/// layout.
+fn key_message(key: &Key, modifiers: keyboard::Modifiers) -> Option<Message> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::Listening(Msg::CloseFull)),
+        Key::Character(c)
+            if c.eq_ignore_ascii_case("v")
+                && !modifiers.command()
+                && !modifiers.control()
+                && !modifiers.alt() =>
+        {
+            Some(Message::Listening(Msg::NextLayout))
+        }
+        _ => None,
     }
 }
 
 pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Element<'a, Message> {
     let current = app.playback.current().map(|(_, q)| &q.meta);
-    let controls = column![
-        words(current),
-        container(scrubber(app, signed, current)).center_x(Fill),
-        transport(&app.playback),
-        widgets::secondary("Esc to leave").size(11),
-    ]
-    .spacing(22)
-    .align_x(Center)
-    .width(Fill);
-    let page = match full.show {
-        Show::Artwork => stack![
-            cover(app, current),
-            container(space())
-                .width(Fill)
-                .height(Fill)
-                .style(theme::cover_fade),
-            column![top_bar(full), space().height(Fill), controls]
-                .spacing(10)
-                .padding(24),
-        ]
-        .into(),
-        Show::Visualizer => Element::from(
-            column![
-                top_bar(full),
-                container(column![container(bars(app, full)).center_x(Fill), controls].spacing(26))
-                    .center(Fill),
+    let middle: Element<'a, Message> = match full.layout {
+        Layout::Lyrics => match lyrics::side(app, signed, current) {
+            Some(side) => row![
+                glass::card(app, signed, current),
+                container(side).width(Fill).max_width(820.0),
             ]
+            .spacing(72)
+            .padding([0, 48])
+            .align_y(Center)
+            .into(),
+            None => glass::card(app, signed, current),
+        },
+        Layout::Card => glass::card(app, signed, current),
+        Layout::Wide => glass::wide(app, signed, current),
+    };
+    let page = stack![
+        ground(full),
+        column![top_bar(full), container(middle).center(Fill)]
             .spacing(10)
             .padding(24),
-        ),
+    ];
+    let dark = crate::appearance::in_mode(Mode::Dark, &app.config.interface);
+    themer(Some(dark), page).into()
+}
+
+/// The blurred cover across the window, or the plain dark page until it is
+/// made.
+fn ground(full: &FullPlayer) -> Element<'_, Message> {
+    let picture: Element<'_, Message> = match &full.backdrop {
+        Some(blurred) => image(blurred.clone())
+            .width(Fill)
+            .height(Fill)
+            .content_fit(ContentFit::Cover)
+            .filter_method(image::FilterMethod::Linear)
+            .into(),
+        None => space().width(Fill).height(Fill).into(),
     };
-    container(page)
+    container(picture)
         .width(Fill)
         .height(Fill)
         .style(theme::page)
         .into()
 }
 
-/// Close, and the switch between the artwork and the visualiser.
+/// Close, the hint, and the three layouts.
 fn top_bar(full: &FullPlayer) -> Element<'_, Message> {
-    let listen = |m: Msg| Message::Listening(m);
-    let switch = |label: &'static str, glyph: Icon, which: Show| {
-        let on = full.show == which;
-        button(
-            row![
-                icon(glyph, 16.0, if on { Tone::Accent } else { Tone::Secondary }),
-                text(label).size(13)
-            ]
-            .spacing(6)
-            .align_y(Center),
+    let switch = |layout: Layout| {
+        let on = full.layout == layout;
+        Element::from(
+            button(text(layout.label()).size(13))
+                .padding([6, 12])
+                .style(if on { theme::row_selected } else { theme::row })
+                .on_press(Message::Listening(Msg::FullLayout(layout))),
         )
-        .padding([6, 12])
-        .style(if on { theme::row_selected } else { theme::row })
-        .on_press(listen(Msg::FullShow(which)))
     };
     row![
         button(
@@ -262,183 +189,14 @@ fn top_bar(full: &FullPlayer) -> Element<'_, Message> {
         )
         .padding([6, 12])
         .style(theme::row)
-        .on_press(listen(Msg::CloseFull)),
+        .on_press(Message::Listening(Msg::CloseFull)),
         crate::shell::gap(),
-        switch("Artwork", Icon::Artwork, Show::Artwork),
-        switch("Visualiser", Icon::Visualizer, Show::Visualizer),
+        widgets::secondary("V changes the layout \u{b7} Esc leaves").size(11),
+        Row::with_children(Layout::ALL.map(switch)).spacing(6),
     ]
-    .spacing(6)
+    .spacing(12)
     .align_y(Center)
     .into()
-}
-
-/// The cover, with the album's motion cover over it, filling the window and
-/// cropped to it.
-fn cover<'a>(app: &'a App, current: Option<&'a TrackMeta>) -> Element<'a, Message> {
-    let key = current
-        .and_then(|m| m.artwork.as_ref())
-        .map(|(i, t)| ArtKey::new(i, t));
-    let still = widgets::art(key.as_ref(), &app.artwork, Fill, 0.0);
-    let handle = key.as_ref().and_then(|key| app.artwork.get(key));
-    let album = current.and_then(|m| m.album_id.as_deref());
-    crate::motion::over(&app.motion, album, still, handle, Fill, 0.0)
-}
-
-/// The visualiser's bars, dimmed while paused.
-fn bars(app: &App, full: &FullPlayer) -> Element<'static, Message> {
-    canvas(Bars {
-        levels: if full.bars.is_empty() {
-            vec![0.0; BARS]
-        } else {
-            full.bars.clone()
-        },
-        dimmed: !app.playback.is_playing(),
-    })
-    .width(Length::Fixed(760.0))
-    .height(Length::Fixed(420.0))
-    .into()
-}
-
-/// The song's title, and its artist and album under it.
-fn words(current: Option<&TrackMeta>) -> Element<'_, Message> {
-    let subtitle = current.map_or_else(String::new, |m| {
-        if m.album.is_empty() {
-            m.artist.clone()
-        } else {
-            format!("{} \u{2014} {}", m.artist, m.album)
-        }
-    });
-    column![
-        text(current.map_or("Not playing", |m| m.title.as_str()))
-            .size(30)
-            .font(widgets::BOLD),
-        widgets::secondary(subtitle).size(17),
-    ]
-    .spacing(6)
-    .align_x(Center)
-    .into()
-}
-
-/// The seek bar between the time played and the time left.
-fn scrubber<'a>(app: &App, signed: &Signed, current: Option<&TrackMeta>) -> Element<'a, Message> {
-    let length = current.and_then(|m| m.duration_ms).unwrap_or(0).max(0) as u64;
-    let at = signed
-        .scrub
-        .unwrap_or(app.playback.position_ms())
-        .min(length.max(1));
-    let seek: Element<'a, Message> = if length > 0 {
-        slider(0.0..=length as f32, at as f32, |v| {
-            Message::Player(Transport::Scrub(v))
-        })
-        .on_release(Message::Player(Transport::ScrubEnd))
-        .step(250.0_f32)
-        .style(theme::scrubber)
-        .into()
-    } else {
-        slider(0.0..=1.0, 0.0, |_| Message::Ignore)
-            .style(theme::scrubber)
-            .into()
-    };
-    let clock = |s: String| widgets::secondary(s).size(12).width(48);
-    row![
-        clock(widgets::duration(at)),
-        seek,
-        clock(format!("-{}", widgets::duration(length.saturating_sub(at))))
-    ]
-    .spacing(10)
-    .align_y(Center)
-    .width(Length::Fixed(640.0))
-    .into()
-}
-
-/// Shuffle, Previous, Play or Pause, Next and Repeat.
-fn transport<'a>(playback: &crate::playback::Playback) -> Element<'a, Message> {
-    let control = |glyph: Icon, size: f32, on: bool, message: Transport| {
-        button(icon(
-            glyph,
-            size,
-            if on { Tone::Accent } else { Tone::Normal },
-        ))
-        .padding(10)
-        .style(if on { theme::icon_on } else { theme::row })
-        .on_press(Message::Player(message))
-    };
-    let repeat = playback.repeat();
-    row![
-        control(
-            Icon::Shuffle,
-            20.0,
-            playback.is_shuffled(),
-            Transport::Shuffle
-        ),
-        control(Icon::Previous, 28.0, false, Transport::Previous),
-        control(
-            if playback.is_playing() {
-                Icon::Pause
-            } else {
-                Icon::Play
-            },
-            40.0,
-            false,
-            Transport::Toggle
-        ),
-        control(Icon::Next, 28.0, false, Transport::Next),
-        control(
-            if repeat == aoide_audio::RepeatMode::One {
-                Icon::RepeatOne
-            } else {
-                Icon::Repeat
-            },
-            20.0,
-            repeat != aoide_audio::RepeatMode::Off,
-            Transport::Repeat
-        ),
-    ]
-    .spacing(18)
-    .align_y(Center)
-    .into()
-}
-
-/// The visualizer's bars.
-struct Bars {
-    levels: Vec<f32>,
-    dimmed: bool,
-}
-
-impl<Message> canvas::Program<Message> for Bars {
-    type State = ();
-
-    fn draw(
-        &self,
-        _state: &(),
-        renderer: &Renderer,
-        theme: &Theme,
-        bounds: Rectangle,
-        _cursor: mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        let mut frame = canvas::Frame::new(renderer, bounds.size());
-        let accent = theme::accent(theme);
-        for (rect, level) in bar_rects(&self.levels, bounds.size())
-            .into_iter()
-            .zip(&self.levels)
-        {
-            let alpha = if self.dimmed {
-                0.35
-            } else {
-                0.45 + 0.55 * level.clamp(0.0, 1.0)
-            };
-            let radius = (rect.width / 2.0).min(4.0);
-            frame.fill(
-                &canvas::Path::rounded_rectangle(
-                    Point::new(rect.x, rect.y),
-                    Size::new(rect.width, rect.height),
-                    radius.into(),
-                ),
-                accent.scale_alpha(alpha),
-            );
-        }
-        vec![frame.into_geometry()]
-    }
 }
 
 #[cfg(test)]
@@ -446,34 +204,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bars_fill_the_width_and_rise_by_level() {
-        let levels = [0.0, 0.5, 1.0, 2.0];
-        let rects = bar_rects(&levels, Size::new(130.0, 100.0));
-        assert_eq!(rects.len(), 4);
-        // 4 bars and 3 gaps of a third: the last bar ends at the right edge.
-        let last = rects[3];
-        assert!((last.x + last.width - 130.0).abs() < 1e-3);
-        assert!((rects[1].x - (rects[0].width * 4.0 / 3.0)).abs() < 1e-3);
-        // Silence keeps a sliver; a level over 1 is held to the top.
-        assert_eq!(rects[0].height, 2.0);
-        assert_eq!(rects[1].height, 50.0);
-        assert_eq!(rects[2].height, 100.0);
-        assert_eq!(rects[3].height, 100.0);
-        for rect in &rects {
-            assert!((rect.y + rect.height - 100.0).abs() < 1e-3);
+    fn v_goes_through_the_three_layouts_and_back() {
+        let mut layout = Layout::default();
+        let mut seen = vec![layout];
+        for _ in 0..3 {
+            layout = layout.next();
+            seen.push(layout);
         }
-        assert!(bar_rects(&[], Size::new(100.0, 100.0)).is_empty());
-        assert!(bar_rects(&levels, Size::new(0.0, 100.0)).is_empty());
+        assert_eq!(
+            seen,
+            [Layout::Lyrics, Layout::Card, Layout::Wide, Layout::Lyrics]
+        );
     }
 
     #[test]
-    fn the_visualizer_ticks_only_when_it_can_be_seen_moving() {
-        let mut full = FullPlayer::new();
-        assert!(!full.animates(true), "the artwork is showing");
-        full.show = Show::Visualizer;
-        assert!(full.animates(true));
-        assert!(!full.animates(false), "paused: nothing moves");
-        full.hidden = true;
-        assert!(!full.animates(true), "minimised");
+    fn v_alone_changes_the_layout_and_esc_leaves() {
+        let none = keyboard::Modifiers::empty();
+        let v = Key::Character("v".into());
+        assert!(matches!(
+            key_message(&v, none),
+            Some(Message::Listening(Msg::NextLayout))
+        ));
+        assert!(matches!(
+            key_message(&Key::Character("V".into()), keyboard::Modifiers::SHIFT),
+            Some(Message::Listening(Msg::NextLayout))
+        ));
+        // Ctrl+V and the like are someone else's.
+        assert!(key_message(&v, keyboard::Modifiers::CTRL).is_none());
+        assert!(key_message(&v, keyboard::Modifiers::ALT).is_none());
+        assert!(matches!(
+            key_message(&Key::Named(Named::Escape), none),
+            Some(Message::Listening(Msg::CloseFull))
+        ));
+        assert!(key_message(&Key::Character("x".into()), none).is_none());
     }
 }

@@ -126,7 +126,12 @@ impl Accent {
 /// The app's theme: the system's mode unless one was chosen, in the chosen
 /// accent.
 pub fn theme(system: Mode, interface: &InterfaceSettings) -> Theme {
-    let mode = interface.appearance.mode(system);
+    in_mode(interface.appearance.mode(system), interface)
+}
+
+/// The theme in `mode`, whatever the appearance setting, with the chosen
+/// accent.
+pub fn in_mode(mode: Mode, interface: &InterfaceSettings) -> Theme {
     let base = theme::for_mode(mode);
     if interface.accent == Accent::Violet {
         return base;

@@ -2,7 +2,7 @@
 //! cover on the album's page and in the full-screen player (never the player
 //! bar), as the iPhone app plays them.
 //!
-//! One video at a time: the full player's album while it shows the artwork,
+//! One video at a time: the full player's album while it is open,
 //! else the album page on top. After every message the app checks which album
 //! that is (`reconcile`); a new one is looked for in the cache (`cache.rs`)
 //! and opened off the UI thread (`video.rs`), and the one before is ended.
@@ -17,7 +17,6 @@ use iced::widget::image;
 use iced::{Element, Length, Subscription, Task};
 
 use crate::app::{App, Message};
-use crate::full_player::Show;
 use crate::screens::Page;
 
 mod cache;
@@ -225,9 +224,9 @@ impl App {
             return None;
         }
         let signed = self.session.as_ref()?;
-        if let Some(full) = &self.listening.full {
+        if self.listening.full.is_some() {
             let album = self.playback.current()?.1.meta.album_id.clone()?;
-            return (full.show == Show::Artwork).then_some((album, None));
+            return Some((album, None));
         }
         match &signed.nav.as_ref()?.current().page {
             Page::Album(state) => {

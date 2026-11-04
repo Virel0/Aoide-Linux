@@ -84,20 +84,18 @@ pub enum Msg {
     CloseFull,
     /// The full player took the window full screen.
     MadeFullscreen,
-    FullShow(crate::full_player::Show),
-    VisualFrame,
-    WindowFocus(bool),
-    CheckHidden,
-    WindowHidden(bool),
+    FullLayout(crate::full_player::Layout),
+    /// V in the full player: the next layout.
+    NextLayout,
+    /// The playing cover, blurred for the full player's ground (`None` when
+    /// it couldn't be read).
+    Backdrop(crate::artwork::ArtKey, Option<iced::widget::image::Handle>),
 }
 
 /// Messages that come many times a second and change no artwork: the app
 /// skips its after-every-message work for them.
 pub fn is_quiet(message: &Message) -> bool {
-    matches!(
-        message,
-        Message::Listening(Msg::VisualFrame | Msg::SleepTick | Msg::CheckHidden)
-    )
+    matches!(message, Message::Listening(Msg::SleepTick))
 }
 
 /// What runs at launch.
@@ -157,16 +155,9 @@ impl App {
             Msg::OpenFull => self.open_full_player(),
             Msg::CloseFull => self.close_full_player(),
             Msg::MadeFullscreen => self.with_full(|full| full.made_fullscreen = true),
-            Msg::FullShow(show) => self.with_full(|full| full.show = show),
-            Msg::VisualFrame => {
-                self.visual_frame();
-                Task::none()
-            }
-            Msg::WindowFocus(focused) => self.window_focus(focused),
-            Msg::CheckHidden => self.check_hidden(),
-            Msg::WindowHidden(hidden) => {
-                self.with_full(|full| full.hidden = hidden && !full.focused)
-            }
+            Msg::FullLayout(layout) => self.with_full(|full| full.layout = layout),
+            Msg::NextLayout => self.with_full(|full| full.layout = full.layout.next()),
+            Msg::Backdrop(key, made) => self.backdrop_made(key, made),
             Msg::SleepMinutes(typed) => {
                 self.listening.sleep_minutes = typed;
                 Task::none()
@@ -220,22 +211,6 @@ impl App {
             change(full);
         }
         Task::none()
-    }
-
-    /// The window gained or lost focus while the full player is open: out of
-    /// focus, it may have been minimised.
-    fn window_focus(&mut self, focused: bool) -> Task<Message> {
-        if let Some(full) = self.listening.full.as_mut() {
-            full.focused = focused;
-            if focused {
-                full.hidden = false;
-            }
-        }
-        if focused {
-            Task::none()
-        } else {
-            self.check_hidden()
-        }
     }
 
     /// Opens a popover, or closes the one open; the volume's lists the
