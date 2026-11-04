@@ -7,6 +7,21 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Changed
+- The full-screen player sits on the song's cover, blurred and darkened
+  across the screen, with a frosted card holding the cover (or its motion
+  cover), the song, the seek bar and the controls. Three layouts, which V goes
+  through: the card beside the synced lyrics (the line being sung large in the
+  middle, its translation or reading under it), the card alone, and a wide
+  card with the song large. It replaces the edge-to-edge cover and the
+  visualiser.
+- Behind the card, a still blur or one of three moving backgrounds drawn
+  from the cover's own colours: Silk, Aurora and Ink. B goes through them,
+  and they move only while the music plays and the window has focus.
+- The controls and the pointer hide after three still seconds while the music
+  plays, and come back with a move of the mouse or a key.
+- The layout and background chosen are kept for next time.
+
 ### Fixed
 - Waiting songs an earlier build set aside as unreadable come back into their
   playlists on the next sync. 0.4.0 could not read a playlist entry without a

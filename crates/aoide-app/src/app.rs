@@ -317,7 +317,12 @@ impl App {
         if quiet {
             return task;
         }
-        Task::batch([task, self.fetch_artwork(), self.reconcile_motion()])
+        Task::batch([
+            task,
+            self.fetch_artwork(),
+            self.reconcile_motion(),
+            self.reconcile_backdrop(),
+        ])
     }
 
     /// Routes each message to the feature that handles it.

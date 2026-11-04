@@ -95,23 +95,25 @@ pub fn page(theme: &Theme) -> container::Style {
     }
 }
 
-/// Over the full player's cover: a little shade under the top bar, clear
-/// through the middle, then into the page under the controls.
-pub fn cover_fade(theme: &Theme) -> container::Style {
-    let page = theme.extended_palette().background.base.color;
-    let fade = iced::gradient::Linear::new(iced::Radians::PI)
-        .add_stop(0.0, Color { a: 0.55, ..page })
-        .add_stop(0.14, Color { a: 0.0, ..page })
-        .add_stop(0.45, Color { a: 0.0, ..page })
-        .add_stop(0.78, Color { a: 0.92, ..page })
-        .add_stop(1.0, page);
+/// The full player's frosted card: a pale veil over the blurred cover,
+/// edged in light, floating on a soft shadow.
+pub fn glass(_theme: &Theme) -> container::Style {
     container::Style {
-        background: Some(Background::Gradient(fade.into())),
+        background: Some(Background::Color(Color::WHITE.scale_alpha(0.08))),
+        border: Border {
+            color: Color::WHITE.scale_alpha(0.2),
+            width: 1.0,
+            radius: 24.0.into(),
+        },
+        shadow: Shadow {
+            color: Color::BLACK.scale_alpha(0.35),
+            offset: iced::Vector::new(0.0, 16.0),
+            blur_radius: 48.0,
+        },
         ..container::Style::default()
     }
 }
 
-/// The player bar along the bottom.
 pub fn bar(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
     let ground = if palette.is_dark {

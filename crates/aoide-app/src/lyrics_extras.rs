@@ -337,33 +337,43 @@ fn pronunciations<'a>(app: &'a App, item: &str) -> Option<&'a [Option<String>]> 
 
 /// What goes under line `index`: its pronunciation, its translation.
 pub fn under<'a>(app: &'a App, item: &str, index: usize) -> Option<Element<'a, Message>> {
-    let extras = &app.listening.lyric_extras;
-    if extras.item.as_deref() != Some(item) {
+    let said = under_text(app, item, index);
+    if said.is_empty() {
         return None;
     }
-    let mut lines = column![].spacing(2);
-    let mut any = false;
+    let lines = said
+        .into_iter()
+        .map(|line| widgets::secondary(line).size(13).into());
+    Some(
+        container(column(lines).spacing(2))
+            .padding(iced::Padding::ZERO.left(4).bottom(4))
+            .into(),
+    )
+}
+
+/// The words under line `index`, as switched on: its pronunciation, then
+/// its translation.
+pub fn under_text<'a>(app: &'a App, item: &str, index: usize) -> Vec<&'a str> {
+    let extras = &app.listening.lyric_extras;
+    if extras.item.as_deref() != Some(item) {
+        return Vec::new();
+    }
+    let mut said = Vec::new();
     if app.config.interface.romaji
-        && let Some(said) = pronunciations(app, item)
+        && let Some(line) = pronunciations(app, item)
             .and_then(|all| all.get(index))
             .and_then(Option::as_deref)
             .filter(|l| !l.trim().is_empty())
     {
-        lines = lines.push(widgets::secondary(said).size(13));
-        any = true;
+        said.push(line);
     }
     if extras.translate
         && let Some(Translation::Ready(translated)) = &extras.translation
         && let Some(line) = translated.get(index).filter(|l| !l.trim().is_empty())
     {
-        lines = lines.push(widgets::secondary(line.as_str()).size(13));
-        any = true;
+        said.push(line.as_str());
     }
-    any.then(|| {
-        container(lines)
-            .padding(iced::Padding::ZERO.left(4).bottom(4))
-            .into()
-    })
+    said
 }
 
 /// Line `index` with its readings over the kanji, when furigana are on:

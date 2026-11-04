@@ -78,5 +78,7 @@ oo7 = { version = "0.6.0", default-features = false, features = ["tokio", "nativ
 keyring = { version = "3.6", default-features = false, features = ["apple-native"] }
 
 [dev-dependencies]
+# wgpu's own shader compiler, already in the tree: checks ground.wgsl in tests.
+naga = { version = "27.0.3", features = ["wgsl-in"] }
 tempfile = "3.27.0"
 wiremock = "0.6.5"

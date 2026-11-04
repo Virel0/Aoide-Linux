@@ -31,15 +31,17 @@ impl App {
         self.track_changed()
     }
 
-    /// What is playing changed, or the lyrics panel opened: fetch the lyrics
-    /// if they are showing and not already here.
+    /// What is playing changed, or the lyrics panel or the full player
+    /// opened: fetch the lyrics if they are showing and not already here.
     pub(crate) fn track_changed(&mut self) -> Task<Message> {
         let current = self.playback.current().map(|(_, q)| q.meta.id.clone());
         let pronounce = !self.listening.lyric_extras.pronunciation_off;
+        let full_player = self.listening.full.is_some();
         let Some(signed) = self.session.as_mut() else {
             return Task::none();
         };
-        let (Some(Panel::Lyrics), Some(item)) = (signed.panel, current) else {
+        let showing = full_player || signed.panel == Some(Panel::Lyrics);
+        let (true, Some(item)) = (showing, current) else {
             return Task::none();
         };
         if signed.lyrics.as_ref().is_some_and(|l| l.item == item) {
