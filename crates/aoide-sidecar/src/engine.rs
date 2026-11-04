@@ -666,6 +666,12 @@ impl<T: SyncTransport> SyncEngine<T> {
         if report.blocked_by_share > 0 && !shares_read {
             let _ = self.refresh_shares().await;
         }
+        // Waiting songs a build before 0.5.0 quarantined come back first, so the
+        // pull that follows can still swap in a track that has arrived since.
+        let replayed = self
+            .store
+            .replay_quarantined_waiting_songs(self.policy, (self.clock)())?;
+        report.absorb(&replayed);
         let pulled = self.pull_and_apply().await?;
         report.absorb(&pulled);
         Ok(report)

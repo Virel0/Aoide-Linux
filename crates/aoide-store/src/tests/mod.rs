@@ -23,6 +23,7 @@ mod taste_profile;
 mod track_cache;
 mod track_flags;
 mod waiting;
+mod waiting_replay;
 
 use std::collections::BTreeSet;
 

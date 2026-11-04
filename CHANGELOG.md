@@ -7,6 +7,12 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Fixed
+- Waiting songs an earlier build set aside as unreadable come back into their
+  playlists on the next sync. 0.4.0 could not read a playlist entry without a
+  track, kept it out of the way, and the server does not send it again; it is
+  now put back, unless the song has arrived since, which wins.
+
 ## [0.5.0] - 2026-11-03
 
 ### Added
