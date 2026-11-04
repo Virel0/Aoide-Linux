@@ -172,6 +172,7 @@ dependencies = [
  "image",
  "keyring",
  "log",
+ "naga",
  "oo7",
  "reqwest",
  "rfd",
