@@ -454,7 +454,13 @@ mod tests {
             ResumeTile::Context(artist),
         ];
         let cards = cards(tiles, &[item("1", "7")]);
-        let cover = |album: &str| Some(ArtKey::new(album, aoide_melete::COVER_TAG));
+        let cover = |album: &str| {
+            Some(ArtKey::sized(
+                album,
+                aoide_melete::COVER_TAG,
+                crate::artwork::ROW,
+            ))
+        };
         assert_eq!(cards[0].art, cover("7"), "the track's album");
         assert_eq!(cards[1].art, cover("5"), "the album's own, never track 5's");
         assert_eq!(cards[2].art, None, "track 9 was not found");

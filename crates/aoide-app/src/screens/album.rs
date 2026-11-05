@@ -64,7 +64,9 @@ impl State {
             Message::Album(result) => {
                 let result = (*result).map(|(album, items)| {
                     self.title = album.name.clone();
-                    self.art = album.artwork_source().map(|(id, tag)| ArtKey::new(id, tag));
+                    self.art = album
+                        .artwork_source()
+                        .map(|(id, tag)| ArtKey::sized(id, tag, crate::artwork::TILE));
                     self.liked = album.liked;
                     self.album = Some(album);
                     items

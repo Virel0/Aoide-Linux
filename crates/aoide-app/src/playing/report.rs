@@ -16,9 +16,8 @@ impl App {
             .and_then(|m| m.artwork.as_ref())
             .zip(self.artwork.dir())
             .and_then(|((id, tag), dir)| {
-                crate::integration::art_url(
-                    &dir.join(crate::artwork::ArtKey::new(id, tag).file_name()),
-                )
+                let key = crate::artwork::ArtKey::sized(id, tag, crate::artwork::TILE);
+                crate::integration::art_url(&dir.join(key.file_name()))
             });
         crate::integration::publish(
             &self.desktop,

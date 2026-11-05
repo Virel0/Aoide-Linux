@@ -102,7 +102,7 @@ fn byline(current: Option<&TrackMeta>) -> String {
 fn cover<'a>(app: &'a App, current: Option<&'a TrackMeta>, side: f32) -> Element<'a, Message> {
     let key = current
         .and_then(|m| m.artwork.as_ref())
-        .map(|(item, tag)| ArtKey::new(item, tag));
+        .map(|(item, tag)| ArtKey::sized(item, tag, crate::artwork::FULL));
     let size = Length::Fixed(side);
     let still = widgets::art(key.as_ref(), &app.artwork, size, 14.0);
     let handle = key.as_ref().and_then(|key| app.artwork.get(key));

@@ -36,6 +36,10 @@ pub fn open_blobs(paths: Option<&Paths>) -> Option<BlobDirectory> {
     BlobDirectory::open(blobs_dir(paths?)).ok()
 }
 
+/// What a playlist's album covers are drawn at: the sidebar's 24 px to its
+/// page's 180, and a quarter of that in a mosaic.
+pub const PLAYLIST: aoide_melete::CoverSize = aoide_melete::CoverSize::W400;
+
 /// A cover's bytes are no album's: they are drawn under this key, which
 /// nothing ever asks the server for.
 pub fn blob_key(hash: &str) -> ArtKey {
@@ -58,7 +62,7 @@ pub fn album_covers(covers: &HashMap<String, PlaylistCover>) -> Vec<(String, Art
         .filter_map(|(playlist, cover)| match cover {
             PlaylistCover::Album(album) | PlaylistCover::FirstTrack(album) => Some((
                 playlist.clone(),
-                ArtKey::new(album, aoide_melete::COVER_TAG),
+                ArtKey::sized(album, aoide_melete::COVER_TAG, PLAYLIST),
             )),
             _ => None,
         })
@@ -365,8 +369,14 @@ mod tests {
         assert_eq!(
             album_covers(&covers),
             [
-                ("p1".to_owned(), ArtKey::new("al9", aoide_melete::COVER_TAG)),
-                ("p2".to_owned(), ArtKey::new("al1", aoide_melete::COVER_TAG)),
+                (
+                    "p1".to_owned(),
+                    ArtKey::sized("al9", aoide_melete::COVER_TAG, PLAYLIST)
+                ),
+                (
+                    "p2".to_owned(),
+                    ArtKey::sized("al1", aoide_melete::COVER_TAG, PLAYLIST)
+                ),
             ]
         );
     }

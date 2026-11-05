@@ -174,7 +174,7 @@ fn track_lead<'a>(
             track
                 .artwork
                 .as_ref()
-                .map(|(i, t)| ArtKey::new(i, t))
+                .map(|(i, t)| ArtKey::sized(i, t, crate::artwork::ROW))
                 .as_ref(),
             view.artwork,
             Length::Fixed(40.0),

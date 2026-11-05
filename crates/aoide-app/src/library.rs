@@ -26,7 +26,9 @@ impl Tile {
             id: item.id.clone(),
             title: item.name.clone(),
             subtitle,
-            art: item.artwork_source().map(|(id, tag)| ArtKey::new(id, tag)),
+            art: item
+                .artwork_source()
+                .map(|(id, tag)| ArtKey::sized(id, tag, crate::artwork::TILE)),
             round: false,
         }
     }
@@ -62,7 +64,7 @@ impl Tile {
                 .unwrap_or_default(),
             art: item
                 .has_cover
-                .then(|| ArtKey::new(album_id, aoide_melete::COVER_TAG)),
+                .then(|| ArtKey::sized(album_id, aoide_melete::COVER_TAG, crate::artwork::TILE)),
             round: false,
         })
     }
@@ -106,7 +108,10 @@ mod tests {
         let tiles = albums_of_tracks(&tracks, 10);
         let ids: Vec<&str> = tiles.iter().map(|t| t.id.as_str()).collect();
         assert_eq!(ids, ["A", "B"]);
-        assert_eq!(tiles[0].art, Some(ArtKey::new("A", COVER_TAG)));
+        assert_eq!(
+            tiles[0].art,
+            Some(ArtKey::sized("A", COVER_TAG, crate::artwork::TILE))
+        );
         assert!(!tiles[0].round);
     }
 
@@ -131,6 +136,9 @@ mod tests {
             ..Item::default()
         });
         assert!(!album.round);
-        assert_eq!(album.art, Some(ArtKey::new("2", COVER_TAG)));
+        assert_eq!(
+            album.art,
+            Some(ArtKey::sized("2", COVER_TAG, crate::artwork::TILE))
+        );
     }
 }

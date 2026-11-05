@@ -66,6 +66,9 @@ pub struct Item {
     /// ([`MeleteClient::motion_cover`](crate::MeleteClient::motion_cover)
     /// reads it); `None` when it has none, and always on a track.
     pub motion_cover: Option<String>,
+    /// An album's main cover colours as sRGB, the most of it first (up to
+    /// five); empty on a track, and from a server before palettes.
+    pub palette: Vec<[u8; 3]>,
     /// A track's MusicBrainz release, when Melete knows it.
     pub mb_release_id: Option<String>,
     /// A track's MusicBrainz release group, when Melete knows it.
@@ -175,6 +178,9 @@ pub(crate) struct WireAlbum {
     pub motion_cover: Option<String>,
     #[serde(default, deserialize_with = "nullable")]
     pub genres: Vec<String>,
+    /// Servers before cover colours don't send them.
+    #[serde(default)]
+    pub colours: Option<crate::colours::WireColours>,
 }
 
 /// `MusicArtist`, trimmed.
@@ -230,6 +236,7 @@ impl From<WireTrack> for Item {
             liked: track.liked,
             isrc: track.isrc,
             motion_cover: None,
+            palette: Vec::new(),
             mb_release_id: track.mb_release_id,
             mb_release_group_id: track.mb_release_group_id,
         }
@@ -259,6 +266,10 @@ impl From<WireAlbum> for Item {
             child_count: Some(album.tracks),
             has_cover: album.cover.is_some(),
             motion_cover: album.motion_cover,
+            palette: album
+                .colours
+                .map(|colours| colours.palette())
+                .unwrap_or_default(),
             ..Self::default()
         }
     }

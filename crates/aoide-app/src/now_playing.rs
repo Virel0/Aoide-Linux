@@ -37,7 +37,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, panel: Panel) -> Element<'a, M
         widgets::art(
             current
                 .and_then(|m| m.artwork.as_ref())
-                .map(|(i, t)| ArtKey::new(i, t))
+                .map(|(i, t)| ArtKey::sized(i, t, crate::artwork::TILE))
                 .as_ref(),
             &app.artwork,
             Length::Fixed(220.0),

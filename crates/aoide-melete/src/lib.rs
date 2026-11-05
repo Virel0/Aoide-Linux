@@ -28,9 +28,8 @@
 //! - **Profile pictures:** [`MeleteClient::me`] for the signed-in user's, and
 //!   [`MeleteClient::avatar_url`] for the address of anyone's.
 //! - **Playing:** [`MeleteClient::play`] for a stream link,
-//!   [`MeleteClient::cover_url`] for covers, [`MeleteClient::motion_cover`]
-//!   for an album's looping video and [`MeleteClient::motion_cover_choice`]
-//!   for whether this user sees the ones the server made.
+//!   [`MeleteClient::cover_url`] for covers at a [`CoverSize`], and
+//!   [`MeleteClient::motion_cover`] for an album's looping video.
 //! - **Maintenance** (administrators): [`MeleteClient::refresh_library`].
 //! - **Lyrics:** [`MeleteClient::lyrics`], from a file beside the track, its
 //!   tags, or LRCLIB through the server; [`MeleteClient::lyrics_with`] adds
@@ -46,6 +45,7 @@ mod address;
 mod ai;
 mod auth;
 mod client;
+mod colours;
 mod details;
 mod error;
 mod events;
@@ -70,9 +70,9 @@ pub use events::{Event, EventStream};
 pub use library::{Home, Likes, ListQuery, SearchResults, Sort};
 pub use listen::{ListenMember, ListenSession, ListenState, Listening, is_stale};
 pub use lyrics::{LyricLine, LyricWord, Lyrics, LyricsAnswer, LyricsAsk};
-pub use media::{Stream, StreamFormat};
+pub use media::{CoverSize, Stream, StreamFormat};
 pub use model::{COVER_TAG, Item, ItemKind, NameId, Page};
-pub use motion::{MOTION_COVER_MAX_BYTES, MotionCoverChoice};
+pub use motion::MOTION_COVER_MAX_BYTES;
 pub use profile::Me;
 pub use request_imports::{
     PlaylistImport, PlaylistImportSummary, PlaylistImportTrack, playlist_csv,

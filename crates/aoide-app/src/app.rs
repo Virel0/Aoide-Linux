@@ -322,6 +322,7 @@ impl App {
             self.fetch_artwork(),
             self.reconcile_motion(),
             self.reconcile_backdrop(),
+            self.reconcile_palette(),
         ])
     }
 

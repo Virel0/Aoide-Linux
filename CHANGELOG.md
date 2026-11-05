@@ -21,6 +21,20 @@ state of every feature in more detail.
 - The controls and the pointer hide after three still seconds while the music
   plays, and come back with a move of the mouse or a key.
 - The layout and background chosen are kept for next time.
+- The moving backgrounds take their colours from the server's palette for the
+  album (Melete 0.5.0), so they match the iPhone app's; with an older server,
+  or an album it has none for, they use the colours found in the cover here.
+- Covers are fetched at the size they're drawn (Melete 0.5.0): 160 pixels for
+  rows, the player bar and the queue, 400 for playlists' covers, 600 for
+  tiles, page headers and Now Playing, and 800 for the full player's card. A
+  song row no longer downloads the album's whole folder image. While a larger
+  size loads, the one already here stands in. An older server sends the whole
+  cover, as before.
+
+### Removed
+- Settings → General → Motion covers → Ones your server made. Melete 0.5.0
+  no longer makes motion covers from still covers; an album's own motion
+  cover, from its folder, still plays.
 
 ### Fixed
 - Waiting songs an earlier build set aside as unreadable come back into their

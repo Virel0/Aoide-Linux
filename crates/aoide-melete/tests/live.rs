@@ -67,7 +67,7 @@ async fn signs_in_lists_plays_and_signs_out() {
     assert!(response.status().is_success(), "{}", response.status());
 
     let cover = reqwest::Client::new()
-        .get(client.cover_url(&album.id))
+        .get(client.cover_url(&album.id, Some(aoide_melete::CoverSize::W160)))
         .header("authorization", client.authorization().unwrap())
         .send()
         .await

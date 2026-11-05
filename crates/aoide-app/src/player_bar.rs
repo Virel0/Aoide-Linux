@@ -59,7 +59,7 @@ fn now_playing<'a>(app: &'a App, current: Option<&'a TrackMeta>) -> Element<'a, 
         crate::player_menu::open_full(widgets::art(
             current
                 .and_then(|m| m.artwork.as_ref())
-                .map(|(i, t)| ArtKey::new(i, t))
+                .map(|(i, t)| ArtKey::sized(i, t, crate::artwork::ROW))
                 .as_ref(),
             &app.artwork,
             Length::Fixed(56.0),

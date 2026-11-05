@@ -132,7 +132,7 @@ fn entry_row<'a>(
             .meta
             .artwork
             .as_ref()
-            .map(|(i, t)| ArtKey::new(i, t))
+            .map(|(i, t)| ArtKey::sized(i, t, crate::artwork::ROW))
             .as_ref(),
         &app.artwork,
         Length::Fixed(36.0),

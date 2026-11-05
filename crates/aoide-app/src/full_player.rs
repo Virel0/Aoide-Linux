@@ -14,7 +14,9 @@ mod glass;
 mod ground;
 mod lyrics;
 mod palette;
+mod server_palette;
 
+use std::collections::HashMap;
 use std::time::Instant;
 
 use iced::theme::Mode;
@@ -113,6 +115,9 @@ pub struct FullPlayer {
     backdrop_for: Option<ArtKey>,
     /// That cover, blurred, and its colours, once made.
     backdrop: Option<backdrop::Made>,
+    /// Albums' colours from the server, by album id: empty while asked for,
+    /// and for an album with none.
+    palettes: HashMap<String, Vec<[u8; 3]>>,
     /// Seconds the moving ground has moved: only while the music plays.
     clock: f32,
     last_tick: Option<Instant>,
@@ -129,6 +134,7 @@ impl FullPlayer {
             made_fullscreen: false,
             backdrop_for: None,
             backdrop: None,
+            palettes: HashMap::new(),
             clock: 0.0,
             last_tick: None,
             last_stirred: now,
@@ -245,7 +251,7 @@ fn ground(full: &FullPlayer, chosen: Ground) -> Element<'_, Message> {
     }
     let moving = shader(ground::Program {
         ground: chosen,
-        palette: made.palette,
+        palette: full.ground_palette(made.palette),
         clock: full.clock,
     })
     .width(Fill)

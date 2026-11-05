@@ -37,7 +37,7 @@ impl App {
             .playback
             .current()
             .and_then(|(_, q)| q.meta.artwork.as_ref())
-            .map(|(item, tag)| ArtKey::new(item, tag));
+            .map(|(item, tag)| ArtKey::sized(item, tag, crate::artwork::ROW));
         let bytes = match key.as_ref().and_then(|key| self.artwork.get(key)) {
             Some(Handle::Bytes(_, bytes)) => Some(bytes.clone()),
             _ => None,
@@ -123,7 +123,7 @@ fn luminance([r, g, b]: [f32; 3]) -> f32 {
     0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
-fn to_linear(channel: u8) -> f32 {
+pub(super) fn to_linear(channel: u8) -> f32 {
     let c = f32::from(channel) / 255.0;
     if c <= 0.04045 {
         c / 12.92

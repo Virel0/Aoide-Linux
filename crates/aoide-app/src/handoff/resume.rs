@@ -109,14 +109,21 @@ pub fn cards(tiles: Vec<ResumeTile>, tracks: &[Item]) -> Vec<Card> {
         .iter()
         .filter_map(|item| {
             let (id, tag) = item.artwork_source()?;
-            Some((item.id.as_str(), ArtKey::new(id, tag)))
+            Some((
+                item.id.as_str(),
+                ArtKey::sized(id, tag, crate::artwork::ROW),
+            ))
         })
         .collect();
     tiles
         .into_iter()
         .map(|tile| Card {
             art: tile.artwork_item_id().and_then(|id| match pictured(&tile) {
-                Pictured::Album => Some(ArtKey::new(id, aoide_melete::COVER_TAG)),
+                Pictured::Album => Some(ArtKey::sized(
+                    id,
+                    aoide_melete::COVER_TAG,
+                    crate::artwork::ROW,
+                )),
                 Pictured::Track => art.get(id).cloned(),
                 Pictured::Nothing => None,
             }),
