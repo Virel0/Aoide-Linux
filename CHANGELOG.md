@@ -7,6 +7,16 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Removed
+- Settings → General → Motion covers. An album's own motion cover, from its
+  folder, always plays.
+
+### Fixed
+- A motion cover kept on this computer stops playing in the full player once
+  the server no longer has it. Before, a kept copy played for up to a week,
+  so motion covers Melete made from still covers went on showing after
+  Melete 0.5.0 removed them.
+
 ## [0.6.0] - 2026-11-05
 
 ### Changed

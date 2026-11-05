@@ -19,10 +19,8 @@ use crate::app::{App, Message};
 use crate::screens::Page;
 
 mod cache;
-mod settings;
 mod video;
 
-pub use settings::section as settings_section;
 use video::Loop;
 
 /// What the app holds for motion covers.
@@ -40,8 +38,6 @@ pub struct Motion {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
-    /// This computer's switch.
-    Enabled(bool),
     /// What looking for an album's video came to: `None` when it has none
     /// this app plays, `Some(Err)` when it can't be had now.
     Opened {
@@ -102,11 +98,6 @@ pub fn over<'a>(
 impl App {
     pub(crate) fn motion(&mut self, message: Msg) -> Task<Message> {
         match message {
-            Msg::Enabled(on) => {
-                self.config.interface.motion_covers = on;
-                self.save_config();
-                Task::none()
-            }
             Msg::Opened {
                 album,
                 generation,
@@ -150,9 +141,6 @@ impl App {
     /// The album whose motion cover belongs on screen now, and the path its
     /// album gave when the page has it.
     fn wanted_motion(&self) -> Option<(String, Option<String>)> {
-        if !self.config.interface.motion_covers {
-            return None;
-        }
         let signed = self.session.as_ref()?;
         if self.listening.full.is_some() {
             let album = self.playback.current()?.1.meta.album_id.clone()?;

@@ -301,7 +301,6 @@ mod tests {
                 accent: crate::appearance::Accent::Teal,
                 romaji: true,
                 furigana: false,
-                motion_covers: false,
                 full_layout: crate::full_player::Layout::Card,
                 full_ground: crate::full_player::Ground::Still,
             },
