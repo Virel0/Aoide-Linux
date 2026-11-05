@@ -5,6 +5,33 @@ use serde_json::json;
 use crate::client::MeleteClient;
 use crate::{Error, Result};
 
+/// The widths Melete makes album covers at: a JPEG made once from the cover
+/// and kept, never larger than the cover itself. No other width is asked for,
+/// as the server refuses one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum CoverSize {
+    /// 160 pixels wide.
+    W160,
+    /// 400 pixels wide.
+    W400,
+    /// 600 pixels wide.
+    W600,
+    /// 800 pixels wide.
+    W800,
+}
+
+impl CoverSize {
+    /// The width in pixels.
+    pub fn pixels(self) -> u16 {
+        match self {
+            Self::W160 => 160,
+            Self::W400 => 400,
+            Self::W600 => 600,
+            Self::W800 => 800,
+        }
+    }
+}
+
 /// What Melete sends a track as.
 ///
 /// `Original` is the file untouched, which keeps gapless joins exact; a
@@ -101,11 +128,17 @@ impl MeleteClient {
         })
     }
 
-    /// An album's cover. Fetching it needs the token as `Authorization: Bearer`,
-    /// which [`authorization`](Self::authorization) gives. Clients may keep a
-    /// cover a day.
-    pub fn cover_url(&self, album_id: &str) -> Url {
-        self.url(&["api", "v1", "music", "albums", album_id, "cover"], &[])
+    /// An album's cover, at most `size` wide, or the whole cover for `None`.
+    /// Fetching it needs the token as `Authorization: Bearer`, which
+    /// [`authorization`](Self::authorization) gives. Clients may keep a cover
+    /// a day. A server before sized covers ignores the size and sends the
+    /// whole cover.
+    pub fn cover_url(&self, album_id: &str, size: Option<CoverSize>) -> Url {
+        let query: Vec<(&str, String)> = size
+            .map(|size| ("size", size.pixels().to_string()))
+            .into_iter()
+            .collect();
+        self.url(&["api", "v1", "music", "albums", album_id, "cover"], &query)
     }
 
     /// The `Authorization` header value for a request made outside this client,
@@ -141,6 +174,27 @@ mod tests {
         assert_eq!(
             StreamFormat::Aac(8).body(),
             json!({ "format": "aac", "bitrate_kbps": 64 })
+        );
+    }
+
+    #[test]
+    fn a_cover_is_asked_for_at_its_size_or_whole() {
+        let client = MeleteClient::new(
+            crate::ServerAddress::parse("https://music.example/melete").unwrap(),
+            crate::Device::new("Test", "test-device"),
+        )
+        .unwrap();
+        assert_eq!(
+            client.cover_url("7", Some(CoverSize::W160)).as_str(),
+            "https://music.example/melete/api/v1/music/albums/7/cover?size=160"
+        );
+        assert_eq!(
+            client.cover_url("7", Some(CoverSize::W800)).as_str(),
+            "https://music.example/melete/api/v1/music/albums/7/cover?size=800"
+        );
+        assert_eq!(
+            client.cover_url("7", None).as_str(),
+            "https://music.example/melete/api/v1/music/albums/7/cover"
         );
     }
 

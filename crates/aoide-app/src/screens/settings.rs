@@ -114,10 +114,7 @@ pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
             hidden: Load::Loading,
             category: Category::default(),
         },
-        Task::batch([
-            load_hidden(ctx.store, ctx.key),
-            Task::done(App::Motion(crate::motion::Msg::AskChoice)),
-        ]),
+        load_hidden(ctx.store, ctx.key),
     )
 }
 
@@ -213,7 +210,7 @@ pub fn view<'a>(
     let pane: Element<'a, App> = match state.category {
         Category::General => column![
             crate::appearance::general_section(&extras),
-            crate::motion::settings_section(&app.motion, app.config.interface.motion_covers),
+            crate::motion::settings_section(app.config.interface.motion_covers),
         ]
         .spacing(24)
         .into(),

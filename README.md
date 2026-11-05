@@ -147,7 +147,7 @@ carries `SHA256SUMS` files, and [docs/releases.md](docs/releases.md) has the
 stricter lines to use once a release key exists. Optional packages: a Secret
 Service provider such as GNOME Keyring or KWallet, which keeps you signed in
 between launches, `noto-fonts-cjk` for Japanese, Chinese and Korean text, and
-`gst-libav` for motion covers in H.264, which is what Melete makes.
+`gst-libav` for motion covers in H.264, which most are.
 
 ### Flatpak
 
@@ -197,7 +197,7 @@ to other services only for the features below.
 
 | Where | What is sent | When |
 |---|---|---|
-| Your Melete server | Sign-in, library requests, streams, albums' motion covers and whether you see the ones it made, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover, and your language when you turn on Translate | Always; *Private listening* keeps plays out of the sync log; Settings → General → *Motion covers* off asks for no videos |
+| Your Melete server | Sign-in, library requests, streams, covers at the size they're drawn, albums' colours and motion covers, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover, and your language when you turn on Translate | Always; *Private listening* keeps plays out of the sync log; Settings → General → *Motion covers* off asks for no videos |
 | Your Melete server, for search by description and mixes | The phrase you typed, or a mix's description. Your server sends it, with your library's genre names, to [OpenRouter](https://openrouter.ai) under its own key; this computer never contacts OpenRouter | Only when you press the button, and only while your server has AI on |
 | Discord, through its local socket | The song, artist and album; with *Show cover*, a link to the album's cover on the [Cover Art Archive](https://coverartarchive.org), which names its MusicBrainz id. Discord fetches the picture; this computer never contacts the archive | Only while Rich Presence is on; the cover only with *Show cover* on |
 | GitHub's API | One unauthenticated request for the latest release, with a fixed user agent, at most once a day | On by default; Settings → System → Updates → *Check for updates* |

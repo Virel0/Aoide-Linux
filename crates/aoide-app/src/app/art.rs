@@ -28,6 +28,19 @@ impl App {
                 .values()
                 .flat_map(|cover| cover.keys().iter().cloned()),
         );
+        // The playing song's cover as the Now Playing panel draws it (and the
+        // desktop is shown), and as the full player's card does while it's open.
+        if let Some((id, tag)) = self
+            .playback
+            .current()
+            .and_then(|(_, q)| q.meta.artwork.as_ref())
+        {
+            wanted.push(ArtKey::sized(id, tag, artwork::TILE));
+            if self.listening.full.is_some() {
+                wanted.push(ArtKey::sized(id, tag, artwork::FULL));
+            }
+        }
+        // The queue's rows and the player bar.
         if let Some(queue) = self.playback.queue() {
             let position = queue.position().unwrap_or(0);
             let first = position.saturating_sub(5);
@@ -37,7 +50,7 @@ impl App {
                     .queued_at(index)
                     .and_then(|q| q.meta.artwork.as_ref())
                 {
-                    wanted.push(ArtKey::new(id, tag));
+                    wanted.push(ArtKey::sized(id, tag, artwork::ROW));
                 }
             }
         }
@@ -56,7 +69,7 @@ impl App {
         let dir = self.artwork.dir().map(ToOwned::to_owned);
         Task::batch(self.artwork.next_batch().into_iter().map(|key| {
             let url = match avatars::path_of(&key) {
-                None => client.cover_url(&key.item),
+                None => client.cover_url(&key.item, key.size),
                 Some(path) => match client.avatar_url(path) {
                     Some(url) => url,
                     // Not a path on this server: nothing to fetch.

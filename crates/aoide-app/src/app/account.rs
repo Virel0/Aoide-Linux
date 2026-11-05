@@ -468,7 +468,6 @@ impl App {
         }
         self.artwork.clear();
         self.motion.forget();
-        self.motion.choice = None;
         tasks.push(iced::widget::operation::focus(login::USERNAME));
         Task::batch(tasks)
     }

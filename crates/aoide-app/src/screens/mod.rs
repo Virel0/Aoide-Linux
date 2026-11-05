@@ -375,7 +375,11 @@ impl Page {
 pub fn track_art(tracks: &[crate::playback::tracks::TrackMeta]) -> Vec<ArtKey> {
     tracks
         .iter()
-        .filter_map(|t| t.artwork.as_ref().map(|(i, g)| ArtKey::new(i, g)))
+        .filter_map(|t| {
+            t.artwork
+                .as_ref()
+                .map(|(i, g)| ArtKey::sized(i, g, crate::artwork::ROW))
+        })
         .collect()
 }
 

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::Duration;
 
+use aoide_melete::CoverSize;
 use iced::widget::image;
 
 /// How many covers are kept decoded-ready in memory.
@@ -21,18 +22,48 @@ const MAX_BYTES: usize = 8 * 1024 * 1024;
 /// How long a cover on disk is used before it is fetched again.
 const KEEP_FOR: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// One cover: the item that owns it and its tag.
+/// What a row, the player bar or the queue draws a cover at (80 px at most,
+/// twice that on a HiDPI screen).
+pub const ROW: CoverSize = CoverSize::W160;
+/// What a tile, a page's header or the Now Playing panel draws it at (up to
+/// 220 px).
+pub const TILE: CoverSize = CoverSize::W600;
+/// What the full player's card draws it at (up to 356 px).
+pub const FULL: CoverSize = CoverSize::W800;
+
+/// One cover: the item that owns it, its tag, and the width asked of the
+/// server. `None` is the picture whole: a profile picture, a playlist's own,
+/// a cover from a server that makes no sizes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ArtKey {
     pub item: String,
     pub tag: String,
+    pub size: Option<CoverSize>,
 }
 
 impl ArtKey {
+    /// The picture whole.
     pub fn new(item: impl Into<String>, tag: impl Into<String>) -> Self {
         Self {
             item: item.into(),
             tag: tag.into(),
+            size: None,
+        }
+    }
+
+    /// An album cover at most `size` wide.
+    pub fn sized(item: impl Into<String>, tag: impl Into<String>, size: CoverSize) -> Self {
+        Self {
+            size: Some(size),
+            ..Self::new(item, tag)
+        }
+    }
+
+    /// The same picture at another size.
+    fn at(&self, size: Option<CoverSize>) -> Self {
+        Self {
+            size,
+            ..self.clone()
         }
     }
 
@@ -45,9 +76,22 @@ impl ArtKey {
                 .take(64)
                 .collect()
         };
-        format!("{}-{}.img", clean(&self.item), clean(&self.tag))
+        let (item, tag) = (clean(&self.item), clean(&self.tag));
+        match self.size {
+            None => format!("{item}-{tag}.img"),
+            Some(size) => format!("{item}-{tag}-{}.img", size.pixels()),
+        }
     }
 }
+
+/// The sizes [`Artwork::get`] falls back to, sharpest first.
+const ANY_SIZE: [Option<CoverSize>; 5] = [
+    Some(CoverSize::W800),
+    Some(CoverSize::W600),
+    Some(CoverSize::W400),
+    Some(CoverSize::W160),
+    None,
+];
 
 /// The memory side of the cache, and the download queue.
 #[derive(Debug, Default)]
@@ -76,8 +120,19 @@ impl Artwork {
         self.dir.as_deref()
     }
 
+    /// `key`'s picture, or, while that one loads, the same picture at
+    /// another size, so a cover doesn't blink out going from a tile to its
+    /// page.
     pub fn get(&self, key: &ArtKey) -> Option<&image::Handle> {
-        self.handles.get(key).map(|(handle, _)| handle)
+        self.handles
+            .get(key)
+            .or_else(|| {
+                ANY_SIZE
+                    .iter()
+                    .filter(|&&size| size != key.size)
+                    .find_map(|&size| self.handles.get(&key.at(size)))
+            })
+            .map(|(handle, _)| handle)
     }
 
     /// Queues covers not yet asked for.
@@ -253,6 +308,36 @@ mod tests {
     fn a_file_name_cannot_escape_the_directory() {
         let name = ArtKey::new("../../etc/passwd", "a/b").file_name();
         assert!(!name.contains('/') && !name.contains(".."), "{name}");
+    }
+
+    #[test]
+    fn each_size_of_a_cover_has_its_own_file() {
+        let whole = ArtKey::new("al1", "cover");
+        assert_eq!(whole.file_name(), "al1-cover.img");
+        assert_eq!(
+            ArtKey::sized("al1", "cover", ROW).file_name(),
+            "al1-cover-160.img"
+        );
+        assert_eq!(
+            ArtKey::sized("al1", "cover", FULL).file_name(),
+            "al1-cover-800.img"
+        );
+    }
+
+    #[test]
+    fn another_size_stands_in_until_the_wanted_one_arrives() {
+        let mut artwork = Artwork::new(None);
+        let tile = ArtKey::sized("al1", "cover", TILE);
+        let full = ArtKey::sized("al1", "cover", FULL);
+        assert!(artwork.get(&full).is_none());
+        artwork.want([tile.clone(), full.clone()]);
+        artwork.arrived(tile.clone(), Some(vec![1]));
+        let standing_in = artwork.get(&full).expect("the tile's size stands in");
+        assert_eq!(standing_in, artwork.get(&tile).unwrap());
+        artwork.arrived(full.clone(), Some(vec![2]));
+        assert_ne!(artwork.get(&full).unwrap(), artwork.get(&tile).unwrap());
+        // Another album's cover never stands in.
+        assert!(artwork.get(&ArtKey::sized("al2", "cover", FULL)).is_none());
     }
 
     #[test]

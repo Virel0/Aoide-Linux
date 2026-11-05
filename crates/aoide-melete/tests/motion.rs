@@ -1,10 +1,8 @@
 //! Motion covers against a local mock server. Nothing here leaves 127.0.0.1.
 
-use aoide_melete::{
-    Credentials, Device, MOTION_COVER_MAX_BYTES, MeleteClient, MotionCoverChoice, ServerAddress,
-};
+use aoide_melete::{Credentials, Device, MOTION_COVER_MAX_BYTES, MeleteClient, ServerAddress};
 use serde_json::json;
-use wiremock::matchers::{body_json, header, method, path};
+use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const TOKEN: &str = "mlt_fixture-token-not-a-secret";
@@ -113,44 +111,4 @@ async fn a_failed_read_is_an_error_not_none() {
         .mount(&server)
         .await;
     assert!(signed_in(&server.uri()).motion_cover(MOTION).await.is_err());
-}
-
-#[tokio::test]
-async fn the_choice_is_read_and_set_for_this_user() {
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/api/v1/music/motion-covers"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(json!({"show_generated": true, "on": true})),
-        )
-        .expect(1)
-        .mount(&server)
-        .await;
-    Mock::given(method("PUT"))
-        .and(path("/api/v1/music/motion-covers"))
-        .and(body_json(json!({"show_generated": false})))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(json!({"show_generated": false, "on": true})),
-        )
-        .expect(1)
-        .mount(&server)
-        .await;
-    let client = signed_in(&server.uri());
-    assert_eq!(
-        client.motion_cover_choice().await.unwrap(),
-        MotionCoverChoice {
-            show_generated: true,
-            on: true
-        }
-    );
-    assert_eq!(
-        client
-            .set_show_generated_motion_covers(false)
-            .await
-            .unwrap(),
-        MotionCoverChoice {
-            show_generated: false,
-            on: true
-        }
-    );
 }

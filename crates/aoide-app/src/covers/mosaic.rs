@@ -39,7 +39,7 @@ impl Cover {
         let keys: Vec<ArtKey> = albums
             .iter()
             .take(ALBUMS)
-            .map(|album| ArtKey::new(album, aoide_melete::COVER_TAG))
+            .map(|album| ArtKey::sized(album, aoide_melete::COVER_TAG, crate::covers::PLAYLIST))
             .collect();
         match <[ArtKey; ALBUMS]>::try_from(keys) {
             Ok(four) => Some(Self::Mosaic(Box::new(four))),
@@ -86,7 +86,7 @@ mod tests {
     }
 
     fn key(album: &str) -> ArtKey {
-        ArtKey::new(album, aoide_melete::COVER_TAG)
+        ArtKey::sized(album, aoide_melete::COVER_TAG, crate::covers::PLAYLIST)
     }
 
     #[test]

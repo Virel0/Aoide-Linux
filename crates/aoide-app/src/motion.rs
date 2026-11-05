@@ -12,7 +12,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use aoide_melete::MotionCoverChoice;
 use iced::widget::image;
 use iced::{Element, Length, Subscription, Task};
 
@@ -37,24 +36,12 @@ pub struct Motion {
     /// Bumped whenever what was found is forgotten, so a look started
     /// before then is dropped when it ends.
     generation: u64,
-    /// What the server says, once asked (Settings).
-    pub choice: Option<MotionCoverChoice>,
-    /// Why the last change to the choice failed.
-    pub problem: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Msg {
-    /// Settings opened: ask the server about its motion covers.
-    AskChoice,
-    Choice(Option<MotionCoverChoice>),
     /// This computer's switch.
     Enabled(bool),
-    /// "Ones your server made", for this user on every device.
-    ShowGenerated(bool),
-    ShowGeneratedSet(Result<MotionCoverChoice, String>),
-    /// The videos on disk are gone: forget what was found.
-    Forget,
     /// What looking for an album's video came to: `None` when it has none
     /// this app plays, `Some(Err)` when it can't be had now.
     Opened {
@@ -76,8 +63,8 @@ impl Motion {
         }
     }
 
-    /// Forgets every video found or playing: signed out, the cache cleared,
-    /// or a change to which the server shows.
+    /// Forgets every video found or playing: signed out, or the cache
+    /// cleared.
     pub fn forget(&mut self) {
         self.slot = None;
         self.none.clear();
@@ -115,37 +102,9 @@ pub fn over<'a>(
 impl App {
     pub(crate) fn motion(&mut self, message: Msg) -> Task<Message> {
         match message {
-            Msg::AskChoice => self.ask_motion_choice(),
-            Msg::Choice(choice) => {
-                self.motion.choice = choice;
-                Task::none()
-            }
             Msg::Enabled(on) => {
                 self.config.interface.motion_covers = on;
                 self.save_config();
-                Task::none()
-            }
-            Msg::ShowGenerated(shows) => self.set_show_generated(shows),
-            Msg::ShowGeneratedSet(Ok(choice)) => {
-                self.motion.choice = Some(choice);
-                // Forgotten once the files are gone, so none is played again.
-                let dir = self.motion.dir.clone();
-                Task::future(async move {
-                    if let Some(dir) = dir {
-                        let _ = tokio::task::spawn_blocking(move || {
-                            crate::maintenance::clear_dir(&dir)
-                        })
-                        .await;
-                    }
-                    Message::Motion(Msg::Forget)
-                })
-            }
-            Msg::Forget => {
-                self.motion.forget();
-                Task::none()
-            }
-            Msg::ShowGeneratedSet(Err(problem)) => {
-                self.motion.problem = Some(problem);
                 Task::none()
             }
             Msg::Opened {
@@ -164,35 +123,6 @@ impl App {
             }
             Msg::Fade => Task::none(),
         }
-    }
-
-    fn ask_motion_choice(&mut self) -> Task<Message> {
-        let Some(signed) = self.session.as_ref() else {
-            return Task::none();
-        };
-        let client = signed.connection.client.clone();
-        // A server older than motion covers answers 404: no switch for it.
-        Task::perform(
-            async move { client.motion_cover_choice().await.ok() },
-            |choice| Message::Motion(Msg::Choice(choice)),
-        )
-    }
-
-    fn set_show_generated(&mut self, shows: bool) -> Task<Message> {
-        let Some(signed) = self.session.as_ref() else {
-            return Task::none();
-        };
-        self.motion.problem = None;
-        let client = signed.connection.client.clone();
-        Task::perform(
-            async move {
-                client
-                    .set_show_generated_motion_covers(shows)
-                    .await
-                    .map_err(|e| crate::failure::describe(&e).summary)
-            },
-            |result| Message::Motion(Msg::ShowGeneratedSet(result)),
-        )
     }
 
     fn opened(&mut self, album: String, generation: u64, video: Option<Result<Loop, ()>>) {
