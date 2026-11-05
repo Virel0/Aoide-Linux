@@ -71,6 +71,11 @@
   <!-- Newest first. Add one for each tag before tagging it; the date is the
        release's. -->
   <releases>
+    <release version="0.6.0" date="2026-11-05" type="development">
+      <description>
+        <p>A new full-screen player: a frosted card on the song's blurred cover, beside the synced lyrics, alone or wide, over a still blur or a moving background in the cover's colours. The controls hide while you listen, and the layout is kept. Covers download at the size they're shown, and the colours match the iPhone app's, with Melete 0.5.0.</p>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-11-03" type="development">
       <description>
         <p>Playlists can hold songs that aren't in your library yet: importing a playlist saves all of it, asking your server for the missing songs, which wait in the playlist until they arrive. Search's Ask for It can add a song you don't have to any of your playlists.</p>
