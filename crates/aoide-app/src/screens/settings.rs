@@ -208,12 +208,7 @@ pub fn view<'a>(
     let settings = &app.config.settings;
     let account = app.config.account.as_ref();
     let pane: Element<'a, App> = match state.category {
-        Category::General => column![
-            crate::appearance::general_section(&extras),
-            crate::motion::settings_section(app.config.interface.motion_covers),
-        ]
-        .spacing(24)
-        .into(),
+        Category::General => crate::appearance::general_section(&extras),
         Category::Playback => playback_section(settings, &extras, key),
         Category::Sound => sound_section(settings, &extras, key),
         Category::Lyrics => lyrics_section(settings, key),

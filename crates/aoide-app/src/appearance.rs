@@ -21,8 +21,6 @@ pub struct InterfaceSettings {
     pub romaji: bool,
     /// Readings over the kanji of Japanese lyrics (the `furigana` feature).
     pub furigana: bool,
-    /// Albums' looping videos over their covers, on this computer.
-    pub motion_covers: bool,
     /// The full player's layout and ground, as last chosen.
     pub full_layout: crate::full_player::Layout,
     pub full_ground: crate::full_player::Ground,
@@ -36,7 +34,6 @@ impl Default for InterfaceSettings {
             accent: Accent::Violet,
             romaji: false,
             furigana: false,
-            motion_covers: true,
             full_layout: crate::full_player::Layout::default(),
             full_ground: crate::full_player::Ground::default(),
         }
@@ -376,14 +373,12 @@ mod tests {
         let interface = InterfaceSettings::default();
         assert!(interface.track_in_title);
         assert!(!interface.romaji && !interface.furigana);
-        assert!(interface.motion_covers);
         let changed = InterfaceSettings {
             track_in_title: false,
             appearance: Appearance::Light,
             accent: Accent::Orange,
             romaji: true,
             furigana: true,
-            motion_covers: false,
             full_layout: crate::full_player::Layout::Wide,
             full_ground: crate::full_player::Ground::Aurora,
         };

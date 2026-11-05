@@ -53,7 +53,10 @@ fn fresh(path: &Path) -> bool {
 }
 
 /// The album's motion cover as a file to play. `path` is the one its album
-/// gave, when the caller has it; otherwise the album is asked for it.
+/// gave, when the caller has it; otherwise the album is asked for it, even
+/// with a copy kept here, so a motion cover the server took away stops
+/// playing (Melete 0.5.0 deleted the ones it made). A kept copy plays without
+/// a new download, and when the server can't be reached.
 pub async fn find(
     client: MeleteClient,
     dir: PathBuf,
@@ -64,22 +67,30 @@ pub async fn find(
         return Found::Nothing;
     };
     let kept = file.clone();
-    if tokio::task::spawn_blocking(move || fresh(&kept))
+    let is_kept = tokio::task::spawn_blocking(move || fresh(&kept))
         .await
-        .unwrap_or(false)
-    {
-        return Found::File(file);
-    }
+        .unwrap_or(false);
     let path = match path {
         Some(path) => path,
         None => match client.album(&album).await {
             Ok((item, _)) => match item.motion_cover {
                 Some(path) => path,
-                None => return Found::Nothing,
+                None => {
+                    if is_kept {
+                        let gone = file.clone();
+                        let _ =
+                            tokio::task::spawn_blocking(move || std::fs::remove_file(gone)).await;
+                    }
+                    return Found::Nothing;
+                }
             },
+            Err(_) if is_kept => return Found::File(file),
             Err(_) => return Found::Failed,
         },
     };
+    if is_kept {
+        return Found::File(file);
+    }
     let bytes = match client.motion_cover(&path).await {
         Ok(Some(bytes)) if is_video(&bytes) => bytes,
         Ok(_) => return Found::Nothing,
@@ -160,7 +171,8 @@ mod tests {
                 ResponseTemplate::new(200)
                     .set_body_json(album_json(Some("/api/v1/music/albums/7/motion"))),
             )
-            .expect(1)
+            // Asked each time: whether it still has one.
+            .expect(2)
             .mount(&server)
             .await;
         Mock::given(method("GET"))
@@ -211,6 +223,30 @@ mod tests {
         let down = ask("9", Some("/api/v1/music/albums/9/motion")).await;
         assert_eq!(down, Found::Failed);
         assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_kept_video_the_server_took_away_is_deleted_and_one_kept_plays_offline() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/music/albums/7"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(album_json(None)))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/music/albums/9"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().unwrap();
+        let gone = dir.path().join("7.video");
+        let offline = dir.path().join("9.video");
+        std::fs::write(&gone, MP4).unwrap();
+        std::fs::write(&offline, MP4).unwrap();
+        let ask = |album: &str| find(client(&server), dir.path().to_owned(), album.into(), None);
+        assert_eq!(ask("7").await, Found::Nothing);
+        assert!(!gone.exists());
+        assert_eq!(ask("9").await, Found::File(offline));
     }
 
     #[test]
