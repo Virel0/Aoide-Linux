@@ -7,6 +7,7 @@ use crate::fractional_index::FractionalIndex;
 use crate::models::Playlist;
 use crate::new_id;
 use crate::record::Record;
+use crate::smart::SmartRules;
 use crate::store::Store;
 
 impl Store {
@@ -86,6 +87,53 @@ impl Store {
         notes: Option<&str>,
         now: Millis,
     ) -> Result<Playlist> {
+        let list = self.new_playlist_row(id, name, folder_id, notes, now)?;
+        self.record(list, false, now)
+    }
+
+    /// Creates a smart playlist at the end of the list, in one write with its rules.
+    /// Made as two (the row, then its rules) at the same instant, the rules lose the
+    /// merge's tie on the other devices and leave them a plain, empty playlist.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::create_playlist_with_id`].
+    pub fn create_smart_playlist_with_id(
+        &self,
+        id: &str,
+        name: &str,
+        notes: Option<&str>,
+        rules: &SmartRules,
+        now: Millis,
+    ) -> Result<Playlist> {
+        let list = self.new_playlist_row(id, name, None, notes, now)?;
+        self.record(list.setting_smart_rules(rules), false, now)
+    }
+
+    /// A smart playlist with a fresh id, as [`Self::create_smart_playlist_with_id`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::create_playlist_with_id`].
+    pub fn create_smart_playlist(
+        &self,
+        name: &str,
+        notes: Option<&str>,
+        rules: &SmartRules,
+        now: Millis,
+    ) -> Result<Playlist> {
+        self.create_smart_playlist_with_id(&new_id(), name, notes, rules, now)
+    }
+
+    /// A new playlist's row at the end of the list, not yet written.
+    fn new_playlist_row(
+        &self,
+        id: &str,
+        name: &str,
+        folder_id: Option<&str>,
+        notes: Option<&str>,
+        now: Millis,
+    ) -> Result<Playlist> {
         if let Some(folder_id) = folder_id {
             self.require_folder(folder_id)?;
         }
@@ -98,7 +146,7 @@ impl Store {
         list.id = id.to_owned();
         list.notes = notes.map(str::to_owned);
         list.folder_id = folder_id.map(str::to_owned);
-        self.record(list, false, now)
+        Ok(list)
     }
 
     /// Renames in place. The whole row goes into the op, and the receiving side merges
