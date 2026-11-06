@@ -571,6 +571,7 @@ async fn a_rescan_already_running_says_why() {
             status: 409,
             path: "api/v1/admin/system/tasks/library/run".into(),
             detail: Some("it is running now".into()),
+            reason: None,
         }
     );
 }

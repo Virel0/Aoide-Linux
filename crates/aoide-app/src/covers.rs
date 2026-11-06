@@ -333,7 +333,7 @@ impl App {
 
 /// A picture chosen in the system's file dialog, read whole; `None` when the
 /// dialog was closed.
-async fn pick_picture(title: &str) -> Option<Result<Vec<u8>, String>> {
+pub(crate) async fn pick_picture(title: &str) -> Option<Result<Vec<u8>, String>> {
     let file = rfd::AsyncFileDialog::new()
         .set_title(title)
         .add_filter("Pictures", &["jpg", "jpeg", "png", "webp"])

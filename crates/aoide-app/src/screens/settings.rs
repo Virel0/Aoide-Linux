@@ -6,10 +6,12 @@ use iced::{Center, Element, Fill, Length, Task};
 
 use super::{Ctx, Load, PageMsg, View};
 use crate::app::Message as App;
-use crate::config::{Account, Settings};
+use crate::config::Settings;
 use crate::playback::lyrics;
 use crate::theme;
 use crate::widgets;
+
+pub mod account;
 
 /// A track the listener has flagged.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +30,8 @@ pub struct State {
     pub hidden: Load<Vec<Hidden>>,
     /// The category whose rows are shown.
     pub category: Category,
+    /// Settings → Account's own parts.
+    pub account: account::State,
 }
 
 /// One pane of Settings.
@@ -105,6 +109,8 @@ pub enum Message {
     SignOut,
     ConfirmSignOut(bool),
     Category(Category),
+    /// Settings → Account's own messages, which the app routes with its client.
+    Account(account::Msg),
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
@@ -113,6 +119,7 @@ pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
             confirm_sign_out: false,
             hidden: Load::Loading,
             category: Category::default(),
+            account: account::State::default(),
         },
         load_hidden(ctx.store, ctx.key),
     )
@@ -159,6 +166,9 @@ impl State {
             Message::SignOut => self.confirm_sign_out = true,
             Message::ConfirmSignOut(false) => self.confirm_sign_out = false,
             Message::Category(category) => {
+                if category != Category::Account {
+                    self.account.forget_secrets();
+                }
                 self.category = category;
                 self.confirm_sign_out = false;
             }
@@ -206,7 +216,7 @@ pub fn view<'a>(
 ) -> Element<'a, App> {
     let key = view.key;
     let settings = &app.config.settings;
-    let account = app.config.account.as_ref();
+    let signed_in_as = app.config.account.as_ref();
     let pane: Element<'a, App> = match state.category {
         Category::General => crate::appearance::general_section(&extras),
         Category::Playback => playback_section(settings, &extras, key),
@@ -221,7 +231,7 @@ pub fn view<'a>(
         Category::Sync => sync_section(sync),
         Category::Server => server_section(),
         Category::System => crate::system::settings_sections(app),
-        Category::Account => account_section(state, account, app, key),
+        Category::Account => account::view(state, signed_in_as, app, key),
     };
     let pane = column![
         text(state.category.title()).size(20).font(widgets::BOLD),
@@ -474,59 +484,6 @@ fn sync_section(sync: crate::sync::Status<'_>) -> Element<'_, App> {
         .align_y(Center),
     ];
     section("", rows, "")
-}
-
-fn account_section<'a>(
-    state: &State,
-    account: Option<&'a Account>,
-    app: &'a crate::app::App,
-    key: u64,
-) -> Element<'a, App> {
-    let message = move |m: Message| App::Page(key, PageMsg::Settings(m));
-    let mut account_rows = column![];
-    if let Some(account) = account {
-        let picture = app.session.as_ref().and_then(|s| s.avatar.as_deref());
-        account_rows = account_rows
-            .push(row![
-                text("Server").width(Fill),
-                widgets::secondary(account.server.as_str())
-            ])
-            .push(
-                row![
-                    text("Signed in as").width(Fill),
-                    widgets::avatar(&account.username, picture, &app.artwork, 22.0),
-                    widgets::secondary(account.username.as_str())
-                ]
-                .spacing(8)
-                .align_y(Center),
-            );
-    }
-    account_rows = account_rows.push(if state.confirm_sign_out {
-        Element::from(
-            column![
-                text("Sign out of Aoide? You'll need your server address and password to sign back in."),
-                row![
-                    button("Sign out")
-                        .style(theme::destructive)
-                        .padding([6, 14])
-                        .on_press(App::SignOut),
-                    button("Cancel")
-                        .style(theme::tonal)
-                        .padding([6, 14])
-                        .on_press(message(Message::ConfirmSignOut(false))),
-                ]
-                .spacing(8),
-            ]
-            .spacing(8),
-        )
-    } else {
-        button("Sign out")
-            .style(theme::destructive)
-            .padding([6, 14])
-            .on_press(message(Message::SignOut))
-            .into()
-    });
-    section("", account_rows, "")
 }
 
 /// The server's own maintenance: what an administrator can start from here.

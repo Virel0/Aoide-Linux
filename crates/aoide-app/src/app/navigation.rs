@@ -39,16 +39,22 @@ impl App {
     /// Settings, at one category: the command palette's way in.
     pub(super) fn open_settings(&mut self, category: screens::settings::Category) -> Task<Message> {
         let task = self.show_section(Section::Settings);
-        if let Some(Page::Settings(state)) = self
+        let Some(key) = self
             .session
-            .as_mut()
-            .and_then(|s| s.nav.as_mut())
-            .and_then(|nav| nav.iter_mut().last())
-            .map(|e| &mut e.page)
-        {
-            state.category = category;
-        }
-        task
+            .as_ref()
+            .and_then(|s| s.nav.as_ref())
+            .map(|nav| nav.current())
+            .filter(|e| matches!(e.page, Page::Settings(_)))
+            .map(|e| e.key)
+        else {
+            return task;
+        };
+        // As a click on the category does, so Account asks the server.
+        let pick = screens::settings::Message::Category(category);
+        Task::batch([
+            task,
+            Task::done(Message::Page(key, PageMsg::Settings(pick))),
+        ])
     }
 
     /// Opens a page on top of the current one.

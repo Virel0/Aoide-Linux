@@ -83,6 +83,7 @@ pub fn sidecar_at(error: &aoide_sidecar::SidecarError, server: Option<&str>) -> 
                     status: *status,
                     path: path.clone(),
                     detail: None,
+                    reason: None,
                 },
                 server,
             )
@@ -217,6 +218,7 @@ mod tests {
                 status: 502,
                 path: "Items".into(),
                 detail: Some("Bad Gateway".into()),
+                reason: None,
             },
             Some("music.example.net"),
         );
@@ -235,6 +237,7 @@ mod tests {
                 status: 403,
                 path: "Items".into(),
                 detail: None,
+                reason: None,
             },
             None,
         );
@@ -250,6 +253,7 @@ mod tests {
             status,
             path: "api/v1/ai/music/mix".into(),
             detail: Some("the server's own words".into()),
+            reason: None,
         };
         for (error, words) in [
             (refused(503), "Your server has AI features off."),

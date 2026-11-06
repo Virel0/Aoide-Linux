@@ -438,6 +438,7 @@ mod tests {
             status: 409,
             path: "api/v1/music/tracks/1/lyrics".into(),
             detail: None,
+            reason: None,
         };
         assert_eq!(failure(&off), "Your server has no translation set up.");
     }

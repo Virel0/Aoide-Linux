@@ -176,6 +176,7 @@ async fn the_servers_refusals_keep_their_status_and_words() {
                     status,
                     path: route.trim_start_matches('/').into(),
                     detail: Some(words.into()),
+                    reason: None,
                 }),
                 "{route} {status}"
             );

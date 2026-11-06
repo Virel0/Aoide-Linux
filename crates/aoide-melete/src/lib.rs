@@ -26,7 +26,16 @@
 //! - **Get Info:** [`MeleteClient::item_details`].
 //! - **Sharing:** [`MeleteClient::user_directory`] names whom to share with.
 //! - **Profile pictures:** [`MeleteClient::me`] for the signed-in user's, and
-//!   [`MeleteClient::avatar_url`] for the address of anyone's.
+//!   [`MeleteClient::avatar_url`] for the address of anyone's. Their own is
+//!   set with [`MeleteClient::set_avatar`] or from the server's gallery
+//!   ([`MeleteClient::avatar_categories`], [`MeleteClient::gallery_pictures`],
+//!   [`MeleteClient::set_gallery_avatar`]), and taken off with
+//!   [`MeleteClient::remove_avatar`].
+//! - **Account:** [`MeleteClient::change_password`]; two-factor sign-in with
+//!   [`MeleteClient::two_factor`], [`MeleteClient::start_two_factor`],
+//!   [`MeleteClient::confirm_two_factor`] and
+//!   [`MeleteClient::turn_off_two_factor`]; for administrators,
+//!   [`MeleteClient::users`] and [`MeleteClient::give_new_password`].
 //! - **Playing:** [`MeleteClient::play`] for a stream link,
 //!   [`MeleteClient::cover_url`] for covers at a [`CoverSize`], and
 //!   [`MeleteClient::motion_cover`] for an album's looping video.
@@ -49,6 +58,7 @@ mod colours;
 mod details;
 mod error;
 mod events;
+mod gallery;
 mod library;
 mod listen;
 mod lyrics;
@@ -56,9 +66,11 @@ mod maintenance;
 mod media;
 mod model;
 mod motion;
+mod password;
 mod profile;
 mod request_imports;
 mod requests;
+mod two_factor;
 
 pub use address::ServerAddress;
 pub use ai::{MusicFilters, MusicMix, MusicOrdering};
@@ -67,13 +79,15 @@ pub use client::MeleteClient;
 pub use details::ItemDetails;
 pub use error::Error;
 pub use events::{Event, EventStream};
+pub use gallery::{AvatarCategory, GalleryPage, GalleryPicture};
 pub use library::{Home, Likes, ListQuery, SearchResults, Sort};
 pub use listen::{ListenMember, ListenSession, ListenState, Listening, is_stale};
 pub use lyrics::{LyricLine, LyricWord, Lyrics, LyricsAnswer, LyricsAsk};
 pub use media::{CoverSize, Stream, StreamFormat};
 pub use model::{COVER_TAG, Item, ItemKind, NameId, Page};
 pub use motion::MOTION_COVER_MAX_BYTES;
-pub use profile::Me;
+pub use password::{NewPassword, PASSWORD_MAX_CHARS, PASSWORD_MIN_CHARS, User};
+pub use profile::{AVATAR_MAX_BYTES, Me, PictureType};
 pub use request_imports::{
     PlaylistImport, PlaylistImportSummary, PlaylistImportTrack, playlist_csv,
 };
@@ -82,6 +96,10 @@ pub use requests::{
 };
 /// The URL type every media URL is returned as.
 pub use reqwest::Url;
+pub use two_factor::{
+    ChangeKind, MadeFrom, TwoFactorChange, TwoFactorSetup, TwoFactorStatus, WRONG_CODE,
+    WRONG_PASSWORD,
+};
 
 /// Shorthand for this crate's results.
 pub type Result<T, E = Error> = std::result::Result<T, E>;

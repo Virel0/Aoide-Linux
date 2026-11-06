@@ -264,6 +264,7 @@ fn other_failures_say_nothing_of_the_ai() {
         status: 429,
         path: "api/v1/ai/music/search".into(),
         detail: None,
+        reason: None,
     });
     assert_eq!(busy.availability(), None);
     let library = Failure::Server(Error::NotFound {

@@ -254,6 +254,7 @@ mod tests {
             status,
             path: "api/v1/requests/imports".into(),
             detail: None,
+            reason: None,
         }
     }
 

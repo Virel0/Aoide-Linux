@@ -304,6 +304,7 @@ impl App {
         // last one was scrolled to (iced keeps one scroll state for both).
         if self.page_key() != page {
             self.failure_details = false;
+            self.forget_account_secrets();
             task = Task::batch([
                 task,
                 iced::widget::operation::snap_to(

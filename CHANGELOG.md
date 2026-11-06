@@ -7,6 +7,18 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- Settings → Account manages your Melete account. Set your profile picture
+  from a file (one over 5 MB is made smaller first) or from your server's
+  gallery, or remove it; the new one shows at once. Change your password,
+  which signs out your other devices and API keys. Turn two-factor sign-in
+  on with a QR code or a key for your authenticator app, turn it off, or
+  reset it for a new phone, and see its latest changes: wrong codes typed at
+  sign-in are pointed out, since they mean someone had your password. An
+  administrator sees the server's users and can give one a new password,
+  shown once to pass on. Passwords, codes and the new secret are never
+  logged or kept, and are dropped when you leave the pane.
+
 ### Fixed
 - Heavy Rotation and Rediscover Mix fill themselves again on every device.
   This app made them anew on a fresh store before its first sync, writing

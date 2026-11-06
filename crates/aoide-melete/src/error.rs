@@ -45,6 +45,9 @@ pub enum Error {
         /// What went wrong: Melete's `{"error": …}` message, or else a short
         /// prefix of the body (a proxy's error page runs to kilobytes).
         detail: Option<String>,
+        /// Melete's `reason` beside the message, where a refusal names one
+        /// (`wrong_password`, `wrong_code`); `None` for most errors.
+        reason: Option<String>,
     },
     /// A 2xx response whose body didn't decode.
     #[error("couldn't read the server's answer to {path}: {message}")]
@@ -75,6 +78,7 @@ pub(crate) fn check_status(status: u16, path: &str, body: &[u8]) -> Result<(), E
             status,
             path: path.to_owned(),
             detail: detail(body),
+            reason: reason(body),
         }),
     }
 }
@@ -106,6 +110,22 @@ fn detail(body: &[u8]) -> Option<String> {
     let cut = text.floor_char_boundary(MAX_DETAIL_BYTES);
     let detail = text[..cut].trim();
     (!detail.is_empty()).then(|| detail.to_owned())
+}
+
+/// A refusal's `reason`, as Melete's `{"error": …, "reason": …}` names it.
+fn reason(body: &[u8]) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Shape {
+        reason: String,
+    }
+    let shape: Shape = serde_json::from_slice(body).ok()?;
+    let plain = !shape.reason.is_empty()
+        && shape.reason.len() <= 64
+        && shape
+            .reason
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c == '_');
+    plain.then_some(shape.reason)
 }
 
 /// A reqwest failure as a transport error, with its cause chain spelled out
@@ -176,6 +196,7 @@ mod tests {
             status,
             path,
             detail,
+            ..
         }) = check_status(500, "api/v1/music/albums", body.as_bytes())
         else {
             panic!("expected Error::Http");
@@ -199,8 +220,31 @@ mod tests {
                 status: 409,
                 path: "api/v1/admin/system/tasks/library/run".into(),
                 detail: Some("the library task is running already".into()),
+                reason: None,
             })
         );
+    }
+
+    #[test]
+    fn a_refusal_names_its_reason() {
+        assert_eq!(
+            check_status(
+                403,
+                "api/v1/me/two-factor/off",
+                br#"{"error":"that code isn't right","reason":"wrong_code"}"#
+            ),
+            Err(Error::Http {
+                status: 403,
+                path: "api/v1/me/two-factor/off".into(),
+                detail: Some("that code isn't right".into()),
+                reason: Some("wrong_code".into()),
+            })
+        );
+        let odd = br#"{"error":"no","reason":"<b>Not plain</b>"}"#;
+        assert!(matches!(
+            check_status(403, "api/v1/me/password", odd),
+            Err(Error::Http { reason: None, .. })
+        ));
     }
 
     #[test]
@@ -235,7 +279,8 @@ mod tests {
             Err(Error::Http {
                 status: 503,
                 path: "api/v1/music/albums".into(),
-                detail: None
+                detail: None,
+                reason: None,
             })
         );
     }
@@ -246,6 +291,7 @@ mod tests {
             status: 500,
             path: "api/v1/music/albums".into(),
             detail: Some("boom".into()),
+            reason: None,
         };
         assert_eq!(
             with.to_string(),
@@ -255,6 +301,7 @@ mod tests {
             status: 500,
             path: "api/v1/music/albums".into(),
             detail: None,
+            reason: None,
         };
         assert_eq!(
             without.to_string(),
