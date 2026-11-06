@@ -7,6 +7,8 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-06
+
 ### Added
 - Importing a YouTube playlist from a CSV export. A file with the video's
   title and channel, and no artist column, is read video by video: the artist
@@ -326,7 +328,8 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/Virel0/Aoide-Linux/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.4.0...v0.5.0
