@@ -473,6 +473,7 @@ mod tests {
             status: 500,
             path: "Users/AuthenticateByName".into(),
             detail: Some("System.NullReferenceException".into()),
+            reason: None,
         });
         assert!(
             broken.starts_with("Your server ran into a problem"),

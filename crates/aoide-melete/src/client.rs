@@ -2,7 +2,7 @@ use std::sync::Once;
 use std::time::Duration;
 
 use reqwest::Method;
-use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH};
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use serde::de::DeserializeOwned;
 
 use crate::error::{check_status, transport};
@@ -28,6 +28,8 @@ fn install_crypto() {
 enum Body<'a> {
     Empty,
     Json(&'a serde_json::Value),
+    /// A file as it is, such as a picture, with its media type.
+    Bytes(&'a [u8], &'static str),
 }
 
 /// Redirects are followed only within the server's own origin (scheme, host
@@ -201,6 +203,9 @@ impl MeleteClient {
         }
         request = match body {
             Body::Json(body) => request.json(body),
+            Body::Bytes(bytes, media_type) => request
+                .header(CONTENT_TYPE, media_type)
+                .body(bytes.to_vec()),
             // `Content-Length: 0` spelled out, since hyper leaves it off an empty
             // body and some proxies answer a POST without one with 411.
             Body::Empty if has_body_slot => request.header(CONTENT_LENGTH, "0").body(Vec::new()),
@@ -220,6 +225,20 @@ impl MeleteClient {
         Ok((status, bytes))
     }
 
+    /// Sends `bytes` as the body, of type `media_type`, and decodes the answer.
+    pub(crate) async fn send_file<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        segments: &[&str],
+        bytes: &[u8],
+        media_type: &'static str,
+    ) -> Result<T> {
+        let (_, answer) = self
+            .send_body(method, segments, &[], Body::Bytes(bytes, media_type))
+            .await?;
+        decode(segments, &answer)
+    }
+
     pub(crate) async fn send_decoded<T: DeserializeOwned>(
         &self,
         method: Method,
@@ -228,10 +247,7 @@ impl MeleteClient {
         body: Option<&serde_json::Value>,
     ) -> Result<T> {
         let bytes = self.send(method, segments, query, body).await?;
-        serde_json::from_slice(&bytes).map_err(|e| Error::Decoding {
-            path: segments.join("/"),
-            message: e.to_string(),
-        })
+        decode(segments, &bytes)
     }
 
     pub(crate) async fn get<T: DeserializeOwned>(
@@ -271,6 +287,7 @@ impl MeleteClient {
                     status,
                     path,
                     detail: None,
+                    reason: None,
                 }));
         }
         Ok(response)
@@ -314,6 +331,14 @@ impl MeleteClient {
         }
         read_capped(response, limit).await.map_err(transport)
     }
+}
+
+/// A 2xx answer's JSON, or [`Error::Decoding`] naming the path.
+fn decode<T: DeserializeOwned>(segments: &[&str], bytes: &[u8]) -> Result<T> {
+    serde_json::from_slice(bytes).map_err(|e| Error::Decoding {
+        path: segments.join("/"),
+        message: e.to_string(),
+    })
 }
 
 #[cfg(test)]

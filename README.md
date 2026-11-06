@@ -87,6 +87,11 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 - Playlists, folders, likes, taste flags and the play history, between the Linux app and the iPhone app
 - Hand the queue from one device to another
 
+### Your account
+- Set your profile picture from a file or your server's gallery
+- Change your password, and turn two-factor sign-in on or off
+- Administrators can give a user a new password
+
 ### Desktop
 - MPRIS media controls, so the media keys work, and a tray icon
 - A second launch brings the open window forward; no sleep while music plays
