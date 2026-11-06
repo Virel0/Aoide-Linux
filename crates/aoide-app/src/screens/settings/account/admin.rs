@@ -116,7 +116,8 @@ impl State {
             rows,
             "Give someone a new password when they can't sign in; they are signed out \
              everywhere. It leaves their two-factor sign-in on: for someone who has lost their \
-             authenticator app, run melete user reset-password on the server instead. Change \
+             authenticator app, run melete user reset-password <name> --remove-second-factor on \
+             the server instead. Change \
              your own password under Password.",
         )
     }
