@@ -7,6 +7,17 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- Importing a YouTube playlist from a CSV export. A file with the video's
+  title and channel, and no artist column, is read video by video: the artist
+  from "Artist - Song" titles or a YouTube Music "Artist - Topic" channel, else
+  the channel less "VEVO"; "(Official Video)", "Lyric Video", "M/V" and what
+  follows a " | " are taken off the title, and a music video's length is
+  left out, since it runs over the song's. So Melete asks MusicBrainz for the
+  song by its own name and artist, not a video's title alone, which matched
+  a different song of that name. Lengths in seconds and `h:mm:ss` are read
+  too.
+
 ## [0.6.1] - 2026-11-05
 
 ### Removed

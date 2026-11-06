@@ -204,7 +204,9 @@ fn start<'a>(body: Column<'a, App>, link: &'a str, key: u64) -> Column<'a, App> 
     .push(
         widgets::secondary(
             "A Spotify link gives the first 100 songs; export the playlist to \
-             CSV for all of it. Only the link's public page is read: no account.",
+             CSV for all of it. Only the link's public page is read: no account. \
+             A YouTube playlist exported to CSV works too: each video's artist is \
+             read from its title or its channel.",
         )
         .size(12),
     )
