@@ -32,6 +32,8 @@ use unicode_normalization::char::is_combining_mark;
 use crate::client::SidecarClient;
 use crate::error::SidecarError;
 
+pub(crate) mod youtube;
+
 // MARK: - What is imported
 
 /// A playlist as another service describes it: names and lengths, no ids we can use.
@@ -789,16 +791,19 @@ const ARTIST_HEADERS: [&str; 5] = [
     "artist(s)",
 ];
 const ALBUM_HEADERS: [&str; 2] = ["album name", "album"];
-const DURATION_HEADERS: [&str; 4] = [
-    "track duration (ms)",
-    "duration (ms)",
-    "duration_ms",
-    "duration",
-];
+/// A YouTube export's channel, read as the artist when there's no artist column.
+const CHANNEL_HEADERS: [&str; 4] = ["channel name", "channel", "channel title", "uploader"];
+const DURATION_HEADERS: [&str; 3] = ["track duration (ms)", "duration (ms)", "duration_ms"];
+const SECONDS_HEADERS: [&str; 3] = ["duration in seconds", "duration (seconds)", "duration (s)"];
+/// Milliseconds, `m:ss` or `h:mm:ss`.
+const LENGTH_HEADERS: [&str; 2] = ["duration in timestamp", "duration"];
 const ISRC_HEADERS: [&str; 1] = ["isrc"];
 
 /// A playlist out of a CSV export: Exportify's headers first, then the other tools'
-/// names for the same columns. Durations in milliseconds, or `m:ss`.
+/// names for the same columns. Durations in milliseconds or seconds, or `m:ss` or
+/// `h:mm:ss`. An export of a YouTube playlist, with a channel column and no artist
+/// column, is read video by video as [`youtube`] says, a music video without its
+/// length.
 ///
 /// # Errors
 ///
@@ -824,8 +829,14 @@ pub fn parse_playlist_csv(text: &str, name: &str) -> Result<ImportedPlaylist, Im
     };
     let title = index_of(&TITLE_HEADERS).ok_or(ImportError::NoTitleColumn)?;
     let artist = index_of(&ARTIST_HEADERS);
+    let channel = artist
+        .is_none()
+        .then(|| index_of(&CHANNEL_HEADERS))
+        .flatten();
     let album = index_of(&ALBUM_HEADERS);
     let duration = index_of(&DURATION_HEADERS);
+    let seconds = index_of(&SECONDS_HEADERS);
+    let length = index_of(&LENGTH_HEADERS);
     let isrc = index_of(&ISRC_HEADERS);
 
     let tracks = rows[1..]
@@ -838,19 +849,37 @@ pub fn parse_playlist_csv(text: &str, name: &str) -> Result<ImportedPlaylist, Im
                     .filter(|value| !value.is_empty())
                     .map(str::to_owned)
             };
-            let title = cell(Some(title))?;
-            let artists = cell(artist)
+            let mut title = cell(Some(title))?;
+            let mut artists = cell(artist)
                 .unwrap_or_default()
                 .split(',')
                 .map(str::trim)
                 .filter(|name| !name.is_empty())
                 .map(str::to_owned)
                 .collect();
+            let mut length_is_song = true;
+            if channel.is_some() {
+                let video = youtube::song(&title, &cell(channel).unwrap_or_default());
+                (title, artists, length_is_song) =
+                    (video.title, video.artists, video.is_music_track);
+            }
+            let duration_ms = length_is_song
+                .then(|| {
+                    cell(duration)
+                        .and_then(|value| value.parse().ok())
+                        .or_else(|| {
+                            cell(seconds)
+                                .and_then(|v| v.parse::<i64>().ok())
+                                .map(|s| s * 1000)
+                        })
+                        .or_else(|| cell(length).and_then(|value| parse_duration(&value)))
+                })
+                .flatten();
             Some(ImportedTrack {
                 title,
                 artists,
                 album: cell(album),
-                duration_ms: cell(duration).and_then(|value| parse_duration(&value)),
+                duration_ms,
                 isrc: cell(isrc),
             })
         })
@@ -862,20 +891,24 @@ pub fn parse_playlist_csv(text: &str, name: &str) -> Result<ImportedPlaylist, Im
     })
 }
 
-fn parse_duration(value: &str) -> Option<i64> {
+/// A length as milliseconds (Exportify's), `m:ss` or `h:mm:ss` (a hand-made sheet's,
+/// a YouTube export's).
+pub(crate) fn parse_duration(value: &str) -> Option<i64> {
     if value.chars().all(|c| c.is_ascii_digit()) {
         return value.parse().ok();
     }
     let parts: Vec<&str> = value.split(':').collect();
-    let [minutes, seconds] = parts.as_slice() else {
+    if !(2..=3).contains(&parts.len()) {
         return None;
-    };
-    let whole = |part: &str| -> Option<i64> {
-        (!part.is_empty() && part.chars().all(|c| c.is_ascii_digit()))
-            .then(|| part.parse().ok())
-            .flatten()
-    };
-    Some((whole(minutes)? * 60 + whole(seconds)?) * 1000)
+    }
+    let mut total = 0_i64;
+    for part in parts {
+        if part.is_empty() || !part.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        total = total * 60 + part.parse::<i64>().ok()?;
+    }
+    Some(total * 1000)
 }
 
 /// Just enough of RFC 4180: quoted fields, doubled quotes, newlines inside quotes.
