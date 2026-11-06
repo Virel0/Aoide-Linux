@@ -60,11 +60,22 @@ impl App {
         signed.syncing = None;
         let changed = result.as_ref().is_ok_and(|r| r.applied > 0);
         signed.sync_status = Some(result.as_ref().map(sync::describe).map_err(Clone::clone));
+        let mut built_ins = Task::none();
+        if result.is_ok() {
+            // After a sync, never before the first: until then a built-in the server
+            // has isn't here, and making it again would replace it on every device.
+            // The store thread runs jobs in order, so the playlists read after this.
+            let now = aoide_store::now_millis();
+            self.store.send(move |w| {
+                let _ = w.store.ensure_built_in_playlists(now);
+            });
+            built_ins = self.load_playlists();
+        }
         let panels = self.refresh_sync_panels();
         if changed {
-            Task::batch([self.load_playlists(), self.reload_playlist_pages(), panels])
+            Task::batch([built_ins, self.reload_playlist_pages(), panels])
         } else {
-            panels
+            Task::batch([built_ins, panels])
         }
     }
 

@@ -72,33 +72,55 @@ impl BuiltInPlaylist {
 }
 
 impl Store {
-    /// Creates the built-in smart playlists this library has never had, and returns
-    /// which it created. Safe to call at every launch.
+    /// Creates the built-in smart playlists this library has never had, and puts the
+    /// rules back on one that has lost them. Returns the ones it wrote.
+    ///
+    /// Call it only once this store has synced with the server: before that, a built-in
+    /// the server already has isn't here yet, and creating it again would write a
+    /// newer copy that wins on every device.
     ///
     /// Under their fixed ids, so the phone and the desk creating the same ones end in
     /// one row each; and only where **no row has ever existed** — deleted included —
     /// so a built-in removed on any device stays removed on all of them. Each is two
-    /// ops, the create and the rules, as on the other clients.
+    /// ops, the create and the rules, as on the other clients, the rules a millisecond
+    /// later. Written at the same instant (as this device once did), the rules lose
+    /// the merge's tie on every other device and leave a plain, empty playlist; such
+    /// a row is repaired here with its rules.
     ///
     /// # Errors
     ///
-    /// Fails when the database does; built-ins created before the failure stay.
+    /// Fails when the database does; built-ins written before the failure stay.
     pub fn ensure_built_in_playlists(&self, now: Millis) -> Result<Vec<BuiltInPlaylist>> {
-        let mut created = Vec::new();
+        let mut written = Vec::new();
+        // Each built-in's writes a millisecond apart, the rules after the row, and
+        // each pair after the last, so the ops keep their order on every device.
+        let mut at = now;
         for built in BuiltInPlaylist::ALL {
+            let rules = built.rules();
             if self.playlist_row_exists(built.id())? {
-                continue;
+                // A live row whose rules are gone (or unreadable) gets them back.
+                let Some(list) = self.playlist(built.id())? else {
+                    continue;
+                };
+                if matches!(list.smart_rule_set(), Ok(Some(_))) {
+                    continue;
+                }
+                self.record(list.setting_smart_rules(&rules), false, at)?;
+            } else {
+                let list = self.create_playlist_with_id(
+                    built.id(),
+                    built.name(),
+                    None,
+                    Some(built.notes()),
+                    at,
+                )?;
+                // A millisecond later than the row, so on every other device the
+                // rules win the merge over the row's empty ones.
+                self.record(list.setting_smart_rules(&rules), false, at + 1)?;
             }
-            let list = self.create_playlist_with_id(
-                built.id(),
-                built.name(),
-                None,
-                Some(built.notes()),
-                now,
-            )?;
-            self.record(list.setting_smart_rules(&built.rules()), false, now)?;
-            created.push(built);
+            at += 2;
+            written.push(built);
         }
-        Ok(created)
+        Ok(written)
     }
 }

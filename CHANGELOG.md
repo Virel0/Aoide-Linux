@@ -8,6 +8,14 @@ state of every feature in more detail.
 ## [Unreleased]
 
 ### Fixed
+- Heavy Rotation and Rediscover Mix fill themselves again on every device.
+  This app made them anew on a fresh store before its first sync, writing
+  each row and its rules at the same millisecond; on the other devices the
+  rules lost the tie, and the playlists became plain and empty. The rules are
+  now written a millisecond after the row, the built-ins are made only after
+  a sync, and a built-in that lost its rules gets them back.
+- A mix saved as a smart playlist reaches the other devices smart, not as an
+  empty playlist: it's made in one write with its rules.
 - A song from a YouTube playlist export that your library has under another
   artist is found instead of reported missing. When a video's title doesn't
   name its artist, the channel stands in for it, and a channel is often a
@@ -15,6 +23,10 @@ state of every feature in more detail.
   its title alone, and taken when every song there with exactly that title is
   by one artist; your server then puts your copy in the playlist instead of
   asking for it again.
+
+### Changed
+- Heavy Rotation and Rediscover Mix aren't listed until their rules match a
+  song.
 
 ## [0.7.0] - 2026-11-06
 

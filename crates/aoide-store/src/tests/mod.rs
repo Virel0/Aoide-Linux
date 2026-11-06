@@ -2,6 +2,7 @@
 //! Each file names the Swift suite it ports.
 
 mod album_likes;
+mod built_in;
 mod covers;
 mod curation_store;
 mod field_merge;

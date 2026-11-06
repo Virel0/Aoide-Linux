@@ -394,11 +394,7 @@ impl App {
 
     /// What runs once the store is known to be this account's.
     fn after_claim(&mut self) -> Task<Message> {
-        // Before the playlists are read: the store thread runs jobs in order.
-        let now = aoide_store::now_millis();
-        self.store.send(move |w| {
-            let _ = w.store.ensure_built_in_playlists(now);
-        });
+        // The built-in playlists are made after the first sync (`synced`), not here.
         Task::batch([self.load_playlists(), self.restore_queue()])
     }
 

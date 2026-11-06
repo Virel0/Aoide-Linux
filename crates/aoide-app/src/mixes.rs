@@ -367,9 +367,11 @@ impl App {
             async move {
                 store
                     .call(move |w| {
-                        let list = w.store.create_playlist(&name, None, Some(&notes), now)?;
-                        let smart = list.setting_smart_rules(&rules);
-                        w.store.record(smart, false, now).map(|p| p.name)
+                        // One write with its rules: as two at the same instant, the
+                        // rules lose the merge's tie on the other devices.
+                        w.store
+                            .create_smart_playlist(&name, Some(&notes), &rules, now)
+                            .map(|p| p.name)
                     })
                     .await
                     .map(|r| r.map_err(|e| e.to_string()))
