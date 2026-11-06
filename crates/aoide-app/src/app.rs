@@ -129,6 +129,7 @@ pub enum Message {
     /// Sync with Melete now, not at the next launch or focus.
     SyncNow,
     Synced(Result<SyncReport, String>),
+    TrackCacheFilled(crate::track_fill::Filled),
     Section(Section),
     /// Settings, at one category: the command palette's way in.
     OpenSettings(screens::settings::Category),
@@ -354,6 +355,7 @@ impl App {
             Message::SyncNow => self.sync_now(),
             Message::TokenRejected => self.token_rejected(),
             Message::Synced(result) => self.synced(result),
+            Message::TrackCacheFilled(filled) => self.track_cache_filled(filled),
             Message::Section(section) => self.show_section(section),
             Message::Retry(key) => self.retry(key),
             Message::FailureDetails(open) => {
