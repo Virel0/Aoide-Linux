@@ -71,6 +71,11 @@
   <!-- Newest first. Add one for each tag before tagging it; the date is the
        release's. -->
   <releases>
+    <release version="0.8.0" date="2026-11-06" type="development">
+      <description>
+        <p>Settings → Account: change your profile picture, your password and two-factor sign-in, and for admins give a user a new password. Heavy Rotation and Rediscover Mix fill again, Replay's lists match the phone's, and a YouTube import finds songs your library has under another artist.</p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-11-06" type="development">
       <description>
         <p>Importing a YouTube playlist from a CSV export: each video's song and artist are read from its title or channel, without the words video sites add, so your server asks for the right song.</p>

@@ -7,6 +7,8 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-06
+
 ### Added
 - Settings → Account manages your Melete account. Set your profile picture
   from a file (one over 5 MB is made smaller first) or from your server's
@@ -365,7 +367,8 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/Virel0/Aoide-Linux/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.5.0...v0.6.0
