@@ -49,6 +49,7 @@ mod system;
 mod test_json;
 mod theme;
 mod together;
+mod track_fill;
 mod tray;
 mod updates;
 mod users;

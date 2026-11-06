@@ -23,6 +23,10 @@ state of every feature in more detail.
   its title alone, and taken when every song there with exactly that title is
   by one artist; your server then puts your copy in the playlist instead of
   asking for it again.
+- Replay's top songs, artists and albums match the iPhone app's. Songs played
+  only on another device were counted in the totals but left out of the lists,
+  and smart playlists' listening rules missed them, because this computer had
+  never looked them up; after each sync it now asks your server for them.
 
 ### Changed
 - Heavy Rotation and Rediscover Mix aren't listed until their rules match a

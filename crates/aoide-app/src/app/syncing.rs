@@ -5,7 +5,7 @@ use iced::Task;
 
 use super::{App, Message};
 use crate::screens::{Page, PageMsg, playlist};
-use crate::sync;
+use crate::{sync, track_fill};
 
 impl App {
     /// A sync, if one is due: at launch, on focus, at most once a minute.
@@ -72,10 +72,55 @@ impl App {
             built_ins = self.load_playlists();
         }
         let panels = self.refresh_sync_panels();
-        if changed {
-            Task::batch([built_ins, self.reload_playlist_pages(), panels])
+        // Other devices' plays may have come in, of songs not cached here.
+        let fill = if result.is_ok() {
+            self.fill_track_cache()
         } else {
-            Task::batch([built_ins, panels])
+            Task::none()
+        };
+        if changed {
+            Task::batch([built_ins, self.reload_playlist_pages(), panels, fill])
+        } else {
+            Task::batch([built_ins, panels, fill])
+        }
+    }
+
+    /// Caches the played tracks the track cache lacks, off the UI thread;
+    /// see `track_fill`.
+    pub(super) fn fill_track_cache(&mut self) -> Task<Message> {
+        let store = self.store.clone();
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        let Some(skip) = signed.track_fill.start() else {
+            return Task::none();
+        };
+        let client = signed.connection.client.clone();
+        Task::perform(
+            track_fill::fill(client, store, skip),
+            Message::TrackCacheFilled,
+        )
+    }
+
+    pub(super) fn track_cache_filled(&mut self, filled: track_fill::Filled) -> Task<Message> {
+        let Some(signed) = self.session.as_mut() else {
+            return Task::none();
+        };
+        if let Some(error) = &filled.failed {
+            log::warn!("Played songs couldn't be added to the track cache: {error}");
+        }
+        let again = signed.track_fill.finished(filled.gone);
+        let reload = if filled.cached > 0 {
+            // A smart playlist's history rules can match them now, and a built-in
+            // left out of the list while empty may have songs.
+            Task::batch([self.load_playlists(), self.reload_playlist_pages()])
+        } else {
+            Task::none()
+        };
+        if again {
+            Task::batch([reload, self.fill_track_cache()])
+        } else {
+            reload
         }
     }
 
