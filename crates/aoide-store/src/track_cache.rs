@@ -61,6 +61,26 @@ impl Store {
         })
     }
 
+    /// The tracks the history has plays of but the cache has no row for, in id order:
+    /// songs played on another device that this one has never played or listed. Their
+    /// plays count in a recap's totals but not in its top artists and albums, which
+    /// read the artist and album from the cache.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database does.
+    pub fn played_ids_missing_from_cache(&self) -> Result<Vec<String>> {
+        self.read(|conn| {
+            let mut statement = conn.prepare(
+                "SELECT DISTINCT e.jellyfinId FROM playEvent e \
+                 WHERE NOT EXISTS (SELECT 1 FROM track t WHERE t.jellyfinId = e.jellyfinId) \
+                 ORDER BY e.jellyfinId",
+            )?;
+            let ids = statement.query_map([], |row| row.get(0))?;
+            ids.collect()
+        })
+    }
+
     /// The size of every smart playlist's universe. Not the way to ask whether the
     /// index has run — playback writes rows here too; see `library_indexed_at`.
     ///

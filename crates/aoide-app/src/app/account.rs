@@ -32,6 +32,8 @@ pub(crate) struct Signed {
     pub syncing: Option<Handle>,
     /// The last sync's outcome in words: what it did, or why it failed.
     pub sync_status: Option<Result<String, String>>,
+    /// Caching the tracks of songs played on other devices.
+    pub track_fill: crate::track_fill::TrackFill,
     /// The store held data from before accounts were claimed: only the
     /// listener can say whose it is.
     pub unknown_owner: bool,
@@ -96,6 +98,7 @@ impl Signed {
             throttle: SyncThrottle::default(),
             syncing: None,
             sync_status: None,
+            track_fill: Default::default(),
             unknown_owner: false,
             confirm_erase: false,
             section: Section::Home,
@@ -399,7 +402,11 @@ impl App {
         self.store.send(move |w| {
             let _ = w.store.ensure_built_in_playlists(now);
         });
-        Task::batch([self.load_playlists(), self.restore_queue()])
+        Task::batch([
+            self.load_playlists(),
+            self.restore_queue(),
+            self.fill_track_cache(),
+        ])
     }
 
     /// Claims the store for the signed-in account before anything reads it.

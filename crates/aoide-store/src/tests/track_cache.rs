@@ -155,3 +155,30 @@ fn the_index_mark_and_the_sync_cursor_are_separate_keys() {
     assert_eq!(store.sync_cursor().unwrap().as_deref(), Some("cursor-42"));
     assert_eq!(store.library_indexed_at().unwrap(), Some(9));
 }
+
+/// Plays synced from the phone, of songs this computer never touched, have no row:
+/// each such id once, in order; a cached one, or one never played, is not asked for.
+#[test]
+fn played_ids_without_a_cached_row_are_listed_once_each() {
+    let store = store();
+    store.cache_tracks(&[track("here", "k1", 1)]).unwrap();
+    store
+        .cache_tracks(&[track("never-played", "k2", 1)])
+        .unwrap();
+    for (id, at) in [
+        ("here", 10),
+        ("phone-b", 20),
+        ("phone-a", 30),
+        ("phone-b", 40),
+    ] {
+        store
+            .append(PlayEvent::new(id, id, at, "phone").finished(Some(at + 5), 5, true, false))
+            .unwrap();
+    }
+    assert_eq!(
+        store.played_ids_missing_from_cache().unwrap(),
+        ["phone-a", "phone-b"]
+    );
+    store.cache_tracks(&[track("phone-a", "k3", 50)]).unwrap();
+    assert_eq!(store.played_ids_missing_from_cache().unwrap(), ["phone-b"]);
+}
