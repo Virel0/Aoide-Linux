@@ -188,11 +188,7 @@ mod tests {
 
     #[test]
     fn without_the_app_an_administrator_is_named_with_the_command() {
-        let words = lost("robin");
-        assert!(
-            words.contains("melete user reset-password robin"),
-            "{words}"
-        );
+        assert!(lost("robin").contains("melete user reset-password robin"));
     }
 
     #[test]

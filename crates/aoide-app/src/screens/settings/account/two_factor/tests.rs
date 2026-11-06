@@ -45,7 +45,7 @@ fn turning_on_goes_password_then_secret_then_on_and_drops_the_secret() {
     assert!(matches!(state.step, Step::Password { busy: true, .. }));
     run(&mut state, Msg::SetupStarted(Ok(setup())));
     let Step::Scan { pending, .. } = &state.step else {
-        panic!("expected the secret to scan, got {:?}", state.step);
+        panic!("expected the secret to scan");
     };
     assert!(pending.qr.is_some());
     assert!(!format!("{:?}", state.step).contains("JBSWY3DP"));
@@ -74,7 +74,7 @@ fn a_wrong_code_keeps_the_secret_and_clears_the_code() {
         ..
     } = &state.step
     else {
-        panic!("expected the secret still, got {:?}", state.step);
+        panic!("expected the secret still");
     };
     assert_eq!(
         (code.as_str(), problem.as_deref(), *busy),
@@ -100,7 +100,7 @@ fn turning_off_points_at_the_wrong_field_and_clears_only_it() {
         ..
     } = &state.step
     else {
-        panic!("expected the off step, got {:?}", state.step);
+        panic!("expected the off step");
     };
     assert!(password.is_empty());
     assert_eq!(code, "654321");
@@ -123,7 +123,7 @@ fn reset_turns_it_off_then_asks_for_a_new_secret_at_once() {
     run(&mut state, Msg::TurnedOff(Ok(())));
     // Waiting for the new secret, with no password left on screen.
     let Step::Password { password, busy, .. } = &state.step else {
-        panic!("expected a new setup, got {:?}", state.step);
+        panic!("expected a new setup");
     };
     assert!(password.is_empty() && *busy);
     run(&mut state, Msg::SetupStarted(Ok(setup())));
