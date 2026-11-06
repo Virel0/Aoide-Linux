@@ -31,8 +31,8 @@ pub const TURNED_OFF: &str = "Two-factor sign-in is off. Signing in needs only y
 pub fn lost(username: &str) -> String {
     format!(
         "Lost the device with your authenticator app? Then it can't be turned off here: ask an \
-         administrator of your server to run \u{201c}melete user reset-password {username}\u{201d} \
-         on it and to remove the second factor when it asks. That gives you a new password too."
+         administrator of your server to run \u{201c}melete user reset-password {username} \
+         --remove-second-factor\u{201d} on it. That gives you a new password too."
     )
 }
 
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn without_the_app_an_administrator_is_named_with_the_command() {
-        assert!(lost("robin").contains("melete user reset-password robin"));
+        assert!(lost("robin").contains("melete user reset-password robin --remove-second-factor"));
     }
 
     #[test]
