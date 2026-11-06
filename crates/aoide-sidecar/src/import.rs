@@ -32,6 +32,7 @@ use unicode_normalization::char::is_combining_mark;
 use crate::client::SidecarClient;
 use crate::error::SidecarError;
 
+pub(crate) mod title_alone;
 pub(crate) mod youtube;
 
 // MARK: - What is imported
@@ -66,6 +67,11 @@ pub struct ImportedTrack {
     /// Only CSV exports carry it. Decisive when the library has it too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub isrc: Option<String>,
+    /// The artist is only a guess: a YouTube video's channel, which may be a label
+    /// ("Ubisoft Music"). Such a track the library has under another artist is
+    /// found by its title alone ([`title_alone`]). Never sent.
+    #[serde(skip)]
+    pub artist_from_channel: bool,
 }
 
 impl ImportedTrack {
@@ -78,6 +84,7 @@ impl ImportedTrack {
             album: None,
             duration_ms,
             isrc: None,
+            artist_from_channel: false,
         }
     }
 }
@@ -554,10 +561,12 @@ pub async fn match_playlist<S: LibrarySearch>(
             })
             .collect();
         progress(tracks.len(), tracks.len());
-        return ImportResult {
+        let mut result = ImportResult {
             matches,
             by: MatchedBy::Sidecar,
         };
+        title_alone::rescue(library, &mut result.matches).await;
+        return result;
     }
 
     let mut matches = Vec::with_capacity(tracks.len());
@@ -568,6 +577,7 @@ pub async fn match_playlist<S: LibrarySearch>(
         });
         progress(done + 1, tracks.len());
     }
+    title_alone::rescue(library, &mut matches).await;
     ImportResult {
         matches,
         by: MatchedBy::Library,
@@ -714,6 +724,7 @@ pub fn parse_spotify_embed(html: &str) -> Result<ImportedPlaylist, ImportError> 
                     .and_then(Value::as_f64)
                     .map(|ms| ms as i64),
                 isrc: None,
+                artist_from_channel: false,
             })
         })
         .collect();
@@ -857,11 +868,12 @@ pub fn parse_playlist_csv(text: &str, name: &str) -> Result<ImportedPlaylist, Im
                 .filter(|name| !name.is_empty())
                 .map(str::to_owned)
                 .collect();
-            let mut length_is_song = true;
+            let (mut length_is_song, mut artist_from_channel) = (true, false);
             if channel.is_some() {
                 let video = youtube::song(&title, &cell(channel).unwrap_or_default());
-                (title, artists, length_is_song) =
-                    (video.title, video.artists, video.is_music_track);
+                (title, artists) = (video.title, video.artists);
+                (length_is_song, artist_from_channel) =
+                    (video.is_music_track, video.artist_from_channel);
             }
             let duration_ms = length_is_song
                 .then(|| {
@@ -881,6 +893,7 @@ pub fn parse_playlist_csv(text: &str, name: &str) -> Result<ImportedPlaylist, Im
                 album: cell(album),
                 duration_ms,
                 isrc: cell(isrc),
+                artist_from_channel,
             })
         })
         .collect();

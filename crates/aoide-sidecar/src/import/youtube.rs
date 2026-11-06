@@ -59,6 +59,8 @@ pub(crate) struct Song {
     pub artists: Vec<String>,
     /// A YouTube Music track, whose length is the song's.
     pub is_music_track: bool,
+    /// The artist is the channel's name, which may be a label's, not the title's.
+    pub artist_from_channel: bool,
 }
 
 /// The song a video's `title` and `channel` stand for.
@@ -68,36 +70,38 @@ pub(crate) fn song(title: &str, channel: &str) -> Song {
             title: song_title(title),
             artists: vec![artist],
             is_music_track: true,
+            artist_from_channel: false,
         };
     }
-    let (title, artists) = video_song(title, channel);
+    let (title, artists, artist_from_channel) = video_song(title, channel);
     Song {
         title,
         artists,
         is_music_track: false,
+        artist_from_channel,
     }
 }
 
-fn video_song(title: &str, channel: &str) -> (String, Vec<String>) {
+/// The song, its artists, and whether they are only the channel's name.
+fn video_song(title: &str, channel: &str) -> (String, Vec<String>, bool) {
     let named = channel_artist(channel);
     let cleaned = song_title(title);
     if let Some((left, right)) = artist_dash(&cleaned) {
         let song = song_title(right);
         // "Song - Artist" on the artist's own channel.
         if !named.is_empty() && plain(&song) == plain(&named) && plain(left) != plain(&named) {
-            return (song_title(left), vec![named]);
+            return (song_title(left), vec![named], false);
         }
-        return (song, artists(&without_groups(left)));
+        return (song, artists(&without_groups(left)), false);
     }
     if let Some((left, song)) = quoted_song(&cleaned) {
-        return (song.to_owned(), artists(&without_groups(left)));
+        return (song.to_owned(), artists(&without_groups(left)), false);
     }
-    let artists = if named.is_empty() {
-        Vec::new()
+    if named.is_empty() {
+        (cleaned, Vec::new(), false)
     } else {
-        vec![named]
-    };
-    (cleaned, artists)
+        (cleaned, vec![named], true)
+    }
 }
 
 /// "Artist 'Song'": a quoted song at the end, after a space.
