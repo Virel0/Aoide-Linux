@@ -7,6 +7,15 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Fixed
+- A song from a YouTube playlist export that your library has under another
+  artist is found instead of reported missing. When a video's title doesn't
+  name its artist, the channel stands in for it, and a channel is often a
+  label's ("Ubisoft Music"). Such a song is now looked up in the library by
+  its title alone, and taken when every song there with exactly that title is
+  by one artist; your server then puts your copy in the playlist instead of
+  asking for it again.
+
 ## [0.7.0] - 2026-11-06
 
 ### Added

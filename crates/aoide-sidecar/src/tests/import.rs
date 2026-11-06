@@ -63,6 +63,7 @@ fn every_row_of_the_shared_match_table() {
             album: None,
             duration_ms: imported["durationMs"].as_i64(),
             isrc: None,
+            artist_from_channel: false,
         };
         let library: Vec<LibraryTrack> = row["library"]
             .as_array()
@@ -294,6 +295,7 @@ fn an_exportify_file_reads_quotes_and_all() {
             album: Some("Dangerously in Love".into()),
             duration_ms: Some(236_000),
             isrc: Some("USSM10301234".into()),
+            artist_from_channel: false,
         }
     );
     assert_eq!(playlist.tracks[1].title, "Say \"Hi\"");

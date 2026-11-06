@@ -16,6 +16,7 @@ mod shares;
 mod sidecar_stub;
 mod sync_engine;
 mod sync_integration;
+mod title_alone;
 mod waiting;
 mod youtube;
 

@@ -19,7 +19,11 @@ fn a_youtube_export_reads_the_artist_from_the_title_or_channel_and_a_tracks_leng
             // A video's length isn't the song's; a YouTube Music track's is.
             ImportedTrack::new("Karma Police", &["Radiohead"], None),
             ImportedTrack::new("Paranoid Android", &["Radiohead"], Some(387_000)),
-            ImportedTrack::new("Creep", &["Radiohead"], None),
+            // No artist in the title: the channel's name stands for it, marked a guess.
+            ImportedTrack {
+                artist_from_channel: true,
+                ..ImportedTrack::new("Creep", &["Radiohead"], None)
+            },
         ]
     );
 }
@@ -147,5 +151,20 @@ fn a_video_title_and_channel_become_a_song_and_its_artists() {
             channel.ends_with(" - Topic"),
             "{title}"
         );
+        assert_eq!(
+            found.artist_from_channel,
+            GUESSED.contains(&title),
+            "{title}"
+        );
     }
 }
+
+/// The cases above whose artist is nothing but the channel's name.
+const GUESSED: [&str; 6] = [
+    "Alfaaz | Hamza Malik x Zain Zohaib | Official Visualiser",
+    "Music",
+    "Official Video",
+    "Ala Bolelo - Lyric Video | Jailer 2 | Anirudh",
+    "#1 Crush",
+    "Don't Stop Believin'",
+];
