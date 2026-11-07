@@ -7,6 +7,12 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Fixed
+- Settings → Account names the whole command an administrator runs for
+  someone who lost their authenticator app,
+  `melete user reset-password <name> --remove-second-factor`. Without the
+  flag, Melete keeps two-factor sign-in on.
+
 ## [0.8.0] - 2026-11-06
 
 ### Added
