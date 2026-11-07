@@ -76,10 +76,7 @@ impl App {
 /// Mix) is left out while its rules match nothing: it appears once there's
 /// something in it, rather than sitting there empty.
 fn is_listed(summary: &PlaylistSummary) -> bool {
-    summary.count > 0
-        || !aoide_store::BuiltInPlaylist::ALL
-            .iter()
-            .any(|built| built.id() == summary.id)
+    summary.count > 0 || aoide_store::BuiltInPlaylist::of_playlist(&summary.id).is_none()
 }
 
 #[cfg(test)]
@@ -99,7 +96,8 @@ mod tests {
     #[test]
     fn an_empty_built_in_is_left_out_until_it_has_songs() {
         assert!(!is_listed(&summary("builtin:heavy-rotation", 0)));
-        assert!(is_listed(&summary("builtin:heavy-rotation", 3)));
+        assert!(!is_listed(&summary("builtin:heavy-rotation:7", 0)));
+        assert!(is_listed(&summary("builtin:heavy-rotation:7", 3)));
         assert!(
             is_listed(&summary("my-own", 0)),
             "a playlist of your own shows empty"

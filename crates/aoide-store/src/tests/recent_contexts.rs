@@ -66,7 +66,7 @@ fn latest_takes_from_the_front() {
 
 #[test]
 fn built_in_ids_are_fixed_and_never_collide() {
-    let ids: Vec<&str> = BuiltInPlaylist::ALL.iter().map(|p| p.id()).collect();
+    let ids: Vec<String> = BuiltInPlaylist::ALL.iter().map(|p| p.id_for("7")).collect();
     assert_eq!(ids.iter().collect::<HashSet<_>>().len(), ids.len());
     assert!(ids.iter().all(|id| id.starts_with("builtin:")));
 }
@@ -91,22 +91,24 @@ fn built_in_rules_are_exactly_the_agreed_ones() {
 fn a_built_in_is_created_under_its_own_id_once_and_not_again_after_deletion() {
     let store = store();
     let built = BuiltInPlaylist::Rediscover;
-    assert!(!store.playlist_row_exists(built.id()).unwrap());
+    assert!(!store.playlist_row_exists(&built.id_for("7")).unwrap());
     let created = store
         .create_playlist_with_id(
-            built.id(),
+            &built.id_for("7"),
             built.name(),
             None,
             Some(built.notes()),
             now_millis(),
         )
         .unwrap();
-    assert_eq!(created.id, built.id());
-    assert!(store.playlist_row_exists(built.id()).unwrap());
-    store.delete_playlist(built.id(), now_millis()).unwrap();
-    assert_eq!(store.playlist(built.id()).unwrap(), None);
+    assert_eq!(created.id, built.id_for("7"));
+    assert!(store.playlist_row_exists(&built.id_for("7")).unwrap());
+    store
+        .delete_playlist(&built.id_for("7"), now_millis())
+        .unwrap();
+    assert_eq!(store.playlist(&built.id_for("7")).unwrap(), None);
     assert!(
-        store.playlist_row_exists(built.id()).unwrap(),
+        store.playlist_row_exists(&built.id_for("7")).unwrap(),
         "a deleted built-in must not be recreated"
     );
 }
@@ -305,10 +307,10 @@ mod ensured {
     #[test]
     fn both_are_created_under_their_fixed_ids_with_exactly_the_pinned_rules() {
         let store = store();
-        let created = store.ensure_built_in_playlists(1_000).unwrap();
+        let created = store.ensure_built_in_playlists("7", 1_000).unwrap();
         assert_eq!(created, BuiltInPlaylist::ALL);
         for built in BuiltInPlaylist::ALL {
-            let row = store.playlist(built.id()).unwrap().unwrap();
+            let row = store.playlist(&built.id_for("7")).unwrap().unwrap();
             assert_eq!(row.name, built.name());
             assert_eq!(row.notes.as_deref(), Some(built.notes()));
             assert!(row.is_smart);
@@ -323,22 +325,27 @@ mod ensured {
     #[test]
     fn they_reach_the_other_devices_as_two_playlist_ops_each() {
         let store = store();
-        store.ensure_built_in_playlists(1_000).unwrap();
+        store.ensure_built_in_playlists("7", 1_000).unwrap();
         let ops = pending(&store);
         assert_eq!(ops.len(), BuiltInPlaylist::ALL.len() * 2);
         assert!(ops.iter().all(|op| op.entity == "playlist"));
         let mut ids: Vec<&str> = ops.iter().map(|op| op.entity_id.as_str()).collect();
         ids.dedup();
-        assert_eq!(ids, ["builtin:rediscover", "builtin:heavy-rotation"]);
+        assert_eq!(ids, ["builtin:rediscover:7", "builtin:heavy-rotation:7"]);
     }
 
     #[test]
     fn nothing_is_created_the_second_time() {
         let store = store();
-        store.ensure_built_in_playlists(1_000).unwrap();
+        store.ensure_built_in_playlists("7", 1_000).unwrap();
         let ops: Vec<String> = pending(&store).into_iter().map(|op| op.op_id).collect();
         store.mark_synced(&ops).unwrap();
-        assert!(store.ensure_built_in_playlists(2_000).unwrap().is_empty());
+        assert!(
+            store
+                .ensure_built_in_playlists("7", 2_000)
+                .unwrap()
+                .is_empty()
+        );
         assert!(pending(&store).is_empty());
         assert_eq!(store.playlists().unwrap().len(), BuiltInPlaylist::ALL.len());
     }
@@ -347,16 +354,23 @@ mod ensured {
     #[test]
     fn a_deleted_built_in_stays_deleted() {
         let store = store();
-        store.ensure_built_in_playlists(1_000).unwrap();
+        store.ensure_built_in_playlists("7", 1_000).unwrap();
         store
-            .delete_playlist(BuiltInPlaylist::Rediscover.id(), 1_500)
+            .delete_playlist(&BuiltInPlaylist::Rediscover.id_for("7"), 1_500)
             .unwrap();
         let ops: Vec<String> = pending(&store).into_iter().map(|op| op.op_id).collect();
         store.mark_synced(&ops).unwrap();
-        assert!(store.ensure_built_in_playlists(2_000).unwrap().is_empty());
+        assert!(
+            store
+                .ensure_built_in_playlists("7", 2_000)
+                .unwrap()
+                .is_empty()
+        );
         assert!(pending(&store).is_empty());
         assert_eq!(
-            store.playlist(BuiltInPlaylist::Rediscover.id()).unwrap(),
+            store
+                .playlist(&BuiltInPlaylist::Rediscover.id_for("7"))
+                .unwrap(),
             None
         );
     }
@@ -365,15 +379,15 @@ mod ensured {
     #[test]
     fn one_another_device_created_is_not_made_again() {
         let phone = store();
-        phone.ensure_built_in_playlists(1_000).unwrap();
+        phone.ensure_built_in_playlists("7", 1_000).unwrap();
         let desk = Store::in_memory("desk").unwrap();
         let row = phone
-            .playlist(BuiltInPlaylist::HeavyRotation.id())
+            .playlist(&BuiltInPlaylist::HeavyRotation.id_for("7"))
             .unwrap()
             .unwrap();
         desk.write_local(|tx| row.insert(tx)).unwrap();
         assert_eq!(
-            desk.ensure_built_in_playlists(2_000).unwrap(),
+            desk.ensure_built_in_playlists("7", 2_000).unwrap(),
             [BuiltInPlaylist::Rediscover]
         );
         assert_eq!(desk.playlists().unwrap().len(), 2);
@@ -410,10 +424,10 @@ mod ensured {
             listen(&store, "this-month", days);
         }
         listen(&store, "once", 400);
-        store.ensure_built_in_playlists(NOW).unwrap();
+        store.ensure_built_in_playlists("7", NOW).unwrap();
 
         let resolve = |built: BuiltInPlaylist| {
-            let row = store.playlist(built.id()).unwrap().unwrap();
+            let row = store.playlist(&built.id_for("7")).unwrap().unwrap();
             store.resolve_smart(&row, NOW, Calendar::Utc).unwrap()
         };
         assert_eq!(resolve(BuiltInPlaylist::Rediscover), ["old-favourite"]);
