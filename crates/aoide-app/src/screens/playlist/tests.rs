@@ -8,7 +8,7 @@ use super::*;
 fn a_smart_playlist_is_evaluated_from_the_history_on_open() {
     let store = aoide_store::Store::in_memory("desk").unwrap();
     let now = 1_792_540_800_000;
-    let created = store.ensure_built_in_playlists(now).unwrap();
+    let created = store.ensure_built_in_playlists("7", now).unwrap();
     assert!(!created.is_empty());
     let heavy = aoide_store::BuiltInPlaylist::HeavyRotation;
     // Played often, lately: Heavy Rotation's kind of song.
@@ -28,7 +28,7 @@ fn a_smart_playlist_is_evaluated_from_the_history_on_open() {
             )
             .unwrap();
     }
-    let (playlist, items, smart) = read_rows(&store, heavy.id(), now).unwrap();
+    let (playlist, items, smart) = read_rows(&store, &heavy.id_for("7"), now).unwrap();
     assert!(playlist.unwrap().is_smart);
     assert!(items.is_empty(), "rules, not entries");
     assert_eq!(smart.unwrap().unwrap(), ["t1"]);

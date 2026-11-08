@@ -66,8 +66,9 @@ impl App {
             // has isn't here, and making it again would replace it on every device.
             // The store thread runs jobs in order, so the playlists read after this.
             let now = aoide_store::now_millis();
+            let user = signed.connection.account.user_id.clone();
             self.store.send(move |w| {
-                let _ = w.store.ensure_built_in_playlists(now);
+                let _ = w.store.ensure_built_in_playlists(&user, now);
             });
             built_ins = self.load_playlists();
         }

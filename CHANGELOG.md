@@ -12,6 +12,12 @@ state of every feature in more detail.
   someone who lost their authenticator app,
   `melete user reset-password <name> --remove-second-factor`. Without the
   flag, Melete keeps two-factor sign-in on.
+- Rediscover Mix and Heavy Rotation sync for every user on a server, not only
+  the first to sync them. They were made under the same id for everyone, and
+  Melete gives each playlist id one owner, so every other user's were refused
+  (Melete#324). Each user's are now their own. On the first sync after the
+  update, the old ones are moved over, keeping a name or rules you changed,
+  and one you deleted stays deleted.
 
 ## [0.8.0] - 2026-11-06
 
