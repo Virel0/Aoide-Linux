@@ -97,6 +97,43 @@ async fn a_collections_songs_are_asked_for_by_its_filter() {
 }
 
 #[tokio::test]
+async fn shuffle_asks_for_one_page_in_a_random_order_over_the_whole_collection() {
+    let server = MockServer::start().await;
+    let mut tracks: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/tracks.json")).unwrap();
+    tracks["seed"] = json!(12345);
+    Mock::given(method("GET"))
+        .and(path("/api/v1/music/tracks"))
+        .and(query_param("sort", "random"))
+        .and(query_param("year_from", "1990"))
+        .and(query_param("year_to", "1999"))
+        .and(query_param("liked", "true"))
+        .and(query_param("offset", "0"))
+        .and(query_param("limit", "500"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(tracks))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let nineties: aoide_melete::Collection =
+        serde_json::from_value(listed()["items"][1].clone()).unwrap();
+    let songs = signed_in(&server)
+        .collection_shuffled(&nineties, 500)
+        .await
+        .unwrap();
+    assert_eq!(songs.len(), 4);
+    let asked = &server.received_requests().await.unwrap();
+    let query = asked
+        .last()
+        .unwrap()
+        .url
+        .query()
+        .unwrap_or_default()
+        .to_owned();
+    assert!(!query.contains("seed"), "one page needs no seed: {query}");
+    assert!(!query.contains("genres"), "{query}");
+}
+
+#[tokio::test]
 async fn deleting_one_sends_its_id_and_a_gone_one_is_not_found() {
     let server = MockServer::start().await;
     Mock::given(method("DELETE"))

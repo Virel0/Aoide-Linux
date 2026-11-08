@@ -17,9 +17,10 @@ state of every feature in more detail.
   artists' portraits turned on). A portrait shows who took it and its
   licence, each opening its page in the browser.
 - Collections saved in Melete's web are listed in the sidebar under
-  Collections. Each opens its songs with Play and Shuffle (the first 500),
-  and can be deleted from the server. A server before Melete 0.8.0 lists
-  none.
+  Collections. Each opens its songs (the first 500) with Play, and Shuffle,
+  which plays 500 picked at random from the whole collection by the server.
+  A collection can be deleted from the server. A server before Melete 0.8.0
+  lists none.
 
 ### Fixed
 - Settings → Account names the whole command an administrator runs for

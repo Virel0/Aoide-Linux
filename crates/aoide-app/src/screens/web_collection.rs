@@ -1,13 +1,17 @@
 //! Collections made in Melete's web (Melete 0.8.0): each a saved song filter
 //! kept on the server, listed in the sidebar under this computer's own
-//! collections. Its page lists the songs the filter finds now, with Play and
-//! Shuffle, and can delete it from the server. They are made and changed in
-//! the web; a server before collections has none, and lists nothing.
+//! collections. Its page lists the songs the filter finds now with Play, and
+//! Shuffle, which plays a page of the whole collection in the server's
+//! random order (as the iPhone app does); it can delete it from the server.
+//! They are made and changed in the web; a server before collections has
+//! none, and lists nothing.
 
 use aoide_melete::{COLLECTION_PAGE_MAX, Collection, MeleteClient, Page};
+use aoide_store::PlaySource;
 use iced::Task;
 
 use super::{Ctx, Load, PageMsg, Section, fetch};
+use crate::actions::PlayRequest;
 use crate::app::{App, Message as AppMessage};
 use crate::artwork::ArtKey;
 use crate::failure::Failure;
@@ -47,8 +51,10 @@ pub struct State {
     total: u32,
     confirm_delete: bool,
     deleting: bool,
-    /// Why the last delete didn't happen.
-    delete_failed: Option<String>,
+    /// A shuffle asked of the server, on its way.
+    shuffling: bool,
+    /// Why the last delete or shuffle didn't happen.
+    failed: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +65,10 @@ pub enum Message {
     Delete,
     ConfirmDelete(bool),
     Deleted(Result<(), Failure>),
+    /// Shuffle: one page of the whole collection in a random order, asked
+    /// of the server, as the iPhone app does.
+    Shuffle,
+    Shuffled(Result<Vec<aoide_melete::Item>, Failure>),
 }
 
 pub fn open(ctx: &Ctx<'_>, id: i64) -> (State, Task<AppMessage>) {
@@ -69,7 +79,8 @@ pub fn open(ctx: &Ctx<'_>, id: i64) -> (State, Task<AppMessage>) {
         total: 0,
         confirm_delete: false,
         deleting: false,
-        delete_failed: None,
+        shuffling: false,
+        failed: None,
     };
     let task = Task::done(AppMessage::WebCollections(Msg::Show { key: ctx.key, id }));
     (state, task)
@@ -110,7 +121,7 @@ impl State {
             }
             Message::Delete => {
                 self.confirm_delete = true;
-                self.delete_failed = None;
+                self.failed = None;
                 Task::none()
             }
             Message::ConfirmDelete(false) => {
@@ -119,6 +130,49 @@ impl State {
             }
             Message::ConfirmDelete(true) => self.delete(ctx),
             Message::Deleted(result) => self.deleted(result),
+            Message::Shuffle => self.shuffle(ctx),
+            Message::Shuffled(result) => self.shuffled(result),
+        }
+    }
+
+    fn shuffle(&mut self, ctx: &Ctx<'_>) -> Task<AppMessage> {
+        let Some(collection) = self.collection.clone() else {
+            return Task::none();
+        };
+        if self.shuffling {
+            return Task::none();
+        }
+        self.shuffling = true;
+        self.failed = None;
+        let client = ctx.client.clone();
+        fetch(
+            ctx.key,
+            async move {
+                client
+                    .collection_shuffled(&collection, COLLECTION_PAGE_MAX)
+                    .await
+            },
+            |r| wrap(Message::Shuffled(r)),
+        )
+    }
+
+    /// Plays the server's random order as it came.
+    fn shuffled(&mut self, result: Result<Vec<aoide_melete::Item>, Failure>) -> Task<AppMessage> {
+        self.shuffling = false;
+        match result {
+            Ok(items) if items.is_empty() => Task::none(),
+            Ok(items) => {
+                let tracks: Vec<TrackMeta> = items.iter().map(TrackMeta::from_item).collect();
+                Task::done(AppMessage::Play(PlayRequest::from(
+                    &tracks,
+                    0,
+                    PlaySource::Shuffle,
+                )))
+            }
+            Err(failure) => {
+                self.failed = Some(failure.summary);
+                Task::none()
+            }
         }
     }
 
@@ -148,7 +202,7 @@ impl State {
         match result {
             Ok(()) => Task::done(AppMessage::WebCollections(Msg::Deleted(self.id))),
             Err(failure) => {
-                self.delete_failed = Some(failure.summary);
+                self.failed = Some(failure.summary);
                 Task::none()
             }
         }

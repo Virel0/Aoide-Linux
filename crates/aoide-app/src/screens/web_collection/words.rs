@@ -29,8 +29,11 @@ pub fn summary(collection: &Collection) -> String {
 /// lists; `None` when they are all there.
 pub fn more(listed: usize, total: u32) -> Option<String> {
     let total = usize::try_from(total).unwrap_or(usize::MAX);
-    (total > listed)
-        .then(|| format!("The first {listed} of {total} songs. Play and Shuffle play these."))
+    (total > listed).then(|| {
+        format!(
+            "The first {listed} of {total} songs. Play plays these; Shuffle picks from them all."
+        )
+    })
 }
 
 #[cfg(test)]
@@ -80,7 +83,7 @@ mod tests {
         assert_eq!(more(0, 0), None);
         assert_eq!(
             more(500, 1234).as_deref(),
-            Some("The first 500 of 1234 songs. Play and Shuffle play these.")
+            Some("The first 500 of 1234 songs. Play plays these; Shuffle picks from them all.")
         );
     }
 }

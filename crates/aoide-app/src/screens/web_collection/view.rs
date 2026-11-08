@@ -23,7 +23,7 @@ impl State {
                 .push(widgets::secondary(words::summary(collection)).size(13))
                 .push(self.delete_row(key));
         }
-        if let Some(why) = &self.delete_failed {
+        if let Some(why) = &self.failed {
             body = body.push(widgets::secondary(why.as_str()).size(13));
         }
         let anchor = format!("{key}:web-collection");
@@ -34,10 +34,12 @@ impl State {
                 widgets::empty("No songs in your library match this collection.")
             }
             Load::Ready(songs) => {
-                let mut list = column![widgets::play_buttons(
+                let shuffle = AppMessage::Page(key, PageMsg::WebCollection(Message::Shuffle));
+                let mut list = column![widgets::play_buttons_shuffling(
                     songs,
                     anchor.clone(),
-                    PlaySource::Unknown
+                    PlaySource::Unknown,
+                    shuffle,
                 )]
                 .spacing(12);
                 if let Some(menu) = view.menu.filter(|m| m.anchor == anchor) {

@@ -121,6 +121,26 @@ impl MeleteClient {
         let page: WirePage<WireTrack> = self.get(&["api", "v1", "music", "tracks"], &query).await?;
         Ok(page.into_page(start))
     }
+
+    /// Up to `limit` (1 to [`COLLECTION_PAGE_MAX`]) of `collection`'s songs
+    /// in a random order over the whole collection (`sort=random`): what
+    /// Shuffle plays. A new order each time; one page needs no seed.
+    ///
+    /// # Errors
+    ///
+    /// The [request errors](MeleteClient#errors).
+    pub async fn collection_shuffled(
+        &self,
+        collection: &Collection,
+        limit: u32,
+    ) -> Result<Vec<Item>> {
+        let mut query = collection.filters();
+        query.push(("sort", "random".to_owned()));
+        query.push(("offset", "0".to_owned()));
+        query.push(("limit", limit.clamp(1, COLLECTION_PAGE_MAX).to_string()));
+        let page: WirePage<WireTrack> = self.get(&["api", "v1", "music", "tracks"], &query).await?;
+        Ok(page.into_page(0).items)
+    }
 }
 
 #[cfg(test)]

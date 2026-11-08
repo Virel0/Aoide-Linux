@@ -18,7 +18,8 @@
 //!   words, a genre and artists. [`MeleteClient::genres`] lists the genres.
 //! - **Home:** [`MeleteClient::home`].
 //! - **Collections** (saved song filters, made in Melete's web):
-//!   [`MeleteClient::collections`], [`MeleteClient::collection_songs`] and
+//!   [`MeleteClient::collections`], [`MeleteClient::collection_songs`],
+//!   [`MeleteClient::collection_shuffled`] and
 //!   [`MeleteClient::delete_collection`].
 //! - **Likes:** [`MeleteClient::likes`], [`MeleteClient::set_liked`] and
 //!   [`MeleteClient::set_album_liked`].

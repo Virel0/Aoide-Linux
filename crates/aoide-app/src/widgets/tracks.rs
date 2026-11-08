@@ -224,6 +224,28 @@ pub fn play_buttons_with<'a>(
     source: PlaySource,
     extras: Vec<Element<'a, Message>>,
 ) -> Element<'a, Message> {
+    let shuffle = Message::Play(PlayRequest::shuffled(tracks, PlaySource::Shuffle));
+    buttons(tracks, anchor, source, extras, shuffle)
+}
+
+/// Play and Shuffle with Shuffle sending `shuffle`, for a list whose shuffle
+/// is asked of the server rather than made from the songs shown.
+pub fn play_buttons_shuffling<'a>(
+    tracks: &'a [TrackMeta],
+    anchor: String,
+    source: PlaySource,
+    shuffle: Message,
+) -> Element<'a, Message> {
+    buttons(tracks, anchor, source, Vec::new(), shuffle)
+}
+
+fn buttons<'a>(
+    tracks: &'a [TrackMeta],
+    anchor: String,
+    source: PlaySource,
+    extras: Vec<Element<'a, Message>>,
+    shuffle: Message,
+) -> Element<'a, Message> {
     let enabled = !tracks.is_empty();
     // Icons don't fade with a disabled button's label: quiet them here.
     let tone = |on: Tone| if enabled { on } else { Tone::Secondary };
@@ -246,9 +268,7 @@ pub fn play_buttons_with<'a>(
         )
         .style(theme::tonal)
         .padding([8, 18])
-        .on_press_maybe(
-            enabled.then(|| Message::Play(PlayRequest::shuffled(tracks, PlaySource::Shuffle)))
-        ),
+        .on_press_maybe(enabled.then_some(shuffle)),
     ]
     .extend(extras)
     .push(
