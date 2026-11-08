@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::events::EventStream;
-use crate::{MeleteClient, Result};
+use crate::{CoverSize, MeleteClient, Result, Url};
 
 /// What can be asked for in music.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -62,6 +62,32 @@ pub struct Candidate {
     pub wanted: bool,
     /// This user's open request for it, by id.
     pub requested: Option<i64>,
+    /// Its picture, as a path on the server: an album's or song's cover, an
+    /// artist's portrait. Fetched with the token at a [`CoverSize`]
+    /// ([`MeleteClient::poster_url`]). `None` without one, and from a
+    /// server that doesn't show them (off by default, and before 0.8.0).
+    ///
+    /// [`CoverSize`]: crate::CoverSize
+    #[serde(default)]
+    pub poster: Option<String>,
+    /// Who made an artist's portrait and under what licence, to show with it.
+    #[serde(default)]
+    pub poster_credit: Option<PosterCredit>,
+}
+
+/// What a portrait's licence asks to be shown with it, as Wikimedia Commons
+/// gives it. Any part may be missing.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(default)]
+pub struct PosterCredit {
+    /// Who made it, as plain text.
+    pub author: Option<String>,
+    /// Its licence's short name, such as "CC BY-SA 4.0".
+    pub licence: Option<String>,
+    /// Where the licence is written.
+    pub licence_url: Option<String>,
+    /// The picture's page on Commons.
+    pub source_url: Option<String>,
 }
 
 impl Candidate {
@@ -160,6 +186,19 @@ impl MeleteClient {
             ("q", words.trim().to_owned()),
         ];
         self.get(&["api", "v1", "requests", "search"], &query).await
+    }
+
+    /// A search result's [`poster`](Candidate::poster) at most `size` wide,
+    /// beneath the server's own address so a reverse proxy's prefix is kept.
+    /// Fetching it needs [`authorization`](Self::authorization).
+    ///
+    /// `None` for anything but a plain absolute path on this server, as
+    /// [`avatar_url`](Self::avatar_url) refuses.
+    pub fn poster_url(&self, poster: &str, size: CoverSize) -> Option<Url> {
+        let mut url = self.avatar_url(poster)?;
+        url.query_pairs_mut()
+            .append_pair("size", &size.pixels().to_string());
+        Some(url)
     }
 
     /// Asks for `candidate`: approved at once for an admin, or a user whose

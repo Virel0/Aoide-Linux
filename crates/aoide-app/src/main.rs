@@ -33,6 +33,7 @@ mod playback;
 mod player_bar;
 mod player_menu;
 mod playing;
+mod posters;
 mod queue_panel;
 mod radio;
 mod rescan;

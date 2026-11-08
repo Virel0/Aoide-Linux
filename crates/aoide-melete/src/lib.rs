@@ -17,12 +17,17 @@
 //! - **Lists:** [`ListQuery`] drives songs, albums and artists: paging, sorting,
 //!   words, a genre and artists. [`MeleteClient::genres`] lists the genres.
 //! - **Home:** [`MeleteClient::home`].
+//! - **Collections** (saved song filters, made in Melete's web):
+//!   [`MeleteClient::collections`], [`MeleteClient::collection_songs`],
+//!   [`MeleteClient::collection_shuffled`] and
+//!   [`MeleteClient::delete_collection`].
 //! - **Likes:** [`MeleteClient::likes`], [`MeleteClient::set_liked`] and
 //!   [`MeleteClient::set_album_liked`].
 //! - **Listening together:** [`MeleteClient::start_listening`],
 //!   [`MeleteClient::join_listening`] and the rest of [`ListenSession`]'s calls.
 //! - **Requests:** [`MeleteClient::request_search`], [`MeleteClient::ask_for`],
-//!   [`MeleteClient::music_requests`] and [`MeleteClient::withdraw_request`].
+//!   [`MeleteClient::music_requests`] and [`MeleteClient::withdraw_request`];
+//!   [`MeleteClient::poster_url`] for a result's picture.
 //! - **Get Info:** [`MeleteClient::item_details`].
 //! - **Sharing:** [`MeleteClient::user_directory`] names whom to share with.
 //! - **Profile pictures:** [`MeleteClient::me`] for the signed-in user's, and
@@ -54,6 +59,7 @@ mod address;
 mod ai;
 mod auth;
 mod client;
+mod collections;
 mod colours;
 mod details;
 mod error;
@@ -76,6 +82,7 @@ pub use address::ServerAddress;
 pub use ai::{MusicFilters, MusicMix, MusicOrdering};
 pub use auth::{Credentials, Device, QuickConnectCode, ServerInfo, UserName};
 pub use client::MeleteClient;
+pub use collections::{COLLECTION_PAGE_MAX, Collection};
 pub use details::ItemDetails;
 pub use error::Error;
 pub use events::{Event, EventStream};
@@ -92,7 +99,8 @@ pub use request_imports::{
     PlaylistImport, PlaylistImportSummary, PlaylistImportTrack, playlist_csv,
 };
 pub use requests::{
-    Candidate, Copying, MusicRequest, Progress, RequestFeed, RequestKind, RequestState,
+    Candidate, Copying, MusicRequest, PosterCredit, Progress, RequestFeed, RequestKind,
+    RequestState,
 };
 /// The URL type every media URL is returned as.
 pub use reqwest::Url;

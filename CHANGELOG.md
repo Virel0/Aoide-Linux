@@ -7,6 +7,21 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- An artist's page groups their albums as Melete's web does, under Albums,
+  Singles & EPs, Live and Compilations, by each album's MusicBrainz release
+  type (Melete 0.8.0). An album of no known type counts as a single or EP
+  with three songs or fewer. With albums alone, the page looks as before.
+- Search's "Ask for it" results show their cover or the artist's portrait
+  when the server gives one (Melete 0.8.0, with its search covers or
+  artists' portraits turned on). A portrait shows who took it and its
+  licence, each opening its page in the browser.
+- Collections saved in Melete's web are listed in the sidebar under
+  Collections. Each opens its songs (the first 500) with Play, and Shuffle,
+  which plays 500 picked at random from the whole collection by the server.
+  A collection can be deleted from the server. A server before Melete 0.8.0
+  lists none.
+
 ### Fixed
 - Settings → Account names the whole command an administrator runs for
   someone who lost their authenticator app,

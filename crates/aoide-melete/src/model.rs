@@ -73,6 +73,15 @@ pub struct Item {
     pub mb_release_id: Option<String>,
     /// A track's MusicBrainz release group, when Melete knows it.
     pub mb_release_group_id: Option<String>,
+    /// An album marked a compilation in its tags; never on a track.
+    pub compilation: bool,
+    /// An album's release group type on MusicBrainz ("Album", "Single",
+    /// "EP"…); `None` when it isn't matched, on a track, and from a server
+    /// before Melete 0.8.0.
+    pub primary_type: Option<String>,
+    /// An album's release group's secondary types ("Live", "Compilation"…);
+    /// empty when there are none or they aren't known.
+    pub secondary_types: Vec<String>,
 }
 
 /// The name a cover is cached under: Melete gives covers no version, and says
@@ -181,6 +190,13 @@ pub(crate) struct WireAlbum {
     /// Servers before cover colours don't send them.
     #[serde(default)]
     pub colours: Option<crate::colours::WireColours>,
+    #[serde(default, deserialize_with = "nullable")]
+    pub compilation: bool,
+    /// Servers before Melete 0.8.0 don't send the release types.
+    #[serde(default)]
+    pub primary_type: Option<String>,
+    #[serde(default, deserialize_with = "nullable")]
+    pub secondary_types: Vec<String>,
 }
 
 /// `MusicArtist`, trimmed.
@@ -239,6 +255,9 @@ impl From<WireTrack> for Item {
             palette: Vec::new(),
             mb_release_id: track.mb_release_id,
             mb_release_group_id: track.mb_release_group_id,
+            compilation: false,
+            primary_type: None,
+            secondary_types: Vec::new(),
         }
     }
 }
@@ -270,6 +289,9 @@ impl From<WireAlbum> for Item {
                 .colours
                 .map(|colours| colours.palette())
                 .unwrap_or_default(),
+            compilation: album.compilation,
+            primary_type: album.primary_type,
+            secondary_types: album.secondary_types,
             ..Self::default()
         }
     }
@@ -438,6 +460,28 @@ mod tests {
             Item::from(WireAlbum::deserialize(&json).unwrap()).motion_cover,
             None
         );
+    }
+
+    #[test]
+    fn an_album_carries_its_release_types_and_an_older_server_none() {
+        let mut json: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/album.json")).unwrap();
+        let old = Item::from(WireAlbum::deserialize(&json).unwrap());
+        assert_eq!(
+            (old.compilation, old.primary_type, old.secondary_types),
+            (false, None, Vec::<String>::new())
+        );
+        json["compilation"] = true.into();
+        json["primary_type"] = "EP".into();
+        json["secondary_types"] = serde_json::json!(["Live", "Compilation"]);
+        let item = Item::from(WireAlbum::deserialize(&json).unwrap());
+        assert!(item.compilation);
+        assert_eq!(item.primary_type.as_deref(), Some("EP"));
+        assert_eq!(item.secondary_types, ["Live", "Compilation"]);
+        json["primary_type"] = serde_json::Value::Null;
+        json["secondary_types"] = serde_json::Value::Null;
+        let item = Item::from(WireAlbum::deserialize(&json).unwrap());
+        assert_eq!((item.primary_type, item.secondary_types.len()), (None, 0));
     }
 
     #[test]

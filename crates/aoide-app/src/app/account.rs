@@ -81,6 +81,8 @@ pub(crate) struct Signed {
     pub ai: crate::smart::Ai,
     /// The signed-in person's profile picture (an `avatar_url`), once asked.
     pub avatar: Option<String>,
+    /// Their collections made in Melete's web, as last listed.
+    pub web_collections: Vec<aoide_melete::Collection>,
 }
 
 impl Signed {
@@ -126,6 +128,7 @@ impl Signed {
             together: Default::default(),
             ai: Default::default(),
             avatar: None,
+            web_collections: Vec::new(),
         }
     }
 }
@@ -376,6 +379,7 @@ impl App {
 
         let mut tasks = vec![
             crate::avatars::ask(client.clone()),
+            crate::screens::web_collection::ask(client.clone()),
             crate::smart::ask(client),
         ];
         for effect in effects {
