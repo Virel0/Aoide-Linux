@@ -71,6 +71,11 @@
   <!-- Newest first. Add one for each tag before tagging it; the date is the
        release's. -->
   <releases>
+    <release version="0.9.0" date="2026-11-08" type="development">
+      <description>
+        <p>Collections saved on Melete's web in the sidebar, with Play and Shuffle. Covers and artist portraits in Ask for it, with each portrait's credit. An artist's page grouped into Albums, Singles and EPs, Live and Compilations. Rediscover Mix and Heavy Rotation sync for every user on a server.</p>
+      </description>
+    </release>
     <release version="0.8.0" date="2026-11-06" type="development">
       <description>
         <p>Settings → Account: change your profile picture, your password and two-factor sign-in, and for admins give a user a new password. Heavy Rotation and Rediscover Mix fill again, Replay's lists match the phone's, and a YouTube import finds songs your library has under another artist.</p>
