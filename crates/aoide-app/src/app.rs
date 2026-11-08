@@ -178,6 +178,7 @@ pub enum Message {
     /// Match an imported playlist for the import page with this key.
     ImportMatch(u64, Box<aoide_sidecar::ImportedPlaylist>),
     Collections(crate::screens::collections::Msg),
+    WebCollections(crate::screens::web_collection::Msg),
     Info(crate::info::Msg),
     Rescan(crate::rescan::Msg),
     Together(crate::together::Msg),
@@ -414,6 +415,7 @@ impl App {
             Message::Sharing(message) => self.sharing(message),
             Message::ImportMatch(key, playlist) => self.import_match(key, *playlist),
             Message::Collections(message) => self.collections(message),
+            Message::WebCollections(message) => self.web_collections(message),
             Message::Info(message) => self.info(message),
             Message::Rescan(message) => self.rescan(message),
             Message::Together(message) => self.together(message),

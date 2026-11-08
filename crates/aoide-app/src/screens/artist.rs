@@ -1,5 +1,6 @@
 //! An artist: how much of them is finished, their most played songs, and
-//! their albums, newest first.
+//! their albums, newest first, under Albums, Singles & EPs, Live and
+//! Compilations (`kinds`).
 
 use std::collections::HashMap;
 
@@ -17,11 +18,14 @@ use crate::library::Tile;
 use crate::playback::tracks::TrackMeta;
 use crate::widgets;
 
+mod kinds;
+
 #[derive(Debug)]
 pub struct State {
     id: String,
     name: String,
-    pub albums: Load<Vec<Tile>>,
+    /// Their albums by kind, each kind that has any.
+    albums: Load<Vec<(kinds::Kind, Vec<Tile>)>>,
     /// Their most played songs here; empty until there are plays.
     top: Vec<TrackMeta>,
     /// "You finish 78% of this artist's songs", once there is enough history.
@@ -68,8 +72,7 @@ impl State {
                     .as_ref()
                     .map(|items| items.iter().map(|a| a.id.clone()).collect())
                     .unwrap_or_default();
-                self.albums =
-                    Load::from(result.map(|items| items.iter().map(Tile::album).collect()));
+                self.albums = Load::from(result.map(|items| kinds::group(&items)));
                 if ids.is_empty() {
                     return Task::none();
                 }
@@ -128,7 +131,12 @@ impl State {
         let mut keys: Vec<ArtKey> = self
             .albums
             .ready()
-            .map(|tiles| tiles.iter().filter_map(|t| t.art.clone()).collect())
+            .map(|groups| {
+                groups
+                    .iter()
+                    .flat_map(|(_, tiles)| tiles.iter().filter_map(|t| t.art.clone()))
+                    .collect()
+            })
             .unwrap_or_default();
         keys.extend(super::track_art(&self.top));
         keys
@@ -166,14 +174,18 @@ impl State {
         let body = body.push(match &self.albums {
             Load::Loading => widgets::loading(),
             Load::Failed(error) => view.failure(error),
-            Load::Ready(tiles) if tiles.is_empty() => {
+            Load::Ready(groups) if groups.is_empty() => {
                 widgets::empty("No albums credited to this artist.")
             }
-            Load::Ready(tiles) => column![
-                text("Albums").size(20).font(widgets::BOLD),
-                widgets::tile_grid(tiles, view.artwork, super::home::open_album),
-            ]
-            .spacing(10)
+            Load::Ready(groups) => column(groups.iter().map(|(kind, tiles)| {
+                column![
+                    text(kind.title()).size(20).font(widgets::BOLD),
+                    widgets::tile_grid(tiles, view.artwork, super::home::open_album),
+                ]
+                .spacing(10)
+                .into()
+            }))
+            .spacing(20)
             .into(),
         });
         widgets::page(body)

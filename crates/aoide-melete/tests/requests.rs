@@ -1,7 +1,8 @@
 //! Asking for music against a local mock server. Nothing here leaves 127.0.0.1.
 
 use aoide_melete::{
-    Credentials, Device, Error, MeleteClient, RequestKind, RequestState, ServerAddress,
+    CoverSize, Credentials, Device, Error, MeleteClient, PosterCredit, RequestKind, RequestState,
+    ServerAddress,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, method, path, query_param};
@@ -63,6 +64,75 @@ async fn a_search_sends_its_kind_and_words_and_reads_what_is_askable() {
     assert_eq!(found[0].mb_release_group_id.as_deref(), Some("rg-1"));
     assert!(found[0].askable());
     assert!(!found[1].askable(), "in the library already");
+}
+
+#[tokio::test]
+async fn a_result_carries_its_picture_and_a_portraits_credit() {
+    let server = MockServer::start().await;
+    let mut cover = album(false, None);
+    cover["poster"] = json!("/api/v1/music/release-groups/rg-1/cover");
+    let artist = json!({
+        "kind": "artist", "mb_artist_id": "a-1", "mb_release_group_id": null,
+        "mb_recording_id": null, "title": "The Quiet Engines", "year": null, "artist": null,
+        "detail": "Group, GB", "in_library": false, "wanted": false, "requested": null,
+        "poster": "/api/v1/music/artist-portraits/7",
+        "poster_credit": {
+            "author": "A. Photographer", "licence": "CC BY-SA 4.0",
+            "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+            "source_url": "https://commons.wikimedia.org/wiki/File:Engines.jpg",
+        },
+        "closeness": 100,
+    });
+    // A server before 0.8.0 sends neither field.
+    let mut older = album(false, None);
+    older.as_object_mut().unwrap().remove("poster");
+    let mut sparse = artist.clone();
+    sparse["poster_credit"] = json!({ "author": null, "licence": "CC0" });
+    Mock::given(method("GET"))
+        .and(path("/api/v1/requests/search"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!([cover, artist, older, sparse])),
+        )
+        .mount(&server)
+        .await;
+    let client = signed_in(&server);
+    let found = client
+        .request_search(RequestKind::Artist, "engines")
+        .await
+        .unwrap();
+    assert_eq!(
+        found[0].poster.as_deref(),
+        Some("/api/v1/music/release-groups/rg-1/cover")
+    );
+    assert_eq!(found[0].poster_credit, None);
+    assert_eq!(
+        found[1].poster_credit,
+        Some(PosterCredit {
+            author: Some("A. Photographer".into()),
+            licence: Some("CC BY-SA 4.0".into()),
+            licence_url: Some("https://creativecommons.org/licenses/by-sa/4.0/".into()),
+            source_url: Some("https://commons.wikimedia.org/wiki/File:Engines.jpg".into()),
+        })
+    );
+    assert_eq!((&found[2].poster, &found[2].poster_credit), (&None, &None));
+    assert_eq!(
+        found[3].poster_credit,
+        Some(PosterCredit {
+            licence: Some("CC0".into()),
+            ..PosterCredit::default()
+        })
+    );
+    let url = client
+        .poster_url(found[1].poster.as_deref().unwrap(), CoverSize::W160)
+        .unwrap();
+    assert_eq!(
+        url.as_str(),
+        format!("{}/api/v1/music/artist-portraits/7?size=160", server.uri())
+    );
+    assert_eq!(
+        client.poster_url("https://elsewhere.example/a.jpg", CoverSize::W160),
+        None
+    );
 }
 
 #[tokio::test]

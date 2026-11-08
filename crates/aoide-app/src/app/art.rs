@@ -1,11 +1,11 @@
-//! The covers and profile pictures on screen: which are wanted, and their
-//! downloads.
+//! The covers, profile pictures and search results' posters on screen:
+//! which are wanted, and their downloads.
 
 use iced::Task;
 
 use super::{App, Message};
 use crate::artwork::{self, ArtKey};
-use crate::avatars;
+use crate::{avatars, posters};
 
 impl App {
     pub(super) fn artwork_arrived(&mut self, key: ArtKey, bytes: Option<Vec<u8>>) -> Task<Message> {
@@ -68,15 +68,17 @@ impl App {
         let authorization = client.authorization();
         let dir = self.artwork.dir().map(ToOwned::to_owned);
         Task::batch(self.artwork.next_batch().into_iter().map(|key| {
-            let url = match avatars::path_of(&key) {
-                None => client.cover_url(&key.item, key.size),
-                Some(path) => match client.avatar_url(path) {
-                    Some(url) => url,
-                    // Not a path on this server: nothing to fetch.
-                    None => return Task::done(Message::Artwork(key, None)),
-                },
-            }
-            .to_string();
+            let url = if let Some(path) = avatars::path_of(&key) {
+                client.avatar_url(path)
+            } else if let Some((path, size)) = posters::path_of(&key) {
+                client.poster_url(path, size)
+            } else {
+                Some(client.cover_url(&key.item, key.size))
+            };
+            // Not a path on this server: nothing to fetch.
+            let Some(url) = url.map(|url| url.to_string()) else {
+                return Task::done(Message::Artwork(key, None));
+            };
             let dir = dir.clone();
             let done = key.clone();
             Task::perform(

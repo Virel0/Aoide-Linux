@@ -70,7 +70,12 @@ impl App {
             self.store.send(move |w| {
                 let _ = w.store.ensure_built_in_playlists(&user, now);
             });
-            built_ins = self.load_playlists();
+            // A collection made in the web since shows up in the sidebar.
+            let client = signed.connection.client.clone();
+            built_ins = Task::batch([
+                self.load_playlists(),
+                crate::screens::web_collection::ask(client),
+            ]);
         }
         let panels = self.refresh_sync_panels();
         // Other devices' plays may have come in, of songs not cached here.

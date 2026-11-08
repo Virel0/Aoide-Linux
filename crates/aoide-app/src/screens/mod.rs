@@ -29,6 +29,7 @@ pub mod settings;
 pub mod share;
 pub mod songs;
 pub mod sync_status;
+pub mod web_collection;
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -64,6 +65,8 @@ pub enum Section {
     Collections,
     /// One saved filter, by id.
     Collection(String),
+    /// One of the collections made in Melete's web, by its id there.
+    WebCollection(i64),
 }
 
 impl Section {
@@ -97,7 +100,7 @@ impl Section {
             Section::Replay => "Replay",
             Section::Requests => "Requests",
             Section::Collections => "New collection",
-            Section::Collection(_) => "Collection",
+            Section::Collection(_) | Section::WebCollection(_) => "Collection",
         }
     }
 }
@@ -223,6 +226,7 @@ pub enum Page {
     Share(share::State),
     Import(import::State),
     Collections(collections::State),
+    WebCollection(web_collection::State),
 }
 
 #[derive(Debug, Clone)]
@@ -249,6 +253,7 @@ pub enum PageMsg {
     Share(share::Message),
     Import(import::Message),
     Collections(collections::Message),
+    WebCollection(web_collection::Message),
 }
 
 impl Page {
@@ -270,6 +275,7 @@ impl Page {
             Section::Requests => wrap(requests::open(ctx), Page::Requests),
             Section::Collections => wrap(collections::open(ctx, None), Page::Collections),
             Section::Collection(id) => wrap(collections::open(ctx, Some(id)), Page::Collections),
+            Section::WebCollection(id) => wrap(web_collection::open(ctx, *id), Page::WebCollection),
         }
     }
 
@@ -310,6 +316,7 @@ impl Page {
             (Page::Share(state), PageMsg::Share(m)) => state.update(m, ctx),
             (Page::Import(state), PageMsg::Import(m)) => state.update(m, ctx),
             (Page::Collections(state), PageMsg::Collections(m)) => state.update(m, ctx),
+            (Page::WebCollection(state), PageMsg::WebCollection(m)) => state.update(m, ctx),
             _ => Task::none(),
         }
     }
@@ -340,6 +347,7 @@ impl Page {
             Page::Share(state) => state.view(view),
             Page::Import(state) => state.view(view),
             Page::Collections(state) => state.view(view),
+            Page::WebCollection(state) => state.view(view),
         }
     }
 
@@ -366,6 +374,7 @@ impl Page {
             Page::SyncStatus(_) | Page::Import(_) | Page::Requests(_) => Vec::new(),
             Page::Playlists(state) => state.artwork(),
             Page::Collections(state) => state.artwork(),
+            Page::WebCollection(state) => state.artwork(),
             Page::Mixes(state) => state.artwork(),
             Page::Equalizer(_) => Vec::new(),
         }

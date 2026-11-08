@@ -197,11 +197,12 @@ impl State {
             Some((_, Load::Ready(found))) => super::track_art(&found.songs),
             _ => Vec::new(),
         };
+        let asked = self.asking.iter().flat_map(ask::Asking::artwork);
+        let described = described.into_iter().chain(asked);
         let Some(Load::Ready(results)) = &self.results else {
-            return described;
+            return described.collect();
         };
         described
-            .into_iter()
             .chain(super::track_art(&results.songs))
             .chain(results.albums.iter().filter_map(|t| t.art.clone()))
             .chain(results.artists.iter().filter_map(|t| t.art.clone()))

@@ -102,6 +102,14 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         screens::collections::sidebar(&app.config.collections, |label, section| {
             item(label, Icon::Genre, section).into()
         })
+        .extend(signed.web_collections.iter().map(|collection| {
+            item(
+                collection.name.clone(),
+                Icon::Genre,
+                Section::WebCollection(collection.id),
+            )
+            .into()
+        }))
         .push(item(
             "New collection…".into(),
             Icon::Plus,
@@ -222,7 +230,7 @@ fn section_glyph(section: &Section) -> Icon {
         Section::Favourites => Icon::Heart,
         Section::Requests => Icon::Plus,
         Section::Replay => Icon::Sparkle,
-        Section::Collections | Section::Collection(_) => Icon::Genre,
+        Section::Collections | Section::Collection(_) | Section::WebCollection(_) => Icon::Genre,
     }
 }
 

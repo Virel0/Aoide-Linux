@@ -3,18 +3,21 @@
 //! songs), each marked in the library, wanted or asked for already, else with
 //! Ask. Looked up only when asked: MusicBrainz is slow and paced, and a lookup
 //! at every pause in typing would be both. A song can also be put in a playlist
-//! before it arrives (`playlists`).
+//! before it arrives (`playlists`). Each has its cover or portrait beside it
+//! where the server gives one, a portrait with its credit (`poster`).
 
 use aoide_melete::{Candidate, MusicRequest, RequestKind};
 use iced::widget::{button, column, row, text};
 use iced::{Center, Element, Fill, Task};
 
 use crate::app::Message as App;
+use crate::artwork::ArtKey;
 use crate::failure::Failure;
 use crate::screens::{Ctx, Load, PageMsg, View, fetch};
 use crate::{theme, widgets};
 
 mod playlists;
+mod poster;
 
 /// One lookup: its words, what it found, and what was asked for since.
 #[derive(Debug)]
@@ -51,6 +54,8 @@ pub enum Message {
         name: String,
     },
     Added(usize, Result<Box<playlists::Added>, String>),
+    /// A portrait's credit was pressed: its page, or its licence's.
+    OpenLink(String),
 }
 
 fn wrap(message: Message) -> PageMsg {
@@ -129,7 +134,21 @@ impl Asking {
             }
             Message::AddTo { place, id, name } => self.add(place, id, name, ctx),
             Message::Added(place, result) => self.added(place, result),
+            Message::OpenLink(url) => poster::open(&url),
         }
+    }
+
+    /// The results' pictures, to fetch.
+    pub fn artwork(&self) -> Vec<ArtKey> {
+        self.found
+            .ready()
+            .map(|found| {
+                found
+                    .iter()
+                    .filter_map(|c| c.poster.as_deref().map(crate::posters::key))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// What asking for the candidate at `place` came to.
@@ -147,7 +166,7 @@ impl Asking {
                 widgets::empty("MusicBrainz has nothing by that name.")
             }
             Load::Ready(found) => column(found.iter().enumerate().map(|(place, candidate)| {
-                let row = self.row(place, candidate, view.key);
+                let row = self.row(place, candidate, view);
                 if self.choosing == Some(place) {
                     column![row, self.choices(place, view)].spacing(6).into()
                 } else {
@@ -160,7 +179,8 @@ impl Asking {
         column![heading, body].spacing(12).into()
     }
 
-    fn row<'a>(&self, place: usize, candidate: &'a Candidate, key: u64) -> Element<'a, App> {
+    fn row<'a>(&self, place: usize, candidate: &'a Candidate, view: &View<'a>) -> Element<'a, App> {
+        let key = view.key;
         let mut about = vec![kind_word(candidate.kind).to_owned()];
         about.extend(candidate.artist.clone());
         about.extend(candidate.year.map(|y| y.to_string()));
@@ -171,7 +191,7 @@ impl Asking {
                 .clone()
                 .filter(|d| !d.eq_ignore_ascii_case(kind_word(candidate.kind))),
         );
-        let words = column![
+        let mut words = column![
             text(candidate.title.as_str())
                 .size(14)
                 .font(widgets::SEMIBOLD),
@@ -179,6 +199,9 @@ impl Asking {
         ]
         .spacing(2)
         .width(Fill);
+        if let Some(credit) = poster::credit(candidate, key) {
+            words = words.push(credit);
+        }
         let answered = self.asked.iter().find(|(p, _)| *p == place).map(|(_, r)| r);
         let side: Element<'a, App> = match answered {
             Some(Ok(request)) => note(super::super::requests::standing(request)),
@@ -202,7 +225,11 @@ impl Asking {
             Some(added) => column![side, note(added)].spacing(2).into(),
             None => side,
         };
-        let mut line = row![words].spacing(12).align_y(Center);
+        let mut line = row![].spacing(12).align_y(Center);
+        if let Some(picture) = poster::picture(candidate, view.artwork) {
+            line = line.push(picture);
+        }
+        line = line.push(words);
         if let Some(add) = self.add_button(place, candidate, key) {
             line = line.push(add);
         }
