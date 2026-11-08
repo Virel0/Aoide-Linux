@@ -7,6 +7,8 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-08
+
 ### Added
 - An artist's page groups their albums as Melete's web does, under Albums,
   Singles & EPs, Live and Compilations, by each album's MusicBrainz release
@@ -394,7 +396,8 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/Virel0/Aoide-Linux/compare/v0.6.0...v0.6.1
