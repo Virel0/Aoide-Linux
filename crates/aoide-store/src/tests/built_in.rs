@@ -104,7 +104,7 @@ fn another_device_receives_them_smart() {
     }
     for built in BuiltInPlaylist::ALL {
         let list = phone.playlist(&built.id_for("7")).unwrap().unwrap();
-        assert!(list.is_smart, "{}", built.id_for("7"));
+        assert!(list.is_smart, "{}", built.name());
         assert_eq!(list.smart_rule_set().unwrap(), Some(built.rules()));
     }
 }
