@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Deserializer};
 
+use crate::PosterCredit;
+
 /// The kinds of item a music client meets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ItemKind {
@@ -82,6 +84,15 @@ pub struct Item {
     /// An album's release group's secondary types ("Live", "Compilation"…);
     /// empty when there are none or they aren't known.
     pub secondary_types: Vec<String>,
+    /// An artist's portrait, as a path on the server, fetched with the token
+    /// at a [`CoverSize`](crate::CoverSize)
+    /// ([`MeleteClient::poster_url`](crate::MeleteClient::poster_url));
+    /// `None` without one, on anything but an artist, and from a server
+    /// before Melete 0.9.0.
+    pub portrait: Option<String>,
+    /// Who made an artist's portrait and under what licence, to show with
+    /// it; `None` for a picture of the artist's own, found beside their albums.
+    pub portrait_credit: Option<PosterCredit>,
 }
 
 /// The name a cover is cached under: Melete gives covers no version, and says
@@ -199,14 +210,6 @@ pub(crate) struct WireAlbum {
     pub secondary_types: Vec<String>,
 }
 
-/// `MusicArtist`, trimmed.
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct WireArtist {
-    pub id: i64,
-    pub name: String,
-    pub albums: i32,
-}
-
 /// `MusicGenre`.
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct WireGenre {
@@ -258,6 +261,8 @@ impl From<WireTrack> for Item {
             compilation: false,
             primary_type: None,
             secondary_types: Vec::new(),
+            portrait: None,
+            portrait_credit: None,
         }
     }
 }
@@ -292,18 +297,6 @@ impl From<WireAlbum> for Item {
             compilation: album.compilation,
             primary_type: album.primary_type,
             secondary_types: album.secondary_types,
-            ..Self::default()
-        }
-    }
-}
-
-impl From<WireArtist> for Item {
-    fn from(artist: WireArtist) -> Self {
-        Self {
-            id: artist.id.to_string(),
-            name: artist.name,
-            kind: ItemKind::Artist,
-            child_count: Some(artist.albums),
             ..Self::default()
         }
     }

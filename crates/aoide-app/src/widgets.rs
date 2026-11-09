@@ -10,13 +10,15 @@ use crate::theme;
 
 mod art;
 mod avatar;
+mod credit;
 mod menu_strip;
 mod page;
 mod tiles;
 mod tracks;
 
-pub use art::{art, cover, playlist_art};
+pub use art::{art, cover, playlist_art, round_art};
 pub use avatar::avatar;
+pub use credit::credit_line;
 pub use menu_strip::menu_strip;
 pub use page::{PAGE, empty, failure, loading, page, plain_failure, title_bar};
 pub use tiles::{shelf, tile_grid};

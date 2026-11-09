@@ -7,6 +7,15 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- Artists show their portrait when the server has one (Melete 0.9.0): a
+  picture beside their albums, or one from Wikimedia Commons with the
+  server's artists' portraits turned on. It is drawn round on artist tiles
+  in Artists and Search, and on the artist's page under their name, where a
+  Commons picture shows who took it and its licence, each opening its page
+  in the browser. Without one, or from an older server, the round
+  placeholder stays.
+
 ## [0.9.0] - 2026-11-08
 
 ### Added

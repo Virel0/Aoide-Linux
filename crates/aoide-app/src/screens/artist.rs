@@ -1,12 +1,13 @@
-//! An artist: how much of them is finished, their most played songs, and
-//! their albums, newest first, under Albums, Singles & EPs, Live and
+//! An artist: their portrait and its credit where the server has one
+//! (Melete 0.9.0), how much of them is finished, their most played songs,
+//! and their albums, newest first, under Albums, Singles & EPs, Live and
 //! Compilations (`kinds`).
 
 use std::collections::HashMap;
 
-use aoide_melete::Item;
+use aoide_melete::{Item, PosterCredit};
 use aoide_store::PlaySource;
-use iced::widget::{column, text};
+use iced::widget::{column, container, text};
 use iced::{Element, Task};
 
 use super::{Ctx, Load, PageMsg, View, fetch};
@@ -20,10 +21,17 @@ use crate::widgets;
 
 mod kinds;
 
+/// How wide the portrait is drawn under the title.
+const PORTRAIT: f32 = 160.0;
+
 #[derive(Debug)]
 pub struct State {
     id: String,
     name: String,
+    /// Their portrait, once the page has loaded, if they have one.
+    portrait: Option<ArtKey>,
+    /// Who made the portrait, for a picture from Wikimedia Commons.
+    credit: Option<PosterCredit>,
     /// Their albums by kind, each kind that has any.
     albums: Load<Vec<(kinds::Kind, Vec<Tile>)>>,
     /// Their most played songs here; empty until there are plays.
@@ -34,7 +42,10 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Albums(Result<Vec<Item>, Failure>),
+    /// The artist, and their albums.
+    Loaded(Box<Result<(Item, Vec<Item>), Failure>>),
+    /// A link in the portrait's credit.
+    OpenLink(String),
     /// Every song on their albums.
     Tracks(Result<Vec<Item>, Failure>),
     Listening {
@@ -47,15 +58,15 @@ pub fn open(ctx: &Ctx<'_>, id: &str, name: &str) -> (State, Task<App>) {
     let client = ctx.client.clone();
     let id = id.to_owned();
     let asked = id.clone();
-    let task = fetch(
-        ctx.key,
-        async move { client.artist_albums(&asked).await },
-        |r| PageMsg::Artist(Message::Albums(r)),
-    );
+    let task = fetch(ctx.key, async move { client.artist(&asked).await }, |r| {
+        PageMsg::Artist(Message::Loaded(Box::new(r)))
+    });
     (
         State {
             id: id.clone(),
             name: name.to_owned(),
+            portrait: None,
+            credit: None,
             albums: Load::Loading,
             top: Vec::new(),
             finish: None,
@@ -67,7 +78,15 @@ pub fn open(ctx: &Ctx<'_>, id: &str, name: &str) -> (State, Task<App>) {
 impl State {
     pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {
         match message {
-            Message::Albums(result) => {
+            Message::Loaded(result) => {
+                let result = (*result).map(|(artist, albums)| {
+                    self.portrait = artist
+                        .portrait
+                        .as_deref()
+                        .map(|path| crate::posters::key_at(path, crate::artwork::TILE));
+                    self.credit = artist.portrait_credit;
+                    albums
+                });
                 let ids: Vec<String> = result
                     .as_ref()
                     .map(|items| items.iter().map(|a| a.id.clone()).collect())
@@ -124,6 +143,7 @@ impl State {
                 self.top = top;
                 Task::none()
             }
+            Message::OpenLink(url) => crate::posters::open(&url),
         }
     }
 
@@ -139,12 +159,29 @@ impl State {
             })
             .unwrap_or_default();
         keys.extend(super::track_art(&self.top));
+        keys.extend(self.portrait.clone());
         keys
+    }
+
+    /// Their portrait, round, with its credit under it; `None` without one.
+    fn portrait<'a>(&'a self, view: &View<'a>) -> Option<Element<'a, App>> {
+        let portrait = self.portrait.as_ref()?;
+        let picture = container(widgets::round_art(Some(portrait), view.artwork))
+            .width(PORTRAIT)
+            .height(PORTRAIT);
+        let key = view.key;
+        let credit = self.credit.as_ref().and_then(|credit| {
+            widgets::credit_line(credit, move |url| {
+                App::Page(key, PageMsg::Artist(Message::OpenLink(url)))
+            })
+        });
+        Some(column![picture].push(credit).spacing(6).into())
     }
 
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
         let mut body = column![
             widgets::title_bar(&self.name, view.can_go_back),
+            self.portrait(view),
             crate::radio::start_button(crate::radio::Station::new(
                 crate::radio::MixSeed::Artist(self.id.clone()),
                 self.name.clone(),
