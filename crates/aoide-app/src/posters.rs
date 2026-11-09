@@ -1,14 +1,17 @@
 //! Pictures beside Search's "Ask for it" results (Melete 0.8.0): an album's
-//! or song's cover, an artist's portrait, each a path on the server read
-//! with the token like a cover, and kept in the artwork cache under a key
-//! holding that path. A server with them off, or an older one, sends none,
-//! and the result is drawn without one.
+//! or song's cover, an artist's portrait; and library artists' portraits
+//! (Melete 0.9.0). Each is a path on the server read with the token like a
+//! cover, and kept in the artwork cache under a key holding that path. A
+//! server with them off, or an older one, sends none, and the result or
+//! artist is drawn without one.
 //!
 //! A portrait's licence asks for its author and licence to be shown with
 //! it: [`credit`] puts them in words, each part with the link it opens.
 
 use aoide_melete::{CoverSize, PosterCredit};
+use iced::Task;
 
+use crate::app::Message;
 use crate::artwork::ArtKey;
 
 /// The item every poster is kept under; no album has it as an id.
@@ -19,7 +22,13 @@ pub const SIZE: CoverSize = crate::artwork::ROW;
 
 /// The artwork key for the picture at `path` (a result's `poster`).
 pub fn key(path: &str) -> ArtKey {
-    ArtKey::sized(ITEM, path, SIZE)
+    key_at(path, SIZE)
+}
+
+/// The artwork key for the picture at `path` at most `size` wide: a library
+/// artist's `portrait` on a tile or a page.
+pub fn key_at(path: &str, size: CoverSize) -> ArtKey {
+    ArtKey::sized(ITEM, path, size)
 }
 
 /// The server path a key from [`key`] stands for, and its width; `None`
@@ -51,6 +60,14 @@ pub fn credit(credit: &PosterCredit) -> Vec<(String, Option<String>)> {
         parts.push(("Photo: Wikimedia Commons".to_owned(), Some(source)));
     }
     parts
+}
+
+/// Opens a credit's link; one that won't open is said.
+pub fn open(url: &str) -> Task<Message> {
+    match crate::updates::open_in_browser(url) {
+        Ok(()) => Task::none(),
+        Err(why) => Task::done(Message::Notice(why)),
+    }
 }
 
 /// A part of a credit with words in it, trimmed.
@@ -144,5 +161,17 @@ mod tests {
         let file = key(path).file_name();
         assert!(file.contains("0b6b4ba0d36f47bdb4ea6a5b91842d29"), "{file}");
         assert_ne!(file, key("/api/v1/music/artist-portraits/7").file_name());
+    }
+
+    #[test]
+    fn a_library_portrait_is_kept_at_each_size_it_is_drawn() {
+        let path = "/api/v1/music/artists/7/portrait";
+        let tile = key_at(path, crate::artwork::TILE);
+        assert_eq!(path_of(&tile), Some((path, crate::artwork::TILE)));
+        assert_ne!(tile.file_name(), key(path).file_name());
+        assert_ne!(
+            tile.file_name(),
+            key("/api/v1/music/artist-portraits/7").file_name()
+        );
     }
 }

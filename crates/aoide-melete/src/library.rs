@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use reqwest::Method;
 use serde::Deserialize;
 
+use crate::artist::WireArtist;
 use crate::client::MeleteClient;
-use crate::model::{WireAlbum, WireArtist, WireGenre, WirePage, WireTrack};
+use crate::model::{WireAlbum, WireGenre, WirePage, WireTrack};
 use crate::{Item, Page, Result};
 
 /// How many ids go in one `?id=` request: Melete takes at most 100.
@@ -124,12 +125,6 @@ struct WireAlbumDetail {
     /// Older servers don't say.
     #[serde(default)]
     liked: bool,
-}
-
-#[derive(Deserialize)]
-struct WireArtistDetail {
-    album_list: Vec<WireAlbum>,
-    appears_on_list: Vec<WireAlbum>,
 }
 
 #[derive(Deserialize)]
@@ -276,24 +271,6 @@ impl MeleteClient {
     /// doesn't have; otherwise the [request errors](MeleteClient#errors).
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Item>> {
         Ok(self.album(album_id).await?.1)
-    }
-
-    /// An artist's own albums, then the ones they appear on.
-    ///
-    /// # Errors
-    ///
-    /// [`Error::NotFound`](crate::Error::NotFound) for an artist the server
-    /// doesn't have; otherwise the [request errors](MeleteClient#errors).
-    pub async fn artist_albums(&self, artist_id: &str) -> Result<Vec<Item>> {
-        let artist: WireArtistDetail = self
-            .get(&["api", "v1", "music", "artists", artist_id], &[])
-            .await?;
-        Ok(artist
-            .album_list
-            .into_iter()
-            .chain(artist.appears_on_list)
-            .map(Item::from)
-            .collect())
     }
 
     /// Tracks, albums and artists matching `term`, up to `limit` of each.

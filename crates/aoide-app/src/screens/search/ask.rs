@@ -134,7 +134,7 @@ impl Asking {
             }
             Message::AddTo { place, id, name } => self.add(place, id, name, ctx),
             Message::Added(place, result) => self.added(place, result),
-            Message::OpenLink(url) => poster::open(&url),
+            Message::OpenLink(url) => crate::posters::open(&url),
         }
     }
 

@@ -33,8 +33,8 @@ impl Tile {
         }
     }
 
-    /// An artist. Melete has no pictures of artists, so a round placeholder
-    /// stands in.
+    /// An artist, with their portrait where the server gives one (Melete
+    /// 0.9.0); a round placeholder stands in where it doesn't.
     pub fn artist(item: &Item) -> Self {
         let subtitle = match item.child_count {
             Some(1) => "1 album".to_owned(),
@@ -45,7 +45,10 @@ impl Tile {
             id: item.id.clone(),
             title: item.name.clone(),
             subtitle,
-            art: None,
+            art: item
+                .portrait
+                .as_deref()
+                .map(|path| crate::posters::key_at(path, crate::artwork::TILE)),
             round: true,
         }
     }
@@ -139,6 +142,23 @@ mod tests {
         assert_eq!(
             album.art,
             Some(ArtKey::sized("2", COVER_TAG, crate::artwork::TILE))
+        );
+    }
+
+    #[test]
+    fn an_artist_tile_shows_their_portrait_where_there_is_one() {
+        let path = "/api/v1/music/artists/1/portrait";
+        let artist = Tile::artist(&Item {
+            id: "1".into(),
+            name: "Mara Vey".into(),
+            kind: ItemKind::Artist,
+            portrait: Some(path.into()),
+            ..Item::default()
+        });
+        assert!(artist.round);
+        assert_eq!(
+            artist.art,
+            Some(crate::posters::key_at(path, crate::artwork::TILE))
         );
     }
 }

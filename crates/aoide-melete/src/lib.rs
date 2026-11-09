@@ -16,6 +16,9 @@
 //!   [`MeleteClient::poll_quick_connect`].
 //! - **Lists:** [`ListQuery`] drives songs, albums and artists: paging, sorting,
 //!   words, a genre and artists. [`MeleteClient::genres`] lists the genres.
+//! - **Artists:** [`MeleteClient::artist`] for one's page, with their
+//!   portrait and its credit when the server has one (Melete 0.9.0), read
+//!   through [`MeleteClient::poster_url`].
 //! - **Home:** [`MeleteClient::home`].
 //! - **Collections** (saved song filters, made in Melete's web):
 //!   [`MeleteClient::collections`], [`MeleteClient::collection_songs`],
@@ -57,6 +60,7 @@
 
 mod address;
 mod ai;
+mod artist;
 mod auth;
 mod client;
 mod collections;
