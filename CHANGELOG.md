@@ -7,6 +7,10 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- A playlist numbers its songs: each one's place in the list, before its
+  cover, songs still waiting to arrive included.
+
 ## [0.10.0] - 2026-11-09
 
 ### Added

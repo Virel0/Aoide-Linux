@@ -58,7 +58,7 @@ pub fn track_list_with_headings<'a>(
             );
         }
         let anchor = format!("{}:{index}", view.key);
-        list = list.push(track_row(track, &anchor, view, style, move || {
+        list = list.push(track_row(track, None, &anchor, view, style, move || {
             Message::Play(PlayRequest::from(tracks, index, source))
         }));
         if let Some(menu) = view.menu.filter(|m| m.anchor == anchor) {
@@ -89,9 +89,12 @@ fn subtitle(track: &TrackMeta, style: ListStyle) -> Option<String> {
 /// A title and a line under it, at the sizes a track row uses.
 const TWO_LINES: f32 = 34.0;
 
-/// One track row.
+/// One track row. `position`, when given, is the row's place in its list,
+/// counted from 1 and written before the cover, as a playlist numbers its
+/// songs.
 pub fn track_row<'a>(
     track: &'a TrackMeta,
+    position: Option<usize>,
     anchor: &str,
     view: &View<'a>,
     style: ListStyle,
@@ -113,12 +116,12 @@ pub fn track_row<'a>(
                 tracks: vec![track.clone()],
             })
         });
-    let body = row![
-        track_lead(track, view, style, playing),
-        track_lines(track, style, playing)
-    ]
-    .spacing(12)
-    .align_y(Center);
+    let body = row![]
+        .push(position.map(position_label))
+        .push(track_lead(track, view, style, playing))
+        .push(track_lines(track, style, playing))
+        .spacing(12)
+        .align_y(Center);
     let body = if favourite {
         body.push(icon(Icon::HeartFilled, 14.0, Tone::Accent))
     } else {
@@ -146,6 +149,17 @@ pub fn track_row<'a>(
         .on_press_with(play)
         .into()
 }
+
+/// A row's place in its list, in the column a numbered list's numbers take.
+pub fn position_label<'a, M: 'a>(position: usize) -> Element<'a, M> {
+    container(secondary(position.to_string()).size(13))
+        .width(POSITION_WIDTH)
+        .align_x(Center)
+        .into()
+}
+
+/// Wide enough for four digits at the size positions are written.
+const POSITION_WIDTH: f32 = 32.0;
 
 /// What starts a row: the track number (a glyph while it plays) in an
 /// album's own list, the cover anywhere else.

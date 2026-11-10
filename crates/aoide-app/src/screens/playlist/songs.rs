@@ -25,11 +25,15 @@ impl State {
     ) -> Element<'a, App> {
         let editing = self.editing && self.smart.is_none();
         let mut list = Column::with_capacity(self.lines.len()).spacing(2);
-        for line in &self.lines {
+        // Waiting songs hold their place, so they are counted too.
+        for (at, line) in self.lines.iter().enumerate() {
+            let position = at + 1;
             list = match *line {
-                Line::Track(index) => self.track_line(list, tracks, index, view, editing),
+                Line::Track(index) => self.track_line(list, tracks, index, position, view, editing),
                 Line::Waiting(index) => match self.waiting.get(index) {
-                    Some((entry, song)) => list.push(self.waiting_line(entry, song, view, editing)),
+                    Some((entry, song)) => {
+                        list.push(self.waiting_line(entry, song, position, view, editing))
+                    }
                     None => list,
                 },
             };
@@ -43,6 +47,7 @@ impl State {
         list: Column<'a, App>,
         tracks: &'a [TrackMeta],
         index: usize,
+        position: usize,
         view: &View<'a>,
         editing: bool,
     ) -> Column<'a, App> {
@@ -52,7 +57,7 @@ impl State {
         let anchor = format!("{}:{index}", view.key);
         let source = self.source();
         let play = move || App::Play(PlayRequest::from(tracks, index, source));
-        let song = widgets::track_row(track, &anchor, view, LIST, play);
+        let song = widgets::track_row(track, Some(position), &anchor, view, LIST, play);
         let list = match self.entries.get(index).filter(|_| editing) {
             Some(entry) => list.push(self.edit_buttons(song, entry, index, tracks.len(), view.key)),
             None => list.push(song),
@@ -98,6 +103,7 @@ impl State {
         &self,
         entry: &str,
         song: &'a PendingSong,
+        position: usize,
         view: &View<'a>,
         editing: bool,
     ) -> Element<'a, App> {
@@ -114,6 +120,7 @@ impl State {
         .spacing(2)
         .clip(true);
         let body = row![
+            widgets::position_label(position),
             container(icon(Icon::Song, 16.0, Tone::Secondary))
                 .width(40)
                 .height(40)
