@@ -17,15 +17,16 @@ impl State {
             .collection
             .as_ref()
             .map_or("Collection", |c| c.name.as_str());
-        let mut body = column![widgets::title_bar(title, view.can_go_back)].spacing(14);
+        let mut header = column![widgets::title_bar(title, view.can_go_back)].spacing(14);
         if let Some(collection) = &self.collection {
-            body = body
+            header = header
                 .push(widgets::secondary(words::summary(collection)).size(13))
                 .push(self.delete_row(key));
         }
         if let Some(why) = &self.failed {
-            body = body.push(widgets::secondary(why.as_str()).size(13));
+            header = header.push(widgets::secondary(why.as_str()).size(13));
         }
+        let mut body = column![].spacing(14);
         let anchor = format!("{key}:web-collection");
         body = body.push(match &self.songs {
             Load::Loading => widgets::loading(),
@@ -60,7 +61,7 @@ impl State {
                 list.into()
             }
         });
-        widgets::page(body)
+        widgets::page_with_header(header, body, view)
     }
 
     /// Delete, or the question it asks first.

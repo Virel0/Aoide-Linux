@@ -95,7 +95,8 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 ### Desktop
 - MPRIS media controls, so the media keys work, and a tray icon
 - A second launch brings the open window forward; no sleep while music plays
-- Light, dark or system appearance, with six accent colours
+- Light, dark or system appearance, coloured by the artwork or in one of six
+  accent colours
 - Discord Rich Presence, off until you turn it on
 - A notice when a newer release is out
 

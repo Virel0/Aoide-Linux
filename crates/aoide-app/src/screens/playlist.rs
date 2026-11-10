@@ -155,6 +155,16 @@ impl State {
         &self.id
     }
 
+    /// Where the page's colours come from: its cover (the first of a
+    /// mosaic), an album's colours from the server first when it is one.
+    pub fn colour_origins(&self) -> Vec<crate::cover_colour::Origin> {
+        self.cover
+            .as_ref()
+            .and_then(|cover| cover.keys().first())
+            .map(crate::cover_colour::origins_of)
+            .unwrap_or_default()
+    }
+
     /// The songs' covers and the playlist's own.
     pub fn artwork(&self) -> Vec<crate::artwork::ArtKey> {
         let mut keys: Vec<_> = self

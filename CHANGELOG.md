@@ -17,6 +17,24 @@ state of every feature in more detail.
   for an album, a song or an Aoide playlist, beside its `×`.
 - A playlist numbers its songs: each one's place in the list, before its
   cover, songs still waiting to arrive included.
+- Colour from the artwork, the new default accent (Settings → General →
+  From the artwork). An album's, artist's, Aoide playlist's or web
+  collection's page is washed in its cover's colour behind its header,
+  fading into the page by the songs, with the cover on a soft shadow, the
+  Play button and the page's accents in the cover's colour, and Shuffle and
+  the other quiet buttons on a veil over the wash. The sidebar, the side
+  panel and the player bar take a soft tint of the playing song's cover,
+  and the window's accent (the selected item, the seek bar, switches,
+  lyrics' current line) follows it. The colours come from the server's
+  palette for the album, or from the picture itself; each is moved in its
+  own hue until every word on or in it keeps at least 4.5:1. A grey, black
+  or white cover, or nothing playing, leaves the usual look.
+
+### Changed
+- The violet and the other fixed accents are still there and look as
+  before. A config that kept the old default, the violet, moves to From the
+  artwork; any other accent stays as chosen. A config saved by this version
+  can't be read by an older one, which starts from its defaults.
 
 ## [0.10.0] - 2026-11-09
 

@@ -72,6 +72,8 @@ pub struct App {
     pub(crate) listening: crate::listening::State,
     /// Albums' looping videos over their covers.
     pub(crate) motion: crate::motion::Motion,
+    /// Covers' colours, for the look taken from the artwork.
+    pub(crate) colours: crate::cover_colour::CoverColours,
 }
 
 /// An open page and its place in the stack.
@@ -183,6 +185,7 @@ pub enum Message {
     Rescan(crate::rescan::Msg),
     Together(crate::together::Msg),
     Motion(crate::motion::Msg),
+    CoverColours(crate::cover_colour::Msg),
 }
 
 /// The player bar's controls.
@@ -253,6 +256,7 @@ impl App {
             listening: crate::listening::State::default(),
             failure_details: false,
             motion,
+            colours: crate::cover_colour::CoverColours::default(),
         };
         let theme = iced::system::theme().map(Message::ThemeChanged);
         let update = Task::done(Message::Update(crate::updates::Message::Tick));
@@ -265,7 +269,8 @@ impl App {
     }
 
     pub fn theme(&self) -> Theme {
-        crate::appearance::theme(self.mode, &self.config.interface)
+        let playing = self.playing_look();
+        crate::appearance::theme(self.mode, &self.config.interface, playing.as_ref())
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -325,7 +330,7 @@ impl App {
             self.fetch_artwork(),
             self.reconcile_motion(),
             self.reconcile_backdrop(),
-            self.reconcile_palette(),
+            self.reconcile_colours(),
         ])
     }
 
@@ -420,6 +425,7 @@ impl App {
             Message::Rescan(message) => self.rescan(message),
             Message::Together(message) => self.together(message),
             Message::Motion(message) => self.motion(message),
+            Message::CoverColours(message) => self.cover_colours(message),
         }
     }
 

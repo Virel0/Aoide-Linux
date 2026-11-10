@@ -208,6 +208,15 @@ impl State {
         }
     }
 
+    /// Where the page's colours come from: its first song's album.
+    pub fn colour_origins(&self) -> Vec<crate::cover_colour::Origin> {
+        self.songs
+            .ready()
+            .and_then(|songs| super::track_art(songs).into_iter().next())
+            .map(|key| crate::cover_colour::origins_of(&key))
+            .unwrap_or_default()
+    }
+
     pub fn artwork(&self) -> Vec<ArtKey> {
         self.songs
             .ready()
