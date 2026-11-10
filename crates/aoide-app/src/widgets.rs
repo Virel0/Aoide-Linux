@@ -23,7 +23,7 @@ pub use menu_strip::menu_strip;
 pub use page::{PAGE, empty, failure, loading, page, plain_failure, title_bar};
 pub use tiles::{shelf, tile_grid};
 pub use tracks::{
-    ListStyle, play_buttons, play_buttons_shuffling, play_buttons_with, track_list,
+    ListStyle, play_buttons, play_buttons_shuffling, play_buttons_with, position_label, track_list,
     track_list_with_headings, track_row,
 };
 
