@@ -9,6 +9,7 @@ use iced::{Alignment, Element, Length, Task};
 use super::{Ctx, Load, PageMsg, Route, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::cover_colour::Origin;
 use crate::failure::Failure;
 use crate::icons::{Icon, Tone, icon};
 use crate::playback::tracks::TrackMeta;
@@ -158,11 +159,12 @@ impl State {
             ],
         ));
 
-        let mut body = column![
+        let header = column![
             widgets::title_bar("", view.can_go_back),
             row![self.cover(view), info.width(Length::Fill)].spacing(24),
         ]
         .spacing(16);
+        let mut body = column![].spacing(16);
         if let Some(menu) = view
             .menu
             .filter(|m| m.anchor == format!("{}:album", view.key))
@@ -183,7 +185,8 @@ impl State {
                 &disc_headings(tracks),
             ),
         });
-        crate::handoff::played_from(widgets::page(body), Some(self.context()))
+        let page = widgets::page_with_header(header, body, view);
+        crate::handoff::played_from(page, Some(self.context()))
     }
 
     /// The cover, with the album's motion cover over it while that plays.
@@ -191,7 +194,25 @@ impl State {
         let (size, radius) = (220.0, 10.0);
         let still = widgets::art(self.art.as_ref(), view.artwork, Length::Fixed(size), radius);
         let handle = self.art.as_ref().and_then(|key| view.artwork.get(key));
-        crate::motion::over(view.motion, Some(&self.id), still, handle, size, radius)
+        let cover = crate::motion::over(view.motion, Some(&self.id), still, handle, size, radius);
+        widgets::lifted(cover, radius, view)
+    }
+
+    /// Where the page's colours come from, once the album is here: its
+    /// colours from the server, else its cover's.
+    pub fn colour_origins(&self) -> Vec<Origin> {
+        if self.album.is_none() {
+            return Vec::new();
+        }
+        let mut origins = vec![Origin::Album(self.id.clone())];
+        origins.extend(self.art.clone().map(Origin::Picture));
+        origins
+    }
+
+    /// The album's colours as its page brought them.
+    pub fn known_palette(&self) -> Option<(&str, &[[u8; 3]])> {
+        let album = self.album.as_ref()?;
+        Some((self.id.as_str(), album.palette.as_slice()))
     }
 
     /// The path of the album's motion cover once the album is here: `None`

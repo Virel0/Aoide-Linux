@@ -11,6 +11,7 @@ pub mod albums;
 pub mod artist;
 pub mod artists;
 pub mod collections;
+mod colours;
 pub mod discover;
 pub mod equalizer;
 pub mod favourites;
@@ -154,6 +155,9 @@ pub struct View<'a> {
     pub ai: crate::smart::Ai,
     /// A failure's details are shown.
     pub details: bool,
+    /// The page's colours from its cover, when it has them and the window
+    /// takes its colours from the artwork.
+    pub wash: Option<crate::theme::artwork::PageWash>,
 }
 
 impl<'a> View<'a> {

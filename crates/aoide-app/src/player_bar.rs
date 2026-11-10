@@ -48,7 +48,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     )
     .height(Length::Fixed(HEIGHT))
     .center_y(Length::Fixed(HEIGHT))
-    .style(theme::bar)
+    .style(theme::artwork::tinted(theme::bar, app.playing_look()))
     .into()
 }
 

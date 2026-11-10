@@ -6,6 +6,7 @@ mod appearance;
 mod artwork;
 mod avatars;
 mod config;
+mod cover_colour;
 mod covers;
 mod credentials;
 mod discord;

@@ -1,68 +1,28 @@
 //! The cover's main colours as Melete works them out (an album's
 //! `colours.palette`), so the moving ground is drawn in the colours the
-//! iPhone app uses. Asked for once per album while the full player is open;
-//! an album with none, or a server that doesn't answer, keeps the colours
-//! found in the blurred cover here.
-
-use iced::Task;
+//! iPhone app uses. Asked for once per album (`cover_colour`); an album with
+//! none, or a server that doesn't answer, keeps the colours found in the
+//! blurred cover here.
 
 use super::FullPlayer;
 use super::backdrop::to_linear;
-use crate::app::{App, Message};
-use crate::listening::Msg;
+use crate::cover_colour::CoverColours;
 
 /// How many colours the grounds draw with.
 const COLOURS: usize = 4;
 
-impl App {
-    /// Asks the server for the playing song's album's colours, once per
-    /// album, while the full player is open.
-    pub(crate) fn reconcile_palette(&mut self) -> Task<Message> {
-        let album = self
-            .playback
-            .current()
-            .and_then(|(_, q)| q.meta.album_id.clone());
-        let (Some(album), Some(full), Some(signed)) =
-            (album, self.listening.full.as_mut(), self.session.as_ref())
-        else {
-            return Task::none();
-        };
-        if full.palettes.contains_key(&album) {
-            return Task::none();
-        }
-        full.palettes.insert(album.clone(), Vec::new());
-        let client = signed.connection.client.clone();
-        Task::perform(
-            async move {
-                match client.album(&album).await {
-                    Ok((item, _)) => (album, item.palette),
-                    Err(_) => (album, Vec::new()),
-                }
-            },
-            |(album, palette)| Message::Listening(Msg::AlbumPalette(album, palette)),
-        )
-    }
-
-    pub(crate) fn palette_arrived(
-        &mut self,
-        album: String,
-        palette: Vec<[u8; 3]>,
-    ) -> Task<Message> {
-        if let Some(full) = self.listening.full.as_mut() {
-            full.palettes.insert(album, palette);
-        }
-        Task::none()
-    }
-}
-
 impl FullPlayer {
     /// The colours the ground draws with: the server's for the album whose
     /// cover it is, else those found in the blurred cover (`found`).
-    pub(super) fn ground_palette(&self, found: [[f32; 3]; COLOURS]) -> [[f32; 3]; COLOURS] {
+    pub(super) fn ground_palette(
+        &self,
+        found: [[f32; 3]; COLOURS],
+        colours: &CoverColours,
+    ) -> [[f32; 3]; COLOURS] {
         self.backdrop_for
             .as_ref()
-            .and_then(|key| self.palettes.get(&key.item))
-            .and_then(|palette| linear(palette))
+            .and_then(|key| colours.album_palette(&key.item))
+            .and_then(linear)
             .unwrap_or(found)
     }
 }
@@ -82,6 +42,7 @@ fn linear(palette: &[[u8; 3]]) -> Option<[[f32; 3]; COLOURS]> {
 mod tests {
     use super::*;
     use crate::artwork::ArtKey;
+    use crate::cover_colour::Origin;
     use std::time::Instant;
 
     const FOUND: [[f32; 3]; COLOURS] = [[0.5; 3]; COLOURS];
@@ -102,12 +63,15 @@ mod tests {
     #[test]
     fn the_ground_uses_the_servers_colours_else_the_ones_found_here() {
         let mut full = FullPlayer::new(Instant::now());
-        assert_eq!(full.ground_palette(FOUND), FOUND, "no cover yet");
+        let mut colours = CoverColours::default();
+        assert_eq!(full.ground_palette(FOUND, &colours), FOUND, "no cover yet");
         full.backdrop_for = Some(ArtKey::sized("7", "cover", crate::artwork::ROW));
-        assert_eq!(full.ground_palette(FOUND), FOUND, "not asked yet");
-        full.palettes.insert("7".into(), Vec::new());
-        assert_eq!(full.ground_palette(FOUND), FOUND, "asked, or none to give");
-        full.palettes.insert("7".into(), vec![[0, 0, 0]]);
-        assert_eq!(full.ground_palette(FOUND), [[0.0; 3]; COLOURS]);
+        assert_eq!(full.ground_palette(FOUND, &colours), FOUND, "not asked yet");
+        colours.asking(Origin::Album("7".into()));
+        assert_eq!(full.ground_palette(FOUND, &colours), FOUND, "asked");
+        colours.arrived(Origin::Album("7".into()), Vec::new());
+        assert_eq!(full.ground_palette(FOUND, &colours), FOUND, "none to give");
+        colours.arrived(Origin::Album("7".into()), vec![[0, 0, 0]]);
+        assert_eq!(full.ground_palette(FOUND, &colours), [[0.0; 3]; COLOURS]);
     }
 }

@@ -3,7 +3,7 @@
 
 use iced::widget::{
     Column, button, center, column, container, mouse_area, opaque, row, rule, scrollable, space,
-    stack, text,
+    stack, text, themer,
 };
 use iced::{Center, Element, Fill, Length, Padding};
 
@@ -69,6 +69,7 @@ fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Elem
         can_go_back: false,
         ai: crate::smart::Ai::Off,
         details: app.failure_details,
+        wash: None,
     };
     let card = container(widgets::menu_strip(menu, &view)).max_width(560);
     opaque(
@@ -137,7 +138,7 @@ fn sidebar<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     container(column![list, footer].spacing(8).padding([16, 10]))
         .width(Length::Fixed(SIDEBAR_WIDTH))
         .height(Fill)
-        .style(theme::side)
+        .style(theme::artwork::tinted(theme::side, app.playing_look()))
         .into()
 }
 
@@ -254,6 +255,10 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             .into();
     };
     let entry = nav.current();
+    let wash = app
+        .page_look(&entry.page)
+        .map(|look| theme::artwork::PageWash::new(&app.theme(), &look));
+    let page_theme = wash.as_ref().map(|wash| wash.page.clone());
     let view = View {
         key: entry.key,
         artwork: &app.artwork,
@@ -265,6 +270,7 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
         can_go_back: nav.can_go_back(),
         ai: signed.ai,
         details: app.failure_details,
+        wash,
     };
     let page = match &entry.page {
         Page::Settings(state) => screens::settings::view(
@@ -287,6 +293,12 @@ fn content<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
             screens::equalizer::view(state, &app.config.sound, app.playback.sample_rate(), &view)
         }
         page => page.view(&view),
+    };
+    // The page in its cover's accent; transparent to the widgets' state, so
+    // nothing resets when the colours arrive.
+    let page = match page_theme {
+        Some(page_theme) => themer(Some(page_theme), page).into(),
+        None => page,
     };
     container(body.push(page))
         .width(Fill)
