@@ -106,6 +106,27 @@ fn blurred(cover: &[u8]) -> Option<Blurred> {
     Some((soft.width(), soft.height(), soft.into_raw(), palette))
 }
 
+/// A picture's main colours as sRGB, the most of it first, found as the
+/// ground's are (for a page's or the window's colours where the server has
+/// none); empty for what isn't a picture.
+pub(crate) fn picture_palette(picture: &[u8]) -> Vec<[u8; 3]> {
+    let Ok(picture) = image::load_from_memory(picture) else {
+        return Vec::new();
+    };
+    let small = picture.thumbnail(SIDE / 4, SIDE / 4).to_rgb8();
+    let light: Vec<[f32; 3]> = small
+        .pixels()
+        .map(|p| [0, 1, 2].map(|i| to_linear(p.0[i])))
+        .collect();
+    if light.is_empty() {
+        return Vec::new();
+    }
+    super::palette::main_colours(&light)
+        .iter()
+        .map(|colour| colour.map(to_srgb))
+        .collect()
+}
+
 /// Scales a pixel's light down to `CAP` when it is brighter, keeping its hue.
 fn darken(rgba: &mut [u8; 4]) {
     let linear = [0, 1, 2].map(|i| to_linear(rgba[i]));
@@ -191,5 +212,20 @@ mod tests {
     #[test]
     fn what_isnt_an_image_gives_no_ground() {
         assert!(blurred(b"not a picture").is_none());
+        assert!(picture_palette(b"not a picture").is_empty());
+    }
+
+    #[test]
+    fn a_pictures_colours_come_back_as_bytes() {
+        let palette = picture_palette(&png(64, 64, [200, 30, 40, 255]));
+        assert_eq!(palette.len(), 4);
+        for colour in palette {
+            assert!(
+                colour
+                    .iter()
+                    .zip([200, 30, 40])
+                    .all(|(a, b)| a.abs_diff(b) <= 2)
+            );
+        }
     }
 }

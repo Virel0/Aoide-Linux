@@ -6,6 +6,7 @@ use iced::{Background, Border, Center, Color, Element, Fill, Length, Theme, colo
 use serde::{Deserialize, Serialize};
 
 use crate::app::{App, Message};
+use crate::cover_colour::Look;
 use crate::listening::{Msg, SettingsExtras};
 use crate::{theme, widgets};
 
@@ -31,7 +32,7 @@ impl Default for InterfaceSettings {
         Self {
             track_in_title: true,
             appearance: Appearance::System,
-            accent: Accent::Violet,
+            accent: Accent::Artwork,
             romaji: false,
             furigana: false,
             full_layout: crate::full_player::Layout::default(),
@@ -71,13 +72,23 @@ impl Appearance {
     }
 }
 
-/// The accent colour: Aoide's violet, or one of five others. Each is a pair,
-/// darker on a light ground and lighter on a dark one, so text in it stays
-/// legible (4.5:1 against the page, tested).
+/// The accent colour: the artwork's (the default), Aoide's violet, or one
+/// of five others. Each fixed one is a pair, darker on a light ground and
+/// lighter on a dark one, so text in it stays legible (4.5:1 against the
+/// page, tested).
+///
+/// Before the artwork's, the violet was the default and was saved as
+/// "violet" whether chosen or not; that word now reads as the new default,
+/// and the violet chosen since is saved as "fixedViolet".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Accent {
+    /// The playing song's cover's colour across the window, and each page
+    /// with a cover in its own (`cover_colour`); the violet until there is one.
     #[default]
+    #[serde(alias = "violet")]
+    Artwork,
+    #[serde(rename = "fixedViolet")]
     Violet,
     Blue,
     Teal,
@@ -87,7 +98,8 @@ pub enum Accent {
 }
 
 impl Accent {
-    pub const ALL: [Accent; 6] = [
+    pub const ALL: [Accent; 7] = [
+        Accent::Artwork,
         Accent::Violet,
         Accent::Blue,
         Accent::Teal,
@@ -98,6 +110,7 @@ impl Accent {
 
     pub fn title(self) -> &'static str {
         match self {
+            Accent::Artwork => "From the artwork",
             Accent::Violet => "Violet",
             Accent::Blue => "Blue",
             Accent::Teal => "Teal",
@@ -107,10 +120,11 @@ impl Accent {
         }
     }
 
-    /// The colour on a light ground and on a dark one.
+    /// The colour on a light ground and on a dark one: the artwork's, until
+    /// there is one, is the violet.
     pub fn colours(self) -> (Color, Color) {
         match self {
-            Accent::Violet => (theme::ACCENT_LIGHT, theme::ACCENT_DARK),
+            Accent::Artwork | Accent::Violet => (theme::ACCENT_LIGHT, theme::ACCENT_DARK),
             Accent::Blue => (color!(0x0a5fcc), color!(0x6cb2ff)),
             Accent::Teal => (color!(0x0b7470), color!(0x45c9c0)),
             Accent::Orange => (color!(0xad4a00), color!(0xffa25c)),
@@ -126,17 +140,22 @@ impl Accent {
 }
 
 /// The app's theme: the system's mode unless one was chosen, in the chosen
-/// accent.
-pub fn theme(system: Mode, interface: &InterfaceSettings) -> Theme {
-    in_mode(interface.appearance.mode(system), interface)
+/// accent; from the artwork, the `playing` song's.
+pub fn theme(system: Mode, interface: &InterfaceSettings, playing: Option<&Look>) -> Theme {
+    in_mode(interface.appearance.mode(system), interface, playing)
 }
 
 /// The theme in `mode`, whatever the appearance setting, with the chosen
-/// accent.
-pub fn in_mode(mode: Mode, interface: &InterfaceSettings) -> Theme {
+/// accent; from the artwork, the `playing` song's, else the violet.
+pub fn in_mode(mode: Mode, interface: &InterfaceSettings, playing: Option<&Look>) -> Theme {
     let base = theme::for_mode(mode);
-    if interface.accent == Accent::Violet {
-        return base;
+    match (interface.accent, playing) {
+        (Accent::Artwork, Some(look)) => {
+            let derived = look.in_mode(mode == Mode::Dark);
+            return theme::artwork::with_accent(&base, derived, false);
+        }
+        (Accent::Artwork | Accent::Violet, _) => return base,
+        _ => {}
     }
     let palette = Palette {
         primary: interface.accent.for_mode(mode),
@@ -235,7 +254,7 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
             swatches,
             widgets::secondary(interface.accent.title())
                 .size(13)
-                .width(Length::Fixed(70.0)),
+                .width(Length::Fixed(110.0)),
         ]
         .spacing(10)
         .align_y(Center)
@@ -246,7 +265,9 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
             .width(Fill)
             .style(theme::menu),
         widgets::secondary(
-            "System follows your desktop's light or dark setting as it changes. While a song \
+            "System follows your desktop's light or dark setting as it changes. With From \
+             the artwork, the window takes the colour of the song playing, and an album's, \
+             artist's, playlist's or collection's page the colour of its cover. While a song \
              plays, the window title reads \u{201c}Song \u{2014} Artist \u{b7} Aoide\u{201d}, \
              which is what task bars and window switchers show."
         )
@@ -257,12 +278,22 @@ pub fn general_section<'a>(extras: &SettingsExtras<'a>) -> Element<'a, Message> 
 }
 
 /// A round swatch in the accent's colour for the page's mode, ringed when
-/// chosen.
+/// chosen; the artwork's runs through three of the others, as a cover's
+/// colour changes.
 fn swatch(theme: &Theme, accent: Accent, chosen: bool) -> container::Style {
     let dark = theme.extended_palette().is_dark;
-    let colour = accent.for_mode(if dark { Mode::Dark } else { Mode::Light });
+    let mode = if dark { Mode::Dark } else { Mode::Light };
+    let background = if accent == Accent::Artwork {
+        let gradient = iced::gradient::Linear::new(iced::Degrees(135.0))
+            .add_stop(0.0, Accent::Pink.for_mode(mode))
+            .add_stop(0.5, Accent::Orange.for_mode(mode))
+            .add_stop(1.0, Accent::Teal.for_mode(mode));
+        Background::Gradient(gradient.into())
+    } else {
+        Background::Color(accent.for_mode(mode))
+    };
     container::Style {
-        background: Some(Background::Color(colour)),
+        background: Some(background),
         border: Border {
             color: if chosen {
                 theme.palette().text
@@ -330,18 +361,18 @@ mod tests {
             accent: Accent::Teal,
             ..InterfaceSettings::default()
         };
-        let dark = theme(Mode::Light, &interface);
+        let dark = theme(Mode::Light, &interface, None);
         assert_eq!(dark.palette().primary, Accent::Teal.colours().1);
         assert_eq!(
             dark.palette().background,
             theme::for_mode(Mode::Dark).palette().background
         );
         interface.appearance = Appearance::System;
-        let light = theme(Mode::Light, &interface);
+        let light = theme(Mode::Light, &interface, None);
         assert_eq!(light.palette().primary, Accent::Teal.colours().0);
         interface.accent = Accent::Violet;
         assert_eq!(
-            theme(Mode::Dark, &interface).palette().primary,
+            theme(Mode::Dark, &interface, None).palette().primary,
             theme::ACCENT_DARK
         );
     }
@@ -387,5 +418,59 @@ mod tests {
         assert_eq!(back, changed);
         let empty: InterfaceSettings = serde_json::from_str("{}").unwrap();
         assert_eq!(empty, InterfaceSettings::default());
+    }
+
+    #[test]
+    fn the_artwork_is_the_default_and_the_old_default_moves_to_it() {
+        assert_eq!(InterfaceSettings::default().accent, Accent::Artwork);
+        let read = |json: &str| -> Accent {
+            let settings: InterfaceSettings = serde_json::from_str(json).unwrap();
+            settings.accent
+        };
+        // "violet" was saved for everyone who never chose, before.
+        assert_eq!(read(r#"{"accent":"violet"}"#), Accent::Artwork);
+        // Another choice stays.
+        assert_eq!(read(r#"{"accent":"teal"}"#), Accent::Teal);
+        assert_eq!(read(r#"{"accent":"graphite"}"#), Accent::Graphite);
+        // The violet chosen now stays the violet.
+        for accent in Accent::ALL {
+            let settings = InterfaceSettings {
+                accent,
+                ..InterfaceSettings::default()
+            };
+            let json = serde_json::to_string(&settings).unwrap();
+            let back: InterfaceSettings = serde_json::from_str(&json).unwrap();
+            assert_eq!(back.accent, accent, "{json}");
+        }
+    }
+
+    #[test]
+    fn a_fixed_accent_ignores_what_is_playing() {
+        let look = crate::cover_colour::Look::of(&[[200, 30, 40]]).expect("a red");
+        for accent in Accent::ALL.into_iter().filter(|a| *a != Accent::Artwork) {
+            let interface = InterfaceSettings {
+                appearance: Appearance::Dark,
+                accent,
+                ..InterfaceSettings::default()
+            };
+            assert_eq!(
+                theme(Mode::Dark, &interface, Some(&look)).palette(),
+                theme(Mode::Dark, &interface, None).palette(),
+                "{accent:?}"
+            );
+        }
+        let artwork = InterfaceSettings {
+            appearance: Appearance::Dark,
+            ..InterfaceSettings::default()
+        };
+        assert_eq!(
+            theme(Mode::Dark, &artwork, Some(&look)).palette().primary,
+            look.dark.accent
+        );
+        // Nothing playing: the violet, as before.
+        assert_eq!(
+            theme(Mode::Dark, &artwork, None).palette(),
+            theme::for_mode(Mode::Dark).palette()
+        );
     }
 }

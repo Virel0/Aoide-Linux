@@ -15,14 +15,13 @@ use crate::widgets;
 impl State {
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
         let key = view.key;
-        let mut body = column![
-            row![
-                widgets::cover(self.cover.as_ref(), view.artwork, 180.0, 10.0),
-                self.head(view).width(Length::Fill)
-            ]
-            .spacing(24)
+        let cover = widgets::cover(self.cover.as_ref(), view.artwork, 180.0, 10.0);
+        let header = row![
+            widgets::lifted(cover, 10.0, view),
+            self.head(view).width(Length::Fill)
         ]
-        .spacing(16);
+        .spacing(24);
+        let mut body = column![].spacing(16);
         if let Some(menu) = view.menu.filter(|m| m.anchor == format!("{key}:playlist")) {
             body = body.push(widgets::menu_strip(menu, view));
         }
@@ -60,7 +59,8 @@ impl State {
             }
             Load::Ready(tracks) => self.songs(tracks, view),
         });
-        crate::handoff::played_from(widgets::page(body), self.context())
+        let page = widgets::page_with_header(header, body, view);
+        crate::handoff::played_from(page, self.context())
     }
 
     fn name(&self) -> &str {

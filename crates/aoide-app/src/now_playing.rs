@@ -62,6 +62,6 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, panel: Panel) -> Element<'a, M
     )
     .width(Length::Fixed(WIDTH))
     .height(Fill)
-    .style(theme::side)
+    .style(theme::artwork::tinted(theme::side, app.playing_look()))
     .into()
 }

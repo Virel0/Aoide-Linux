@@ -1,13 +1,14 @@
 //! A page's frame and its states: the title bar, the scrolled body,
 //! loading, empty and failed.
 
-use iced::widget::{button, column, container, row, scrollable, text};
-use iced::{Center, Element, Fill};
+use iced::widget::{button, column, container, row, scrollable, text, themer};
+use iced::{Center, Element, Fill, Padding};
 
 use super::{BOLD, secondary};
 use crate::app::Message;
 use crate::failure::Failure;
 use crate::icons::{Icon, Tone, icon};
+use crate::screens::View;
 use crate::theme;
 
 /// A screen's title, with a back button when there is somewhere to go back to.
@@ -33,6 +34,64 @@ pub fn page<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message
     scrollable(container(content).padding([24, 28]).width(Fill))
         .id(PAGE)
         .height(Fill)
+        .into()
+}
+
+/// A page whose header can be washed in its cover's colour (`view.wash`):
+/// the header on the wash, in the cover's accent with its quiet buttons
+/// veiled, then `body` on the page's own ground. Laid out the same with a
+/// wash or without, so nothing moves when the colours arrive.
+pub fn page_with_header<'a>(
+    header: impl Into<Element<'a, Message>>,
+    body: impl Into<Element<'a, Message>>,
+    view: &View<'a>,
+) -> Element<'a, Message> {
+    let header: Element<'a, Message> = match &view.wash {
+        Some(wash) => themer(Some(wash.header.clone()), header).into(),
+        None => header.into(),
+    };
+    let derived = view.wash.as_ref().map(|wash| wash.derived);
+    let header = container(header)
+        .padding(Padding {
+            top: 24.0,
+            right: 28.0,
+            bottom: 16.0,
+            left: 28.0,
+        })
+        .width(Fill)
+        .style(theme::artwork::wash(derived));
+    let body = container(body)
+        .padding(Padding {
+            top: 0.0,
+            right: 28.0,
+            bottom: 24.0,
+            left: 28.0,
+        })
+        .width(Fill);
+    scrollable(column![header, body])
+        .id(PAGE)
+        .height(Fill)
+        .into()
+}
+
+/// A page's cover, on a soft shadow when the page is washed; `radius` is
+/// the cover's own. Wrapped either way, so a motion cover playing in it
+/// keeps going when the colours arrive.
+pub fn lifted<'a>(
+    cover: impl Into<Element<'a, Message>>,
+    radius: f32,
+    view: &View<'a>,
+) -> Element<'a, Message> {
+    let washed = view.wash.is_some();
+    let shadow = theme::artwork::lifted(radius);
+    container(cover)
+        .style(move |t| {
+            if washed {
+                shadow(t)
+            } else {
+                container::Style::default()
+            }
+        })
         .into()
 }
 

@@ -93,9 +93,6 @@ pub enum Msg {
     /// The playing cover made into the full player's ground (`None` when it
     /// couldn't be read).
     Backdrop(crate::artwork::ArtKey, Option<crate::full_player::Made>),
-    /// An album's colours from the server (empty when it has none, or
-    /// couldn't be asked), for the full player's ground.
-    AlbumPalette(String, Vec<[u8; 3]>),
     /// The full player's clock: its ground moves, its controls may hide.
     FullTick(std::time::Instant),
     /// The pointer moved or a key was pressed over the full player.
@@ -174,7 +171,6 @@ impl App {
             Msg::FullGround(ground) => self.set_full_ground(ground),
             Msg::NextGround => self.set_full_ground(self.config.interface.full_ground.next()),
             Msg::Backdrop(key, made) => self.backdrop_made(key, made),
-            Msg::AlbumPalette(album, palette) => self.palette_arrived(album, palette),
             Msg::FullTick(now) => self.full_tick(now),
             Msg::FullStirred => self.full_stirred(),
             Msg::FullFocus(focused) => self.full_focus(focused),

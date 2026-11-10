@@ -13,6 +13,7 @@ use iced::{Element, Task};
 use super::{Ctx, Load, PageMsg, View, fetch};
 use crate::app::Message as App;
 use crate::artwork::ArtKey;
+use crate::cover_colour::Origin;
 use crate::failure::Failure;
 use crate::finish;
 use crate::library::Tile;
@@ -34,6 +35,8 @@ pub struct State {
     credit: Option<PosterCredit>,
     /// Their albums by kind, each kind that has any.
     albums: Load<Vec<(kinds::Kind, Vec<Tile>)>>,
+    /// Each album's colours from the server, by id.
+    palettes: Vec<(String, Vec<[u8; 3]>)>,
     /// Their most played songs here; empty until there are plays.
     top: Vec<TrackMeta>,
     /// "You finish 78% of this artist's songs", once there is enough history.
@@ -68,6 +71,7 @@ pub fn open(ctx: &Ctx<'_>, id: &str, name: &str) -> (State, Task<App>) {
             portrait: None,
             credit: None,
             albums: Load::Loading,
+            palettes: Vec::new(),
             top: Vec::new(),
             finish: None,
         },
@@ -91,6 +95,12 @@ impl State {
                     .as_ref()
                     .map(|items| items.iter().map(|a| a.id.clone()).collect())
                     .unwrap_or_default();
+                if let Ok(items) = &result {
+                    self.palettes = items
+                        .iter()
+                        .map(|a| (a.id.clone(), a.palette.clone()))
+                        .collect();
+                }
                 self.albums = Load::from(result.map(|items| kinds::group(&items)));
                 if ids.is_empty() {
                     return Task::none();
@@ -147,6 +157,33 @@ impl State {
         }
     }
 
+    /// Where the page's colours come from, once it has loaded: their
+    /// portrait, else their first album's cover (its colours from the
+    /// server, else its picture's).
+    pub fn colour_origins(&self) -> Vec<Origin> {
+        let Some(groups) = self.albums.ready() else {
+            return Vec::new();
+        };
+        let mut origins: Vec<Origin> = self
+            .portrait
+            .clone()
+            .map(Origin::Picture)
+            .into_iter()
+            .collect();
+        if let Some(first) = groups.first().and_then(|(_, tiles)| tiles.first()) {
+            origins.push(Origin::Album(first.id.clone()));
+            origins.extend(first.art.clone().map(Origin::Picture));
+        }
+        origins
+    }
+
+    /// Their albums' colours as the page brought them.
+    pub fn known_palettes(&self) -> impl Iterator<Item = (&str, &[[u8; 3]])> {
+        self.palettes
+            .iter()
+            .map(|(id, palette)| (id.as_str(), palette.as_slice()))
+    }
+
     pub fn artwork(&self) -> Vec<ArtKey> {
         let mut keys: Vec<ArtKey> = self
             .albums
@@ -169,6 +206,7 @@ impl State {
         let picture = container(widgets::round_art(Some(portrait), view.artwork))
             .width(PORTRAIT)
             .height(PORTRAIT);
+        let picture = widgets::lifted(picture, PORTRAIT / 2.0, view);
         let key = view.key;
         let credit = self.credit.as_ref().and_then(|credit| {
             widgets::credit_line(credit, move |url| {
@@ -179,7 +217,7 @@ impl State {
     }
 
     pub fn view<'a>(&'a self, view: &View<'a>) -> Element<'a, App> {
-        let mut body = column![
+        let header = column![
             widgets::title_bar(&self.name, view.can_go_back),
             self.portrait(view),
             crate::radio::start_button(crate::radio::Station::new(
@@ -188,6 +226,7 @@ impl State {
             )),
         ]
         .spacing(20);
+        let mut body = column![].spacing(20);
         if let Some(finish) = &self.finish {
             body = body.push(widgets::secondary(finish.as_str()).size(13));
         }
@@ -225,6 +264,6 @@ impl State {
             .spacing(20)
             .into(),
         });
-        widgets::page(body)
+        widgets::page_with_header(header, body, view)
     }
 }

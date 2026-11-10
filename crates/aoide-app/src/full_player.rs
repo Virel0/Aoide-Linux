@@ -16,7 +16,8 @@ mod lyrics;
 mod palette;
 mod server_palette;
 
-use std::collections::HashMap;
+pub(crate) use backdrop::picture_palette;
+
 use std::time::Instant;
 
 use iced::theme::Mode;
@@ -115,9 +116,6 @@ pub struct FullPlayer {
     backdrop_for: Option<ArtKey>,
     /// That cover, blurred, and its colours, once made.
     backdrop: Option<backdrop::Made>,
-    /// Albums' colours from the server, by album id: empty while asked for,
-    /// and for an album with none.
-    palettes: HashMap<String, Vec<[u8; 3]>>,
     /// Seconds the moving ground has moved: only while the music plays.
     clock: f32,
     last_tick: Option<Instant>,
@@ -134,7 +132,6 @@ impl FullPlayer {
             made_fullscreen: false,
             backdrop_for: None,
             backdrop: None,
-            palettes: HashMap::new(),
             clock: 0.0,
             last_tick: None,
             last_stirred: now,
@@ -216,7 +213,7 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
         space().height(TOP_BAR).into()
     };
     let page = stack![
-        ground(full, interface.full_ground),
+        ground(full, &app.colours, interface.full_ground),
         column![top, container(middle).center(Fill)]
             .spacing(10)
             .padding(24),
@@ -226,7 +223,8 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed, full: &'a FullPlayer) -> Eleme
     } else {
         mouse::Interaction::Hidden
     });
-    let dark = crate::appearance::in_mode(Mode::Dark, interface);
+    let playing = app.playing_look();
+    let dark = crate::appearance::in_mode(Mode::Dark, interface, playing.as_ref());
     themer(Some(dark), page).into()
 }
 
@@ -235,7 +233,11 @@ const TOP_BAR: f32 = 34.0;
 
 /// The blurred cover across the window, with the moving ground over it when
 /// one is chosen; the plain dark page until the cover is made.
-fn ground(full: &FullPlayer, chosen: Ground) -> Element<'_, Message> {
+fn ground<'a>(
+    full: &'a FullPlayer,
+    colours: &crate::cover_colour::CoverColours,
+    chosen: Ground,
+) -> Element<'a, Message> {
     let Some(made) = &full.backdrop else {
         return container(space().width(Fill).height(Fill))
             .style(theme::page)
@@ -251,7 +253,7 @@ fn ground(full: &FullPlayer, chosen: Ground) -> Element<'_, Message> {
     }
     let moving = shader(ground::Program {
         ground: chosen,
-        palette: full.ground_palette(made.palette),
+        palette: full.ground_palette(made.palette, colours),
         clock: full.clock,
     })
     .width(Fill)
