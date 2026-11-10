@@ -7,6 +7,8 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-09
+
 ### Added
 - A For you shelf on Home, under Discover: songs picked from what you
   play, each with "Because you listened to" the song or artist it came
@@ -448,7 +450,8 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.7.0...v0.8.0
