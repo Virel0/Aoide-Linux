@@ -91,7 +91,10 @@ fn pictured(tile: &ResumeTile) -> Pictured {
         return Pictured::Track;
     };
     match (context.kind, context.seed) {
-        (RecentContextKind::Album | RecentContextKind::LocalPlaylist, _)
+        (
+            RecentContextKind::Album | RecentContextKind::LocalPlaylist | RecentContextKind::Song,
+            _,
+        )
         | (RecentContextKind::Station, Some(StationSeed::Album)) => Pictured::Album,
         (RecentContextKind::Station, None)
             if matches!(station_seed(context), MixSeed::Track(_)) =>
@@ -188,6 +191,7 @@ pub async fn resume(
     };
     let (items, source) = match context.kind {
         RecentContextKind::Album => return album(&client, context).await,
+        RecentContextKind::Song => return song(&client, context).await,
         RecentContextKind::JellyfinPlaylist => {
             return Err(
                 "That playlist was on the Jellyfin server, which Melete replaced.".to_owned(),
@@ -237,6 +241,64 @@ async fn album(client: &MeleteClient, context: RecentContext) -> Result<Resumed,
         picked_up: None,
         context: Some(context),
     })
+}
+
+/// A song tile's tracks: its album from that song on, or the song alone when
+/// the album can't be read or no longer has it.
+async fn song(client: &MeleteClient, context: RecentContext) -> Result<Resumed, String> {
+    if let Some(id) = context.album_id.as_deref()
+        && let Ok(album) = client.album_tracks(id).await
+        && let Some((tracks, start)) = from_song(&album, &context.id)
+    {
+        return Ok(song_resumed(tracks, start, context));
+    }
+    let alone = client
+        .items_by_ids(&[context.id.as_str()])
+        .await
+        .map_err(describe)?;
+    let tracks = alone.iter().map(TrackMeta::from_item).collect();
+    Ok(song_resumed(tracks, 0, context))
+}
+
+/// An album's tracks in its order, and where song `id` is in them; `None`
+/// when it isn't.
+pub fn from_song(album: &[Item], id: &str) -> Option<(Vec<TrackMeta>, usize)> {
+    let mut tracks: Vec<TrackMeta> = album.iter().map(TrackMeta::from_item).collect();
+    crate::screens::album::album_order(&mut tracks);
+    let start = tracks.iter().position(|track| track.id == id)?;
+    Some((tracks, start))
+}
+
+fn song_resumed(tracks: Vec<TrackMeta>, start: usize, context: RecentContext) -> Resumed {
+    Resumed {
+        tracks,
+        start,
+        source: PlaySource::Album,
+        seek_ms: None,
+        picked_up: None,
+        context: Some(context),
+    }
+}
+
+/// What a tile's Play Next and Play Last put in the queue: an album's
+/// tracks, a song alone, an Aoide playlist's songs (a smart one's now).
+pub async fn tile_tracks(
+    client: MeleteClient,
+    store: StoreHandle,
+    context: RecentContext,
+) -> Result<Vec<TrackMeta>, String> {
+    let items = match context.kind {
+        RecentContextKind::Album => return album(&client, context).await.map(|r| r.tracks),
+        RecentContextKind::Song => client
+            .items_by_ids(&[context.id.as_str()])
+            .await
+            .map_err(describe)?,
+        RecentContextKind::LocalPlaylist => local_playlist(&client, &store, &context).await?.0,
+        RecentContextKind::JellyfinPlaylist
+        | RecentContextKind::Station
+        | RecentContextKind::Mix => Vec::new(),
+    };
+    Ok(items.iter().map(TrackMeta::from_item).collect())
 }
 
 /// An Aoide playlist's songs in its order (a smart one's evaluated now).

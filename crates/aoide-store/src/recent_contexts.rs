@@ -1,5 +1,5 @@
-//! Something a listener was *in* — an album, a playlist, a mix, a station — so Home
-//! can open on the last few and resume one in a tap. The iOS `RecentContexts` and the
+//! Something a listener was *in* — an album, a playlist, a mix, a station, or a song
+//! picked out of an album — so Home can open on the last few and resume one in a tap. The iOS `RecentContexts` and the
 //! desktop `recent-contexts.ts`, which agree on every rule here.
 //!
 //! A context is a thing playback **started from**: record one when playback starts
@@ -37,6 +37,9 @@ pub enum RecentContextKind {
     Mix,
     /// A station from an item, chosen by `/aoide/next`; see [`RecentContext::seed`].
     Station,
+    /// One song chosen from an album's own list, resumed from that song on through
+    /// [`RecentContext::album_id`].
+    Song,
 }
 
 impl RecentContextKind {
@@ -48,6 +51,7 @@ impl RecentContextKind {
             Self::LocalPlaylist => "localPlaylist",
             Self::Mix => "mix",
             Self::Station => "station",
+            Self::Song => "song",
         }
     }
 
@@ -58,6 +62,7 @@ impl RecentContextKind {
             Self::JellyfinPlaylist | Self::LocalPlaylist => "Playlist",
             Self::Mix => "Mix",
             Self::Station => "Station",
+            Self::Song => "Song",
         }
     }
 }
@@ -72,7 +77,7 @@ pub enum StationSeed {
     Artist,
 }
 
-/// Something played from recently: an album, a playlist, a mix or a station.
+/// Something played from recently: an album, a playlist, a mix, a station or a song.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentContext {
@@ -87,7 +92,7 @@ pub struct RecentContext {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtitle: Option<String>,
     /// The Melete item whose cover stands for this context. Leave unset for
-    /// an album or Jellyfin playlist: its own id draws it.
+    /// an album or Jellyfin playlist: its own id draws it. A song's is its album.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artwork_item_id: Option<String>,
     /// Only for a station: which kind of thing seeded it, so it can be seeded again.
@@ -97,12 +102,16 @@ pub struct RecentContext {
     /// what its plays are filed under.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub smart: Option<bool>,
+    /// Only for a song: the album it was picked from, which it is resumed in. Lists
+    /// saved before songs were kept have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub album_id: Option<String>,
     /// This device's clock. Only ever compared on this device.
     pub last_opened: Millis,
 }
 
 impl RecentContext {
-    /// A context with no subtitle, artwork, seed or smart flag.
+    /// A context with no subtitle, artwork, seed, smart flag or album.
     pub fn new(
         kind: RecentContextKind,
         id: impl Into<String>,
@@ -117,6 +126,7 @@ impl RecentContext {
             artwork_item_id: None,
             seed: None,
             smart: None,
+            album_id: None,
             last_opened,
         }
     }
@@ -145,9 +155,33 @@ impl RecentContext {
         context
     }
 
+    /// A song picked from `album_id`'s own list, drawn with that album's cover.
+    pub fn song(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        album_id: impl Into<String>,
+        last_opened: Millis,
+    ) -> Self {
+        let album_id = album_id.into();
+        let mut context = Self::new(RecentContextKind::Song, id, name, last_opened);
+        context.artwork_item_id = Some(album_id.clone());
+        context.album_id = Some(album_id);
+        context
+    }
+
     /// One entry per thing, whatever its name is today.
     pub fn key(&self) -> String {
         format!("{}:{}", self.kind.as_str(), self.id)
+    }
+
+    /// The album this stands for: an album's own id, or a song's album. One album is
+    /// one tile, whether it was last played whole or from one of its songs.
+    pub fn album(&self) -> Option<&str> {
+        match self.kind {
+            RecentContextKind::Album => Some(self.id.as_str()),
+            RecentContextKind::Song => self.album_id.as_deref(),
+            _ => None,
+        }
     }
 
     /// The line under the name: the subtitle, or what kind of thing it is.
@@ -172,10 +206,15 @@ impl RecentContextList {
         &self.contexts
     }
 
-    /// Records a visit: the same thing again moves to the front with its new name.
+    /// Records a visit: the same thing again moves to the front with its new name. An
+    /// album played whole replaces a song of it played before, and a song replaces its
+    /// album and any other song of it.
     pub fn remember(&mut self, context: RecentContext) {
         let key = context.key();
-        self.contexts.retain(|existing| existing.key() != key);
+        let album = context.album().map(str::to_owned);
+        self.contexts.retain(|existing| {
+            existing.key() != key && (album.is_none() || existing.album() != album.as_deref())
+        });
         self.contexts.insert(0, context);
         self.contexts.truncate(Self::CAPACITY);
     }
@@ -299,7 +338,9 @@ impl ResumeTile {
         }
     }
 
-    /// The Melete item whose cover the tile draws, when there is one.
+    /// The Melete item whose cover the tile draws, when there is one. For a handoff
+    /// it is the other device's current track: covers belong to albums, so the app
+    /// looks that track up and draws its album's.
     pub fn artwork_item_id(&self) -> Option<&str> {
         match self {
             Self::Handoff(queue) => queue.current_track_id(),
@@ -310,6 +351,10 @@ impl ResumeTile {
                         .as_deref()
                         .unwrap_or(context.id.as_str()),
                 ),
+                RecentContextKind::Song => context
+                    .artwork_item_id
+                    .as_deref()
+                    .or(context.album_id.as_deref()),
                 _ => context.artwork_item_id.as_deref(),
             },
         }

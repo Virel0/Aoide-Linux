@@ -174,15 +174,19 @@ impl State {
         body = body.push(match &self.tracks {
             Load::Loading => widgets::loading(),
             Load::Failed(error) => view.failure(error),
-            Load::Ready(tracks) => widgets::track_list_with_headings(
-                tracks,
-                view,
-                ListStyle {
-                    numbered: true,
-                    show_album: false,
-                },
-                PlaySource::Album,
-                &disc_headings(tracks),
+            Load::Ready(tracks) => crate::handoff::rows_played_from(
+                widgets::track_list_with_headings(
+                    tracks,
+                    view,
+                    ListStyle {
+                        numbered: true,
+                        show_album: false,
+                    },
+                    PlaySource::Album,
+                    &disc_headings(tracks),
+                ),
+                &self.id,
+                &self.title,
             ),
         });
         let page = widgets::page_with_header(header, body, view);

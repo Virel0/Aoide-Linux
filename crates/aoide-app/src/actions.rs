@@ -53,12 +53,14 @@ pub enum Collection {
     Artist(String),
     /// An Aoide playlist.
     Playlist(String),
+    /// One song, as a resume tile names it.
+    Song(String),
 }
 
 impl Collection {
     pub fn source(&self) -> PlaySource {
         match self {
-            Collection::Album(_) => PlaySource::Album,
+            Collection::Album(_) | Collection::Song(_) => PlaySource::Album,
             Collection::Artist(_) => PlaySource::Unknown,
             Collection::Playlist(_) => PlaySource::Playlist,
         }
@@ -107,6 +109,7 @@ pub async fn collection_tracks(
                 .map_err(|e| Failure::Store(e.to_string()))?;
             client.items_by_ids(&ids).await.map_err(Failure::Server)
         }
+        Collection::Song(id) => client.items_by_ids(&[id]).await.map_err(Failure::Server),
     }
 }
 
@@ -134,6 +137,9 @@ pub struct Menu {
     pub collection: Option<(Collection, String)>,
     pub loading: bool,
     pub error: Option<String>,
+    /// Only Play Next and Play Last: a resume tile's menu, whose tile plays it
+    /// already and whose `×` removes it.
+    pub queue_only: bool,
 }
 
 impl Menu {
@@ -148,6 +154,7 @@ impl Menu {
             collection: None,
             loading: false,
             error: None,
+            queue_only: false,
         }
     }
 
