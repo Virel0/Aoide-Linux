@@ -33,6 +33,8 @@ use crate::playback::Enqueue;
 use crate::screens::{PageMsg, home};
 
 mod resume;
+
+pub(crate) use resume::local_playlist_ids;
 #[cfg(test)]
 mod song_tests;
 

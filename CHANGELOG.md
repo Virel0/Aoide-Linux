@@ -36,6 +36,10 @@ state of every feature in more detail.
   artwork; any other accent stays as chosen. A config saved by this version
   can't be read by an older one, which starts from its defaults.
 
+### Fixed
+- A smart playlist's menu on the Playlists screen uses the songs its rules
+  match now; it found none and said there were no songs here.
+
 ## [0.10.0] - 2026-11-09
 
 ### Added
