@@ -77,7 +77,7 @@ pub enum Failure {
 /// The songs of a collection, in the order they play: an album's in disc and
 /// track order, an artist's album by album (their own albums' and the ones
 /// crediting them elsewhere), a playlist's in its order without the entries
-/// the server no longer has.
+/// the server no longer has, a smart playlist's as its rules match now.
 pub async fn collection_tracks(
     client: MeleteClient,
     store: StoreHandle,
@@ -93,21 +93,20 @@ pub async fn collection_tracks(
             Ok(client.songs(&query).await.map_err(Failure::Server)?.items)
         }
         Collection::Playlist(id) => {
+            // A smart playlist has no entries of its own: its rules are
+            // evaluated, as its page and its Home tile do.
             let ids = store
-                .call(move |w| {
-                    w.store.items(&id).map(|items| {
-                        items
-                            .iter()
-                            // A song not in the library yet has no track to play.
-                            .filter(|item| !item.is_unresolved() && !item.is_waiting())
-                            .map(|item| item.linked_jellyfin_id().to_owned())
-                            .collect::<Vec<_>>()
-                    })
-                })
+                .call(move |w| crate::handoff::local_playlist_ids(&w.store, &id))
                 .await
                 .ok_or_else(|| Failure::Store("the library is closing".into()))?
-                .map_err(|e| Failure::Store(e.to_string()))?;
-            client.items_by_ids(&ids).await.map_err(Failure::Server)
+                .map_err(Failure::Store)?
+                .map(|(ids, _)| ids)
+                .unwrap_or_default();
+            if ids.is_empty() {
+                return Ok(Vec::new());
+            }
+            let items = client.items_by_ids(&ids).await.map_err(Failure::Server)?;
+            Ok(crate::handoff::ordered(items, &ids))
         }
         Collection::Song(id) => client.items_by_ids(&[id]).await.map_err(Failure::Server),
     }
@@ -314,6 +313,72 @@ mod tests {
             .unwrap();
         let names: Vec<&str> = tracks.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["B", "A"]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_smart_playlists_songs_are_its_rules_matches() {
+        use aoide_melete::{Credentials, Device, ServerAddress};
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/music/tracks"))
+            .and(query_param("id", "1"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(crate::test_json::page(vec![
+                    crate::test_json::track(1, "Lantern"),
+                ])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = MeleteClient::new(
+            ServerAddress::parse(&server.uri()).unwrap(),
+            Device::new("Test", "device-1"),
+        )
+        .unwrap()
+        .with_credentials(Credentials {
+            user_id: "7".into(),
+            access_token: "tok".into(),
+            username: "alice".into(),
+        });
+        let store = StoreHandle::in_memory("device-1").unwrap();
+        let id = store
+            .call(|w| {
+                let now = aoide_store::now_millis();
+                w.store.ensure_built_in_playlists("7", now).unwrap();
+                // Played often, lately: Heavy Rotation's kind of song.
+                let track =
+                    aoide_store::TrackRef::new("1", "k1", "Lantern", "Mara Vey", "Saltwater", now);
+                w.store.cache_tracks(&[track]).unwrap();
+                let link = aoide_store::TrackLink::new("1", "k1");
+                for n in 0..6 {
+                    let at = now - (n + 1) * 3_600_000;
+                    w.store
+                        .record_play(
+                            &link,
+                            at,
+                            180_000,
+                            Some(180_000),
+                            PlaySource::Album,
+                            Some(true),
+                        )
+                        .unwrap();
+                }
+                aoide_store::BuiltInPlaylist::HeavyRotation.id_for("7")
+            })
+            .await
+            .unwrap();
+        let tracks = collection_tracks(client, store, Collection::Playlist(id))
+            .await
+            .unwrap();
+        let names: Vec<&str> = tracks.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["Lantern"],
+            "its rules' matches, though it has no entries"
+        );
     }
 
     #[test]
