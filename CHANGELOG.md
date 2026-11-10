@@ -8,6 +8,14 @@ state of every feature in more detail.
 ## [Unreleased]
 
 ### Added
+- A For you shelf on Home, under Discover: songs picked from what you
+  play, each with "Because you listened to" the song or artist it came
+  from. One in your library plays, with the shelf's other playable songs
+  after it, and its `…` or a right click has a song's menu (Play next, Play
+  last, Add to playlist, Not interested…). One that isn't has Ask for it,
+  as Search's lookup does, or says it's asked for already. Needs Melete
+  with For You and ListenBrainz on; otherwise, and while the list is still
+  being made, the shelf isn't shown.
 - Home's "Jump back in" tiles show what you last played: clicking one song
   on an album's page makes a tile for that song (its name and artist, the
   album's cover), and the tile plays from that song through the rest of the

@@ -19,7 +19,8 @@
 //! - **Artists:** [`MeleteClient::artist`] for one's page, with their
 //!   portrait and its credit when the server has one (Melete 0.9.0), read
 //!   through [`MeleteClient::poster_url`].
-//! - **Home:** [`MeleteClient::home`].
+//! - **Home:** [`MeleteClient::home`], and [`MeleteClient::for_you`] for
+//!   songs from the listener's history, to play or to ask for.
 //! - **Collections** (saved song filters, made in Melete's web):
 //!   [`MeleteClient::collections`], [`MeleteClient::collection_songs`],
 //!   [`MeleteClient::collection_shuffled`] and
@@ -68,6 +69,7 @@ mod colours;
 mod details;
 mod error;
 mod events;
+mod for_you;
 mod gallery;
 mod library;
 mod listen;
@@ -90,6 +92,7 @@ pub use collections::{COLLECTION_PAGE_MAX, Collection};
 pub use details::ItemDetails;
 pub use error::Error;
 pub use events::{Event, EventStream};
+pub use for_you::{Because, BecauseKind, ForYou, ForYouItem, ForYouSong, ForYouState, Suggestion};
 pub use gallery::{AvatarCategory, GalleryPage, GalleryPicture};
 pub use library::{Home, Likes, ListQuery, SearchResults, Sort};
 pub use listen::{ListenMember, ListenSession, ListenState, Listening, is_stale};

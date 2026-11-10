@@ -2,7 +2,9 @@
 //! device's queue when it is newer), then shelves of albums — recently added,
 //! recently played and most played (Melete's Home view, from this listener's
 //! history on every device), recently released, a random handful — and some
-//! genres to wander into. A shelf with nothing on it is left out.
+//! genres to wander into. A shelf with nothing on it is left out. For you,
+//! under Discover, is Melete's songs from this listener's history
+//! (`for_you`).
 
 use std::collections::hash_map::RandomState;
 use std::hash::BuildHasher;
@@ -25,6 +27,9 @@ const GENRES: usize = 12;
 /// Albums the random shelf is picked from.
 const RANDOM_POOL: u32 = 500;
 
+mod for_you;
+pub use for_you::floats;
+
 #[derive(Debug)]
 pub struct State {
     added: Load<Vec<Tile>>,
@@ -38,6 +43,8 @@ pub struct State {
     resume: Vec<crate::handoff::Card>,
     /// How many songs this week's Discover holds; `None` hides the tile.
     discover: Option<usize>,
+    /// For you; `None` hides it.
+    for_you: Option<for_you::Shelf>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +55,7 @@ pub enum Message {
     Genres(Result<Vec<Item>, Failure>),
     Resume(Vec<crate::handoff::Card>),
     Discover(Option<usize>),
+    ForYou(for_you::Message),
 }
 
 pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
@@ -84,6 +92,7 @@ pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
             wrap(Message::Random),
         ),
         fetch(key, async move { d.genres().await }, wrap(Message::Genres)),
+        for_you::load(ctx),
     ]);
     (
         State {
@@ -95,6 +104,7 @@ pub fn open(ctx: &Ctx<'_>) -> (State, Task<App>) {
             genres: Load::Loading,
             resume: Vec::new(),
             discover: None,
+            for_you: None,
         },
         tasks,
     )
@@ -117,7 +127,7 @@ pub(crate) fn pick<T>(mut items: Vec<T>, count: usize) -> Vec<T> {
 }
 
 impl State {
-    pub fn update(&mut self, message: Message) -> Task<App> {
+    pub fn update(&mut self, message: Message, ctx: &Ctx<'_>) -> Task<App> {
         match message {
             Message::Home(Ok(home)) => {
                 let albums = |items: Vec<Item>| items.iter().take(SHELF).map(Tile::album).collect();
@@ -143,6 +153,14 @@ impl State {
             }
             Message::Resume(cards) => self.resume = cards,
             Message::Discover(count) => self.discover = count,
+            Message::ForYou(for_you::Message::Loaded(answer)) => {
+                self.for_you = for_you::shelf(answer);
+            }
+            Message::ForYou(message) => {
+                if let Some(shelf) = self.for_you.as_mut() {
+                    return shelf.update(message, ctx);
+                }
+            }
         }
         Task::none()
     }
@@ -168,6 +186,7 @@ impl State {
                     .flatten()
                     .filter_map(|t| t.art.clone()),
             )
+            .chain(self.for_you.iter().flat_map(for_you::Shelf::artwork))
             .collect()
     }
 
@@ -178,6 +197,9 @@ impl State {
         }
         if let Some(count) = self.discover {
             body = body.push(super::discover::tile(count));
+        }
+        if let Some(shelf) = &self.for_you {
+            body = body.push(shelf.view(view));
         }
         for (title, shelf) in self.shelves() {
             match shelf {

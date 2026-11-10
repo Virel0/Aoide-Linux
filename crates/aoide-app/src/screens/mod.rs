@@ -299,7 +299,7 @@ impl Page {
 
     pub fn update(&mut self, message: PageMsg, ctx: &Ctx<'_>) -> Task<Message> {
         match (self, message) {
-            (Page::Home(state), PageMsg::Home(m)) => state.update(m),
+            (Page::Home(state), PageMsg::Home(m)) => state.update(m, ctx),
             (Page::Albums(state), PageMsg::Albums(m)) => state.update(m, ctx),
             (Page::Album(state), PageMsg::Album(m)) => state.update(m, ctx),
             (Page::Artists(state), PageMsg::Artists(m)) => state.update(m, ctx),

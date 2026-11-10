@@ -38,7 +38,8 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     let window: Element<'a, Message> = if let Some(popover) = crate::player_menu::overlay(app) {
         stack![window, popover].into()
     } else {
-        match signed.menu.as_ref().filter(|m| m.collection.is_some()) {
+        let floats = |m: &&Menu| m.collection.is_some() || screens::home::floats(&m.anchor);
+        match signed.menu.as_ref().filter(floats) {
             Some(menu) => stack![window, collection_menu(app, signed, menu)].into(),
             None => window.into(),
         }
@@ -55,8 +56,9 @@ pub fn view<'a>(app: &'a App, signed: &'a Signed) -> Element<'a, Message> {
     }
 }
 
-/// An album's, artist's or playlist's actions, over everything: a tile in a
-/// grid or a shelf has no row below it to open under. A click outside closes.
+/// An album's, artist's or playlist's actions, or a For you song's, over
+/// everything: a tile in a grid or a shelf has no row below it to open
+/// under. A click outside closes.
 fn collection_menu<'a>(app: &'a App, signed: &'a Signed, menu: &'a Menu) -> Element<'a, Message> {
     let view = View {
         key: 0,
