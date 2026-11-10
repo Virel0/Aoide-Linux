@@ -8,6 +8,13 @@ state of every feature in more detail.
 ## [Unreleased]
 
 ### Added
+- Home's "Jump back in" tiles show what you last played: clicking one song
+  on an album's page makes a tile for that song (its name and artist, the
+  album's cover), and the tile plays from that song through the rest of the
+  album, or the song alone if the album can't be read. Playing the album
+  whole makes it the album's tile again; one album never takes two tiles.
+- A Home tile's `…`, or a right click on it, offers Play next and Play last
+  for an album, a song or an Aoide playlist, beside its `×`.
 - A playlist numbers its songs: each one's place in the list, before its
   cover, songs still waiting to arrive included.
 

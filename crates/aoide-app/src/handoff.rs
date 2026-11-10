@@ -9,12 +9,15 @@
 //!
 //! **Remembering.** Playback started from an album's, a playlist's or a
 //! station's own page is a [`RecentContext`], kept per server in a JSON file
-//! beside the store. Shuffle-all, search results and Infinity are not.
+//! beside the store; one song clicked on an album's page is a song context,
+//! resumed from that song through the album. Shuffle-all, search results and
+//! Infinity are not.
 //!
 //! **The grid.** Home's first six tiles: [`resume_tiles`] over those contexts,
 //! led by "Pick up from {device}" when another device was playing more
-//! recently than anything here. A tile plays at once; picking up keeps the
-//! other device's earlier tracks and starts at its track and place.
+//! recently than anything here. A tile plays at once, and its `…` offers Play
+//! Next and Play Last; picking up keeps the other device's earlier tracks and
+//! starts at its track and place.
 
 use std::path::PathBuf;
 
@@ -23,16 +26,18 @@ use aoide_store::{
 };
 use iced::{Element, Task};
 
-use crate::actions::{Collection, PlayRequest};
+use crate::actions::{Collection, Menu, PlayRequest, RowAction};
 use crate::app::{App, Message};
 use crate::config::Paths;
 use crate::playback::Enqueue;
 use crate::screens::{PageMsg, home};
 
 mod resume;
+#[cfg(test)]
+mod song_tests;
 
 pub use resume::{Card, Resumed, ordered};
-use resume::{load_cards, resume};
+use resume::{load_cards, resume, tile_tracks};
 
 /// What handoff and the grid keep while signed in.
 #[derive(Debug, Default)]
@@ -103,6 +108,8 @@ pub enum Msg {
     Resume(ResumeTile),
     /// "Remove from Recents".
     Forget(String),
+    /// A tile's `…`, or a right click on it: Play Next and Play Last.
+    Actions(RecentContext),
     /// Playback started from a page that is a context.
     PlayFrom(Box<(PlayRequest, RecentContext)>),
     Resumed(Box<Resumed>),
@@ -132,6 +139,61 @@ pub fn from_context(message: Message, context: &RecentContext) -> Message {
     }
 }
 
+/// Turns a click on one of an album's own rows into a play from that song, so
+/// Home offers the song rather than the whole album. Play and Shuffle above
+/// the list are left to [`played_from`]: they stay the album's.
+pub fn rows_played_from<'a>(
+    element: Element<'a, Message>,
+    album_id: &str,
+    album_title: &str,
+) -> Element<'a, Message> {
+    let (album_id, album_title) = (album_id.to_owned(), album_title.to_owned());
+    element.map(move |message| from_song_row(message, &album_id, &album_title))
+}
+
+/// One message as [`rows_played_from`] rewrites it: a row's play, which
+/// replaces the queue from that row without shuffling, becomes a play from
+/// a song context named for the song and its artist (the album's name when
+/// it has none), drawn with the album's cover.
+pub fn from_song_row(message: Message, album_id: &str, album_title: &str) -> Message {
+    let Message::Play(request) = message else {
+        return message;
+    };
+    let Enqueue::Replace {
+        start,
+        shuffle: false,
+    } = request.how
+    else {
+        return Message::Play(request);
+    };
+    let Some(track) = request.tracks.get(start) else {
+        return Message::Play(request);
+    };
+    let now = aoide_store::now_millis();
+    let mut context = RecentContext::song(track.id.clone(), track.title.clone(), album_id, now);
+    context.subtitle = Some(if track.artist.trim().is_empty() {
+        album_title.to_owned()
+    } else {
+        track.artist.clone()
+    });
+    Message::Handoff(Msg::PlayFrom(Box::new((request, context))))
+}
+
+/// What a tile's Play Next and Play Last stand for: an album, a song or an
+/// Aoide playlist. `None` for a station, which never ends, a mix, and a
+/// Jellyfin playlist, which is gone.
+pub fn tile_collection(context: &RecentContext) -> Option<Collection> {
+    let id = context.id.clone();
+    match context.kind {
+        RecentContextKind::Album => Some(Collection::Album(id)),
+        RecentContextKind::Song => Some(Collection::Song(id)),
+        RecentContextKind::LocalPlaylist => Some(Collection::Playlist(id)),
+        RecentContextKind::JellyfinPlaylist
+        | RecentContextKind::Station
+        | RecentContextKind::Mix => None,
+    }
+}
+
 /// The context an album, artist or playlist menu's Play stands for.
 pub fn collection_context(collection: &Collection, title: &str) -> Option<RecentContext> {
     let now = aoide_store::now_millis();
@@ -148,8 +210,9 @@ pub fn collection_context(collection: &Collection, title: &str) -> Option<Recent
             title,
             now,
         )),
-        // An artist's songs album by album are not something to resume.
-        Collection::Artist(_) => None,
+        // An artist's songs album by album are not something to resume, and
+        // a song's menu is only a resume tile's, which has no Play.
+        Collection::Artist(_) | Collection::Song(_) => None,
     }
 }
 
@@ -226,12 +289,36 @@ impl App {
                 self.save_recents();
                 self.refresh_home()
             }
+            Msg::Actions(context) => self.open_tile_menu(context),
             Msg::PlayFrom(boxed) => {
                 let (request, context) = *boxed;
                 let remembered = self.remembered(Some(context));
                 Task::batch([self.play(request), remembered])
             }
         }
+    }
+
+    /// A tile's Play Next and Play Last, over the window as an album tile's
+    /// actions are, its songs fetched as resuming it would find them. A
+    /// second click closes it.
+    fn open_tile_menu(&mut self, context: RecentContext) -> Task<Message> {
+        let store = self.store.clone();
+        let (Some(signed), Some(collection)) = (self.session.as_mut(), tile_collection(&context))
+        else {
+            return Task::none();
+        };
+        let anchor = format!("resume:{}", context.key());
+        if signed.menu.as_ref().is_some_and(|m| m.anchor == anchor) {
+            signed.menu = None;
+            return Task::none();
+        }
+        let mut menu = Menu::for_collection(anchor.clone(), collection, context.name.clone());
+        menu.queue_only = true;
+        signed.menu = Some(menu);
+        let client = signed.connection.client.clone();
+        Task::perform(tile_tracks(client, store, context), move |result| {
+            Message::Row(RowAction::CollectionTracks(anchor, result))
+        })
     }
 
     /// A row was written: push it now, unless a sync (which pushes it
@@ -447,11 +534,13 @@ mod tests {
         station.artwork_item_id = Some("9".into());
         let mut artist = RecentContext::station(StationSeed::Artist, "1", "Quiet Radio", 3);
         artist.artwork_item_id = Some("1".into());
+        let song = RecentContext::song("1", "Lantern", "6", 2);
         let tiles = vec![
             ResumeTile::Handoff(queue(&["1"], 0, 0)),
             ResumeTile::Context(album),
             ResumeTile::Context(station),
             ResumeTile::Context(artist),
+            ResumeTile::Context(song),
         ];
         let cards = cards(tiles, &[item("1", "7")]);
         let cover = |album: &str| {
@@ -465,6 +554,11 @@ mod tests {
         assert_eq!(cards[1].art, cover("5"), "the album's own, never track 5's");
         assert_eq!(cards[2].art, None, "track 9 was not found");
         assert_eq!(cards[3].art, None, "artist 1 is not track 1");
+        assert_eq!(
+            cards[4].art,
+            cover("6"),
+            "the song's album, never track 1's"
+        );
     }
 
     #[test]

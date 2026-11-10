@@ -208,8 +208,10 @@ impl State {
     }
 }
 
-/// Two rows of three: each tile plays at once. A context's `×` takes it out
-/// of the recents; another device's queue has none, it goes when it is old.
+/// Two rows of three: each tile plays at once. An album's, a song's or an
+/// Aoide playlist's `…` (or a right click on it) offers Play Next and Play
+/// Last; a context's `×` takes it out of the recents. Another device's queue
+/// has neither, it goes when it is old.
 fn resume_grid<'a>(cards: &'a [crate::handoff::Card], view: &View<'a>) -> Element<'a, App> {
     use crate::handoff::Msg;
     use aoide_store::ResumeTile;
@@ -241,6 +243,24 @@ fn resume_grid<'a>(cards: &'a [crate::handoff::Card], view: &View<'a>) -> Elemen
         ]
         .spacing(10)
         .align_y(iced::Center);
+        let actions = match &card.tile {
+            ResumeTile::Context(context) if crate::handoff::tile_collection(context).is_some() => {
+                Some(App::Handoff(Msg::Actions(context.clone())))
+            }
+            _ => None,
+        };
+        if let Some(open) = &actions {
+            line = line.push(
+                button(crate::icons::icon(
+                    crate::icons::Icon::More,
+                    14.0,
+                    crate::icons::Tone::Secondary,
+                ))
+                .style(theme::row)
+                .padding(4)
+                .on_press(open.clone()),
+            );
+        }
         if let ResumeTile::Context(context) = &card.tile {
             line = line.push(
                 button(crate::icons::icon(
@@ -253,12 +273,17 @@ fn resume_grid<'a>(cards: &'a [crate::handoff::Card], view: &View<'a>) -> Elemen
                 .on_press(App::Handoff(Msg::Forget(context.key()))),
             );
         }
-        button(container(line).padding(6))
+        let pressable = button(container(line).padding(6))
             .width(Fill)
             .style(theme::tonal)
             .padding(0)
-            .on_press(App::Handoff(Msg::Resume(card.tile.clone())))
-            .into()
+            .on_press(App::Handoff(Msg::Resume(card.tile.clone())));
+        match actions {
+            Some(open) => iced::widget::mouse_area(pressable)
+                .on_right_press(open)
+                .into(),
+            None => pressable.into(),
+        }
     };
     // Rows of three, the last one padded so its tiles keep their width.
     let mut rows = column![].spacing(10);

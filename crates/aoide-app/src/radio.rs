@@ -57,6 +57,7 @@ impl Station {
             Collection::Album(id) => MixSeed::Album(id.clone()),
             Collection::Artist(id) => MixSeed::Artist(id.clone()),
             Collection::Playlist(_) => MixSeed::Track(menu.tracks.first()?.id.clone()),
+            Collection::Song(id) => MixSeed::Track(id.clone()),
         };
         Some(Self::new(seed, title))
     }

@@ -45,6 +45,14 @@ fn strip_actions<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
     let enabled = ready || menu.collection.is_none();
     let action = |label: &'a str, act: RowAction| strip_button(label, act, enabled);
     let mut actions: Vec<Element<'a, Message>> = Vec::new();
+    if menu.queue_only {
+        actions.extend([
+            action("Play next", RowAction::PlayNext),
+            action("Play last", RowAction::PlayLast),
+            close_button(),
+        ]);
+        return row(actions).spacing(6).wrap().vertical_spacing(6).into();
+    }
     if menu.collection.is_some() {
         actions.push(action("Play", RowAction::Play));
         actions.push(action("Shuffle", RowAction::Shuffle));
@@ -60,14 +68,17 @@ fn strip_actions<'a>(menu: &'a Menu, view: &View<'a>) -> Element<'a, Message> {
     if let Some(track) = menu.single() {
         actions.extend(song_actions(menu, track, view, enabled));
     }
-    actions.push(
-        button(icon(Icon::Close, 14.0, Tone::Secondary))
-            .style(theme::row)
-            .padding(6)
-            .on_press(Message::Row(RowAction::Close))
-            .into(),
-    );
+    actions.push(close_button());
     row(actions).spacing(6).wrap().vertical_spacing(6).into()
+}
+
+/// The strip's `×`, which closes it.
+fn close_button<'a>() -> Element<'a, Message> {
+    button(icon(Icon::Close, 14.0, Tone::Secondary))
+        .style(theme::row)
+        .padding(6)
+        .on_press(Message::Row(RowAction::Close))
+        .into()
 }
 
 /// One song's own actions: the taste flags, Favourite, Go to, Get Info.
