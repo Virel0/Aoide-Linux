@@ -71,6 +71,11 @@
   <!-- Newest first. Add one for each tag before tagging it; the date is the
        release's. -->
   <releases>
+    <release version="0.12.0" date="2026-11-12" type="development">
+      <description>
+        <p>Merge a playlist into another of your own: its songs go on the end, leaving out ones already there, songs still waiting to arrive included. A smart playlist can be merged in as the songs it matches now. You are then asked whether to delete the original.</p>
+      </description>
+    </release>
     <release version="0.11.0" date="2026-11-09" type="development">
       <description>
         <p>Pages take their colour from the album cover, and the sidebar, player bar and side panel from the song playing (Settings, General, Accent: From the artwork; a fixed colour keeps the old look). A For you shelf on Home with songs recommended from your listening, to play or to ask for (Melete with For You and ListenBrainz on). Home tiles show the song you last picked from an album, with Play next and Play last in their menu. Playlists number their songs, and a smart playlist menu finds its songs again.</p>
