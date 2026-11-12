@@ -1,5 +1,6 @@
 //! One Aoide playlist: its songs in order, Play and Shuffle, rename, delete,
-//! and, while editing, its notes and each entry moved up, down or out.
+//! merge into another (`merge`), and, while editing, its notes and each
+//! entry moved up, down or out.
 //!
 //! A smart playlist is its rules, evaluated against the local history when
 //! the page opens (`Store::resolve_smart`): its songs are listed in the
@@ -21,6 +22,7 @@ use crate::failure::Failure;
 use crate::playback::tracks::TrackMeta;
 use crate::widgets::ListStyle;
 
+mod merge;
 mod songs;
 mod view;
 mod waiting;
@@ -47,6 +49,7 @@ pub struct State {
     requests: HashMap<i64, MusicRequest>,
     renaming: Option<String>,
     confirm_delete: bool,
+    merge: merge::Merge,
     error: Option<String>,
     /// Showing the notes editor and each entry's move and remove buttons.
     editing: bool,
@@ -98,6 +101,7 @@ pub enum Message {
     SaveName,
     Delete,
     ConfirmDelete(bool),
+    Merge(merge::Msg),
     Done(Result<bool, String>),
     Edit(bool),
     Notes(text_editor::Action),
@@ -139,6 +143,7 @@ pub fn open(ctx: &Ctx<'_>, id: &str) -> (State, Task<App>) {
         requests: HashMap::new(),
         renaming: None,
         confirm_delete: false,
+        merge: merge::Merge::Closed,
         error: None,
         editing: false,
         notes: text_editor::Content::new(),
@@ -294,6 +299,7 @@ impl State {
                     store.delete_playlist(id, now).map(|()| true)
                 })
             }
+            Message::Merge(msg) => self.merge(msg, ctx),
             Message::Done(Ok(deleted)) => {
                 let changed = Task::done(App::PlaylistsChanged);
                 if deleted {

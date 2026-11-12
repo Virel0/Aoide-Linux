@@ -3,10 +3,12 @@
 mod artwork;
 mod folders;
 mod items;
+mod merge;
 mod playlist;
 mod relink;
 mod waiting;
 
+pub use merge::MergeReport;
 pub use relink::{RelinkReport, TrackLink, UNRESOLVED_PREFIX};
 
 use rusqlite::{Connection, OptionalExtension};
@@ -46,6 +48,12 @@ pub enum PlaylistError {
     /// The neighbours bracket no gap: the wrong way round, or one is the row moving.
     #[error("those neighbours leave no gap to move into")]
     BadNeighbours,
+    /// A playlist was to be merged into itself.
+    #[error("a playlist cannot be merged into itself")]
+    MergeIntoItself,
+    /// A smart playlist was to take songs; its songs are its rules' matches.
+    #[error("smart playlist {0} cannot take songs")]
+    SmartTarget(String),
 }
 
 impl Store {

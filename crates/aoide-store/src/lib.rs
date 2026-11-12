@@ -67,7 +67,7 @@ pub use models::{
     PlaylistItem, QueueState, TrackFlags, TrackRef, normalise,
 };
 pub use play_definition::{PlayClassifier, PlayOutcome};
-pub use playlists::{PlaylistError, RelinkReport, TrackLink, UNRESOLVED_PREFIX};
+pub use playlists::{MergeReport, PlaylistError, RelinkReport, TrackLink, UNRESOLVED_PREFIX};
 pub use quarantine::{QuarantinedOp, SyncDirection};
 pub use queue::QueuePolicy;
 pub use recent_contexts::{
