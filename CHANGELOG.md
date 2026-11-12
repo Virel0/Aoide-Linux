@@ -7,6 +7,8 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-12
+
 ### Added
 - Merge into… on a playlist's page adds its songs to the end of another of
   your own playlists, in its order, leaving out the songs that playlist has
@@ -459,7 +461,8 @@ keys and the tray.
   screen-reader tree. Ctrl+K reaches every screen.
 - English only.
 
-[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/Virel0/Aoide-Linux/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/Virel0/Aoide-Linux/compare/v0.8.0...v0.9.0
