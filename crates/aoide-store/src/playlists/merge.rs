@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use super::{PlaylistError, TrackLink};
+use super::{PlaylistError, TrackLink, UNRESOLVED_PREFIX};
 use crate::Millis;
 use crate::error::Result;
 use crate::models::{PendingSong, Playlist, PlaylistItem, normalise};
@@ -54,24 +54,54 @@ fn wait_key(song: &PendingSong) -> WaitKey {
 }
 
 /// The songs of `source` the target's `existing` entries don't have, in
-/// `source`'s order, each once: a track by its id, a waiting song by
+/// `source`'s order, each once: a track by its id or its content key (so a
+/// copy whose id changed in a rescan still matches), a waiting song by
 /// [`WaitKey`].
 fn fresh(existing: &[PlaylistItem], source: Vec<Song>) -> Vec<Song> {
-    let mut tracks: HashSet<String> = HashSet::new();
-    let mut waiting: HashSet<WaitKey> = HashSet::new();
+    let mut seen = Seen::default();
     for item in existing {
         match &item.pending {
-            Some(song) if item.is_waiting() => waiting.insert(wait_key(song)),
-            _ => tracks.insert(item.linked_jellyfin_id().to_owned()),
+            Some(song) if item.is_waiting() => seen.waiting(song),
+            _ => seen.track(item.linked_jellyfin_id(), &item.content_key),
         };
     }
     source
         .into_iter()
         .filter(|song| match song {
-            Song::Track(link) => tracks.insert(link.jellyfin_id.clone()),
-            Song::Waiting(pending) => waiting.insert(wait_key(pending)),
+            Song::Track(link) => seen.track(linked(&link.jellyfin_id), &link.content_key),
+            Song::Waiting(pending) => seen.waiting(pending),
         })
         .collect()
+}
+
+/// The songs met so far, by every way two copies can be the same.
+#[derive(Default)]
+struct Seen {
+    ids: HashSet<String>,
+    keys: HashSet<String>,
+    waits: HashSet<WaitKey>,
+}
+
+impl Seen {
+    /// Notes a track, and says whether it was new.
+    fn track(&mut self, id: &str, key: &str) -> bool {
+        let known = self.ids.contains(id) || (!key.is_empty() && self.keys.contains(key));
+        self.ids.insert(id.to_owned());
+        if !key.is_empty() {
+            self.keys.insert(key.to_owned());
+        }
+        !known
+    }
+
+    /// Notes a waiting song, and says whether it was new.
+    fn waiting(&mut self, song: &PendingSong) -> bool {
+        self.waits.insert(wait_key(song))
+    }
+}
+
+/// A track id with the missing-track marker taken off.
+fn linked(id: &str) -> &str {
+    id.strip_prefix(UNRESOLVED_PREFIX).unwrap_or(id)
 }
 
 impl Store {
@@ -127,8 +157,9 @@ impl Store {
         Ok(report)
     }
 
-    /// A hand-made playlist's tracks and waiting songs in its order (entries
-    /// whose track went missing left out), or what a smart one's rules match.
+    /// A hand-made playlist's tracks and waiting songs in its order, or what a
+    /// smart one's rules match. An entry whose track went missing is copied
+    /// with its marker, so a later relink can bring it back in both playlists.
     fn songs_to_merge(
         &self,
         source: &Playlist,
@@ -147,7 +178,6 @@ impl Store {
         Ok(self
             .items(&source.id)?
             .into_iter()
-            .filter(|item| !item.is_unresolved())
             .map(|item| match item.pending {
                 Some(song) if item.jellyfin_id.is_empty() => Song::Waiting(song),
                 _ => Song::Track(TrackLink::new(item.jellyfin_id, item.content_key)),
