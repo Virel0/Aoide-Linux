@@ -63,7 +63,7 @@ impl State {
         crate::handoff::played_from(page, self.context())
     }
 
-    fn name(&self) -> &str {
+    pub(super) fn name(&self) -> &str {
         self.playlist
             .as_ref()
             .map_or("Playlist", |p| p.name.as_str())
@@ -117,6 +117,9 @@ impl State {
         if self.confirm_delete {
             head = head.push(self.confirm(key));
         }
+        if let Some(merge) = self.merge_view(view) {
+            head = head.push(merge);
+        }
         head = head.push(self.cover_tools(key));
         if let Some(note) = &self.cover_note {
             head = head.push(match note {
@@ -127,7 +130,8 @@ impl State {
         head
     }
 
-    /// Play, Shuffle and the menu; Rename, Edit (or Done) and Delete.
+    /// Play, Shuffle and the menu; Rename, Edit (or Done), Merge into… and
+    /// Delete.
     fn tools<'a>(&'a self, key: u64) -> Row<'a, App> {
         let message = move |m: Message| App::Page(key, PageMsg::Playlist(m));
         let tracks: &[TrackMeta] = self.tracks.ready().map(Vec::as_slice).unwrap_or(&[]);
@@ -157,6 +161,15 @@ impl State {
                 .padding([8, 14])
                 .on_press(message(Message::Edit(true)))
         });
+        let merge = Message::Merge(super::merge::Msg::Open);
+        tools = tools.push(
+            button(text("Merge into…"))
+                .style(theme::tonal)
+                .padding([8, 14])
+                .on_press_maybe(
+                    (self.merge == super::merge::Merge::Closed).then(|| message(merge)),
+                ),
+        );
         tools.push(
             button(text("Delete"))
                 .style(theme::destructive)

@@ -7,6 +7,15 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- Merge into… on a playlist's page adds its songs to the end of another of
+  your own playlists, in its order, leaving out the songs that playlist has
+  already (and repeats). Songs still waiting to arrive come along too,
+  unless it waits for them already. A smart playlist gives the songs its
+  rules match now; smart playlists can't be merged into. A notice says how
+  many songs were added, or that there was nothing new to add. The playlist
+  merged is kept unless you choose Delete when asked afterwards.
+
 ## [0.11.0] - 2026-11-09
 
 ### Added

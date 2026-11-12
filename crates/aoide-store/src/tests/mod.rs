@@ -8,6 +8,8 @@ mod curation_store;
 mod field_merge;
 mod fractional_index;
 mod handoff;
+mod merge_matching;
+mod merge_playlists;
 mod play_definition;
 mod play_history;
 mod playlists;
