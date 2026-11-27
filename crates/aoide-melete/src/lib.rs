@@ -82,6 +82,8 @@ mod password;
 mod profile;
 mod request_imports;
 mod requests;
+mod route;
+mod tunnel;
 mod two_factor;
 
 pub use address::ServerAddress;
@@ -111,6 +113,8 @@ pub use requests::{
 };
 /// The URL type every media URL is returned as.
 pub use reqwest::Url;
+pub use route::Route;
+pub use tunnel::{TunnelDevice, TunnelDevices, TunnelJoined};
 pub use two_factor::{
     ChangeKind, MadeFrom, TwoFactorChange, TwoFactorSetup, TwoFactorStatus, WRONG_CODE,
     WRONG_PASSWORD,

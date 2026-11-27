@@ -6,7 +6,7 @@ use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
 use serde::de::DeserializeOwned;
 
 use crate::error::{check_status, transport};
-use crate::{Credentials, Device, Error, Result, ServerAddress};
+use crate::{Credentials, Device, Error, Result, Route, ServerAddress};
 
 /// How long to wait for a connection. A server that's off answers nothing at all.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -99,6 +99,7 @@ pub(crate) async fn read_capped(
 pub struct MeleteClient {
     http: reqwest::Client,
     address: ServerAddress,
+    route: Route,
     device: Device,
     credentials: Option<Credentials>,
 }
@@ -120,6 +121,7 @@ impl MeleteClient {
         Ok(Self {
             http,
             address,
+            route: Route::default(),
             device,
             credentials: None,
         })
@@ -149,8 +151,21 @@ impl MeleteClient {
         self.credentials.as_ref()
     }
 
+    /// Where this client and its clones send requests: the server's address
+    /// unless the route says otherwise.
+    pub fn route(&self) -> &Route {
+        &self.route
+    }
+
+    /// The address requests go to now: the route's, else the server's own.
+    pub(crate) fn base(&self) -> ServerAddress {
+        self.route
+            .current()
+            .map_or_else(|| self.address.clone(), ServerAddress::from_url)
+    }
+
     pub(crate) fn url(&self, segments: &[&str], query: &[(&str, String)]) -> reqwest::Url {
-        self.address.join(segments, query)
+        self.base().join(segments, query)
     }
 
     /// Sends one request and returns the body of a 2xx answer, with the token as

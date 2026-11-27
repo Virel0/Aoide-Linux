@@ -23,6 +23,7 @@ use crate::{theme, widgets};
 pub mod admin;
 pub mod password;
 pub mod picture;
+pub mod remote;
 pub mod two_factor;
 
 /// Something typed that must never be logged or kept: `Debug` prints none of it.
@@ -107,7 +108,8 @@ impl State {
                 let me = ask(ctx.key, async move { client.me().await }, |r| {
                     Msg::Me(r.map_err(|e| plainly(&e)))
                 });
-                Task::batch([me, self.two_factor.load(ctx)])
+                let remote = Task::done(App::Remote(crate::app::remote::Msg::Check));
+                Task::batch([me, self.two_factor.load(ctx), remote])
             }
             Msg::Me(result) => {
                 let admin = result.as_ref().is_ok_and(|me| me.is_admin);
@@ -154,6 +156,15 @@ pub fn view<'a>(
         .push(state.picture.view(name, picture, &app.artwork, key))
         .push(state.password.view(key))
         .push(state.two_factor.view(name, key));
+    if let Some(signed) = app.session.as_ref() {
+        let mine = signed.connection.account.keyring_key();
+        let set_up = app
+            .config
+            .remote_access
+            .as_ref()
+            .is_some_and(|r| r.account == mine);
+        pane = pane.push(remote::view(&signed.remote, set_up));
+    }
     if let Some(Ok(me)) = &state.me
         && me.is_admin
     {

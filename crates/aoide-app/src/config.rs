@@ -118,6 +118,31 @@ impl Account {
     }
 }
 
+/// This device on Melete's own tunnel: what Melete gave it as it joined, but
+/// its private key and the preshared key, which the keyring holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteAccess {
+    /// Whose it is: the account's keyring entry name, as the keys' entry is.
+    pub account: String,
+    /// What leaving the tunnel names it by.
+    pub device_id: i64,
+    /// This device's address inside the tunnel.
+    pub address: String,
+    pub server_public_key: String,
+    /// Melete through the tunnel, such as `http://10.73.0.1`.
+    pub server: String,
+    /// Where the tunnel is reached from outside, `host:port`.
+    pub endpoint: String,
+}
+
+impl RemoteAccess {
+    /// The keyring entry holding the keys for `account_key`'s device.
+    pub fn keyring_key(account_key: &str) -> String {
+        format!("wireguard:{account_key}")
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowGeometry {
@@ -188,6 +213,8 @@ pub struct Config {
     /// play as it begins. This computer's alone, not synced: the phone may be
     /// in a car while the desk is at work. `None` is untagged, the default.
     pub activity: Option<String>,
+    /// Settings → Account → Remote access: this device on Melete's tunnel.
+    pub remote_access: Option<RemoteAccess>,
 }
 
 impl Default for Config {
@@ -204,6 +231,7 @@ impl Default for Config {
             interface: crate::appearance::InterfaceSettings::default(),
             collections: Vec::new(),
             activity: None,
+            remote_access: None,
         }
     }
 }
@@ -306,6 +334,14 @@ mod tests {
             },
             collections: Vec::new(),
             activity: Some("gaming".into()),
+            remote_access: Some(RemoteAccess {
+                account: "u1@https://music.example.net".into(),
+                device_id: 4,
+                address: "10.73.0.5".into(),
+                server_public_key: "c2VydmVy".into(),
+                server: "http://10.73.0.1".into(),
+                endpoint: "music.example.net:51820".into(),
+            }),
         };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);

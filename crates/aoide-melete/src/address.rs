@@ -18,6 +18,11 @@ pub struct ServerAddress {
 }
 
 impl ServerAddress {
+    /// The address a [`Route`](crate::Route) gives, as it was set.
+    pub(crate) fn from_url(url: Url) -> Self {
+        Self { url }
+    }
+
     /// Normalises a typed address. Fails on anything that isn't an http(s) URL
     /// with a host.
     ///

@@ -37,6 +37,7 @@ mod playing;
 mod posters;
 mod queue_panel;
 mod radio;
+mod remote;
 mod rescan;
 mod screens;
 mod session;

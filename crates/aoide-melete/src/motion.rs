@@ -19,7 +19,7 @@ impl MeleteClient {
     /// The [request errors](MeleteClient#errors), but for a 404, which is
     /// `Ok(None)`.
     pub async fn motion_cover(&self, served_path: &str) -> Result<Option<Vec<u8>>> {
-        let Some(url) = self.address().join_path(served_path) else {
+        let Some(url) = self.base().join_path(served_path) else {
             return Ok(None);
         };
         match self
