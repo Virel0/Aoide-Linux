@@ -7,6 +7,19 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Added
+- Remote access, in Settings → Account: with Melete 0.10's own WireGuard
+  tunnel turned on (`MELETE_TUNNEL_PORT`), Set up remote access joins it as
+  this computer while Aoide can reach Melete. After that, whenever Melete's
+  usual address doesn't answer, as away from home, Aoide reaches it through
+  the tunnel instead, and back at its usual address once that answers again.
+  The section says which way Melete is reached. WireGuard runs inside Aoide
+  (GotaTun and smoltcp): no VPN app, root or TUN device, and only Aoide's own
+  connections to Melete go through it. The private key never leaves the
+  computer; it and the preshared key are kept in the system keyring. Remove
+  remote access, or signing out, takes this computer off the tunnel, away
+  from home too.
+
 ### Fixed
 - An imported playlist's songs that the library has already say "In your library"
   instead of "Not looked up yet", and an import's tally counts them. Melete

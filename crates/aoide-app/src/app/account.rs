@@ -27,6 +27,8 @@ pub(crate) struct Signed {
     pub connection: Connection,
     pub sidecar: Option<SidecarClient>,
     pub sync: Option<sync::Engine>,
+    /// Settings → Account → Remote access: the tunnel's keys and how Melete is reached.
+    pub remote: crate::remote::State,
     pub throttle: SyncThrottle,
     /// The sync in flight, aborted on sign-out.
     pub syncing: Option<Handle>,
@@ -97,6 +99,7 @@ impl Signed {
             connection,
             sidecar,
             sync,
+            remote: crate::remote::State::default(),
             throttle: SyncThrottle::default(),
             syncing: None,
             sync_status: None,
@@ -360,7 +363,11 @@ impl App {
         crate::failure::set_server(Some(&connection.account.server));
         self.save_config();
 
-        let sidecar = SidecarClient::new(&connection.account.server, connection.token()).ok();
+        // The sidecar follows the client's route, through the tunnel when it's in use.
+        let route = connection.client.route().clone();
+        let sidecar = SidecarClient::new(&connection.account.server, connection.token())
+            .ok()
+            .map(|sidecar| sidecar.routed(move || route.current()));
         let blobs = crate::covers::open_blobs(self.paths.as_ref());
         let sync = sidecar.clone().map(|client| {
             // The user's id tells a share granted to them from one they granted.
@@ -381,6 +388,7 @@ impl App {
             crate::avatars::ask(client.clone()),
             crate::screens::web_collection::ask(client.clone()),
             crate::smart::ask(client),
+            self.load_remote(),
         ];
         for effect in effects {
             match effect {
@@ -442,6 +450,7 @@ impl App {
         if let Some(syncing) = &signed.syncing {
             syncing.abort();
         }
+        let mut remote_device = self.remote_device(&signed);
         let mut tasks = Vec::new();
         for effect in effects {
             match effect {
@@ -456,6 +465,7 @@ impl App {
                     });
                 }
                 Effect::ForgetCredentials => {
+                    tasks.push(self.forget_remote());
                     let account = signed.connection.account.clone();
                     self.config.account = None;
                     self.save_config();
@@ -466,9 +476,7 @@ impl App {
                 }
                 Effect::NotifyServer => {
                     let client = signed.connection.client.clone();
-                    tasks.push(Task::perform(crate::playing::leave_server(client), |()| {
-                        Message::Ignore
-                    }));
+                    tasks.push(super::remote::sign_out(client, remote_device.take()));
                 }
                 Effect::AdoptAccount | Effect::Connect => {}
             }

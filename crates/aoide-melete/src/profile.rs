@@ -161,7 +161,7 @@ impl MeleteClient {
         if query.is_some_and(|q| q.is_empty() || !plain(q)) {
             return None;
         }
-        let mut url = self.address().join_path(path)?;
+        let mut url = self.base().join_path(path)?;
         url.set_query(query);
         Some(url)
     }

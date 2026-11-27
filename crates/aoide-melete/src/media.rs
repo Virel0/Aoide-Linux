@@ -115,7 +115,7 @@ impl MeleteClient {
         // A path under the server's own address, as Melete gives it; joined
         // here so a reverse proxy's prefix stays.
         let url = self
-            .address()
+            .base()
             .join_path(&wire.stream_url)
             .ok_or_else(|| Error::Decoding {
                 path: path.join("/"),

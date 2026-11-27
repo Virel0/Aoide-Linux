@@ -91,6 +91,9 @@ Feishin or the Electron-based Aoide desktop app is copied here.
 - Set your profile picture from a file or your server's gallery
 - Change your password, and turn two-factor sign-in on or off
 - Administrators can give a user a new password
+- Remote access: when your server's usual address doesn't answer, as away from
+  home, Aoide reaches it through Melete's own WireGuard tunnel (Melete 0.10 with
+  `MELETE_TUNNEL_PORT`), with no VPN app and nothing changed on the system
 
 ### Desktop
 - MPRIS media controls, so the media keys work, and a tray icon
@@ -206,10 +209,12 @@ to other services only for the features below.
 | Your Melete server | Sign-in, library requests, streams, covers at the size they're drawn, albums' colours and motion covers, the sync log (playlists, likes, taste flags, plays), the queue for handoff, requests for measurements, Infinity and Discover, and your language when you turn on Translate | Always; *Private listening* keeps plays out of the sync log |
 | Your Melete server, for search by description and mixes | The phrase you typed, or a mix's description. Your server sends it, with your library's genre names, to [OpenRouter](https://openrouter.ai) under its own key; this computer never contacts OpenRouter | Only when you press the button, and only while your server has AI on |
 | Discord, through its local socket | The song, artist and album; with *Show cover*, a link to the album's cover on the [Cover Art Archive](https://coverartarchive.org), which names its MusicBrainz id. Discord fetches the picture; this computer never contacts the archive | Only while Rich Presence is on; the cover only with *Show cover* on |
+| Your Melete server's WireGuard tunnel | This computer's WireGuard public key and its name when you set up remote access; after that, Aoide's own requests to Melete, encrypted, over UDP to the tunnel's address. Nothing else on the computer goes through it | Only with remote access set up, and only while the server's usual address doesn't answer |
 | GitHub's API | One unauthenticated request for the latest release, with a fixed user agent, at most once a day | On by default; Settings → System → Updates → *Check for updates* |
 | Spotify | A request for the public playlist page you paste | Only when you import a playlist |
 
-What stays on the computer: the sign-in token in the system
+What stays on the computer: the sign-in token, and with remote access the
+tunnel's private and preshared keys, in the system
 keyring (the Secret Service, or the Secret portal inside the Flatpak); settings
 in `~/.config/aoide/config.json`; the play history, playlists, taste flags and
 sync log in `~/.local/share/aoide/aoide.sqlite`; artwork and motion covers in `~/.cache/aoide`. [SECURITY.md](SECURITY.md) has the details.
@@ -246,6 +251,7 @@ and the packaging checks.
 | `aoide-sidecar` | Client for Aoide's routes on Melete: sync, Infinity, Discover, measurements |
 | `aoide-store` | Local SQLite store: history, playlists, taste flags, op log |
 | `aoide-audio` | Decoding, output, gapless, crossfade, loudness |
+| `aoide-tunnel` | Remote access: WireGuard to Melete's own tunnel in userspace (GotaTun and smoltcp), behind a port on 127.0.0.1 |
 | `aoide-mpris` | The Linux desktop: MPRIS media controls, tray icon, single instance, sleep inhibit |
 | `aoide-integrations` | Services outside the server: Discord Rich Presence, the lyrics' language, update notice; and checking the rules of a mix the server's AI made |
 | `aoide-app` | The iced application; motion covers play on GStreamer through iced_video_player |

@@ -31,6 +31,7 @@ mod art;
 mod lyrics;
 mod navigation;
 mod playlists;
+pub(crate) mod remote;
 mod row_menu;
 mod settings;
 mod syncing;
@@ -128,6 +129,8 @@ pub enum Message {
     ConfirmErase(bool),
     SignOut,
     TokenRejected,
+    /// Settings → Account → Remote access, and the watch over how Melete is reached.
+    Remote(remote::Msg),
     /// Sync with Melete now, not at the next launch or focus.
     SyncNow,
     Synced(Result<SyncReport, String>),
@@ -287,6 +290,7 @@ impl App {
             self.together_subscription(),
             self.requests_subscription(),
             self.motion_subscription(),
+            self.remote_subscription(),
         ])
     }
 
@@ -361,6 +365,7 @@ impl App {
             Message::SignOut => self.leave(Event::SignOut),
             Message::SyncNow => self.sync_now(),
             Message::TokenRejected => self.token_rejected(),
+            Message::Remote(msg) => self.remote(msg),
             Message::Synced(result) => self.synced(result),
             Message::TrackCacheFilled(filled) => self.track_cache_filled(filled),
             Message::Section(section) => self.show_section(section),

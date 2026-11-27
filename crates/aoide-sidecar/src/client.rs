@@ -48,7 +48,13 @@ const DETAIL_LIMIT: usize = 400;
 pub struct SidecarClient {
     http: Client,
     base: Url,
+    /// Where requests go instead of `base` while it says so: the tunnel's local
+    /// port, when the app reaches Melete through its tunnel.
+    route: Option<Route>,
 }
+
+/// What a client asks, each request, for the address to use instead of its own.
+type Route = std::sync::Arc<dyn Fn() -> Option<Url> + Send + Sync>;
 
 impl std::fmt::Debug for SidecarClient {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -99,12 +105,30 @@ impl SidecarClient {
             .redirect(same_origin_redirects())
             .build()
             .map_err(|error| SidecarError::Network(error.to_string()))?;
-        Ok(Self { http, base })
+        Ok(Self {
+            http,
+            base,
+            route: None,
+        })
+    }
+
+    /// This client, sending its requests wherever `current` says while it says
+    /// one, and to its own address otherwise.
+    #[must_use]
+    pub fn routed(self, current: impl Fn() -> Option<Url> + Send + Sync + 'static) -> Self {
+        Self {
+            route: Some(std::sync::Arc::new(current)),
+            ..self
+        }
     }
 
     /// The URL for `path` under the server, with `query` appended.
     pub fn url(&self, path: &str, query: &[(&str, String)]) -> Url {
-        let mut url = self.base.clone();
+        let mut url = self
+            .route
+            .as_ref()
+            .and_then(|current| current())
+            .unwrap_or_else(|| self.base.clone());
         if let Ok(mut segments) = url.path_segments_mut() {
             segments.pop_if_empty();
             segments.extend(path.split('/').filter(|segment| !segment.is_empty()));

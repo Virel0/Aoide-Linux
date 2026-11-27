@@ -33,6 +33,7 @@ aoide-lyrics = { path = "../aoide-lyrics" }
 # itself unavailable.
 aoide-mpris = { path = "../aoide-mpris" }
 aoide-sidecar = { path = "../aoide-sidecar" }
+aoide-tunnel = { path = "../aoide-tunnel" }
 aoide-store = { path = "../aoide-store" }
 # Per-user config, data and cache directories (XDG on Linux).
 directories = "6"
