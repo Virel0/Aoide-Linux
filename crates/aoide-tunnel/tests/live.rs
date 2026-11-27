@@ -32,8 +32,11 @@ async fn http(
     let body = body.map(Value::to_string).unwrap_or_default();
     let request = format!(
         "{method} {path} HTTP/1.1\r\nHost: {to}\r\nAuthorization: Bearer {token}\r\n\
-         Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
+         Content-Type: application/json\r\nContent-Length: {}\r\nX-Pad: {}\r\n\
+         Connection: close\r\n\r\n{body}",
+        body.len(),
+        // Bigger than one small packet, as a browser's or URLSession's requests are.
+        "a".repeat(2_000)
     );
     stream.write_all(request.as_bytes()).await.unwrap();
     let mut answer = Vec::new();

@@ -21,6 +21,8 @@ const IDLE_LIMIT: Duration = Duration::from_secs(55);
 /// A connection idle this long gives its place to one waiting for it: HTTP
 /// clients keep idle connections far longer than they need them.
 const IDLE_ENOUGH: Duration = Duration::from_secs(1);
+/// How often a connection waiting for a place asks again for one to give way.
+const ASK_AGAIN: Duration = Duration::from_millis(250);
 /// Messages held each way for one connection.
 const DEPTH: usize = 8;
 
@@ -40,6 +42,25 @@ struct Places {
 impl Places {
     fn now(&self) -> u64 {
         u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+
+    /// A place, once one is free: while none is, the connection idle longest
+    /// is asked again and again to give way, as connections go idle in turn.
+    async fn wait(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        loop {
+            match self.free.clone().try_acquire_owned() {
+                Ok(place) => return Some(place),
+                Err(tokio::sync::TryAcquireError::Closed) => return None,
+                Err(tokio::sync::TryAcquireError::NoPermits) => {}
+            }
+            self.make_room();
+            let freed = tokio::time::timeout(ASK_AGAIN, self.free.clone().acquire_owned()).await;
+            match freed {
+                Ok(Ok(place)) => return Some(place),
+                Ok(Err(_)) => return None,
+                Err(_) => {}
+            }
+        }
     }
 
     /// Ends the connection idle longest, if one has idled long enough.
@@ -75,15 +96,8 @@ pub async fn serve(listener: TcpListener, opened: mpsc::Sender<Ends>, wake: Arc<
         let (opened, wake, places) = (opened.clone(), wake.clone(), places.clone());
         tokio::spawn(async move {
             // Past the limit, a connection waits for a place rather than being refused.
-            let place = match places.free.clone().try_acquire_owned() {
-                Ok(place) => place,
-                Err(_) => {
-                    places.make_room();
-                    let Ok(place) = places.free.clone().acquire_owned().await else {
-                        return;
-                    };
-                    place
-                }
+            let Some(place) = places.wait().await else {
+                return;
             };
             let (last, end) = (
                 Arc::new(AtomicU64::new(places.now())),

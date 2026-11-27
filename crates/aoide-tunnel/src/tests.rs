@@ -21,7 +21,13 @@ const MELETE: Ipv4Addr = Ipv4Addr::new(10, 73, 0, 1);
 const DEVICE: Ipv4Addr = Ipv4Addr::new(10, 73, 0, 2);
 
 /// Melete's side: answers each request with `body`, one connection at a time.
-async fn melete(device_key: &PrivateKey, key: &PrivateKey, psk: [u8; 32], body: Vec<u8>) -> u16 {
+async fn melete(
+    device_key: &PrivateKey,
+    key: &PrivateKey,
+    psk: [u8; 32],
+    body: Vec<u8>,
+    listeners: usize,
+) -> u16 {
     let wake = Arc::new(Notify::new());
     let (to_stack, mut from_tunnel) = mpsc::channel(stack::QUEUE);
     let (to_tunnel, from_stack) = mpsc::channel::<Vec<u8>>(stack::QUEUE);
@@ -66,7 +72,7 @@ async fn melete(device_key: &PrivateKey, key: &PrivateKey, psk: [u8; 32], body: 
         };
         // Two listeners, as a server has a few: a connection that's never ended
         // keeps one, and two such leave none for the next.
-        let mut conns: Vec<_> = (0..2)
+        let mut conns: Vec<_> = (0..listeners)
             .map(|_| (sockets.add(listening()), Vec::new(), None::<usize>))
             .collect();
         let answer = [
@@ -124,12 +130,17 @@ async fn melete(device_key: &PrivateKey, key: &PrivateKey, psk: [u8; 32], body: 
 
 /// A tunnel to a stand-in Melete answering every request with `body`.
 async fn tunnel_to(body: Vec<u8>) -> Tunnel {
+    tunnel_to_with(body, 2).await
+}
+
+/// The same, the stand-in listening for `listeners` connections at once.
+async fn tunnel_to_with(body: Vec<u8>, listeners: usize) -> Tunnel {
     let (device_key, melete_key) = (
         PrivateKey::generate().unwrap(),
         PrivateKey::generate().unwrap(),
     );
     let psk = decode(&PrivateKey::generate().unwrap().to_base64()).unwrap();
-    let port = melete(&device_key, &melete_key, psk, body).await;
+    let port = melete(&device_key, &melete_key, psk, body, listeners).await;
     let settings = Settings {
         private_key: device_key,
         address: DEVICE,
@@ -219,4 +230,50 @@ async fn hanging_up_mid_answer_frees_melete_for_the_next_request() {
         .unwrap()
         .unwrap();
     assert_eq!(body_of(&answer), body.as_slice());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_big_request_reaches_melete() {
+    let tunnel = tunnel_to(b"ok".to_vec()).await;
+    let mut stream = TcpStream::connect(tunnel.local_address()).await.unwrap();
+    let padding = "a".repeat(8_000);
+    let request = format!(
+        "GET /api/v1/me HTTP/1.1\r\nHost: {}\r\nX-Pad: {padding}\r\n\r\n",
+        tunnel.local_address()
+    );
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut answer = Vec::new();
+    let read = stream.read_to_end(&mut answer);
+    tokio::time::timeout(Duration::from_secs(20), read)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(body_of(&answer), b"ok");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_request_past_the_limit_takes_an_idle_connections_place_soon() {
+    // Melete takes 8 connections from one peer.
+    let tunnel = tunnel_to_with(b"ok".to_vec(), 8).await;
+    // As an HTTP client leaves them: every place held by a connection that has
+    // just answered and now sits idle in its pool.
+    let mut idle = Vec::new();
+    for _ in 0..crate::forward::AT_ONCE {
+        idle.push(TcpStream::connect(tunnel.local_address()).await.unwrap());
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let started = std::time::Instant::now();
+    let (mut answer, mut stream) = (Vec::new(), ask(&tunnel).await);
+    let read = stream.read_to_end(&mut answer);
+    tokio::time::timeout(Duration::from_secs(20), read)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(body_of(&answer), b"ok");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "waited {:?} for a place",
+        started.elapsed()
+    );
+    drop(idle);
 }

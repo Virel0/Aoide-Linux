@@ -7,6 +7,11 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Fixed
+- Remote access: a request made while every connection through the tunnel was
+  open waited up to a minute for one to close by itself. It now takes the
+  place of one that has sat idle for a second, so pages load at once.
+
 ### Added
 - Remote access, in Settings → Account: with Melete 0.10's own WireGuard
   tunnel turned on (`MELETE_TUNNEL_PORT`), Set up remote access joins it as
