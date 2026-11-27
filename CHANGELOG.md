@@ -7,6 +7,16 @@ state of every feature in more detail.
 
 ## [Unreleased]
 
+### Fixed
+- An imported playlist's songs that the library has already say "In your library"
+  instead of "Not looked up yet", and an import's tally counts them. Melete
+  looks every import up in the library since 0.9.
+- A song Melete fetches from YouTube says "Downloading from YouTube".
+
+### Security
+- `url` is updated to 2.5.9 for RUSTSEC-2026-0592, a stack overflow in
+  `Url::origin()` on nested `blob:` URLs.
+
 ## [0.12.0] - 2026-11-12
 
 ### Added

@@ -36,6 +36,7 @@ fn progress(progress: &Progress) -> String {
     let from = match progress.source.as_deref() {
         Some("soulseek") => " from Soulseek",
         Some("torrent") => " by torrent",
+        Some("youtube") => " from YouTube",
         _ => "",
     };
     match (progress.step.as_str(), progress.percent) {
@@ -141,6 +142,9 @@ pub fn import_tally(import: &PlaylistImportSummary) -> String {
         "{state}: {} of {} songs asked for, {} asked already, {} not found.",
         import.asked, import.tracks, import.already, import.unmatched
     );
+    if import.in_library > 0 {
+        words.push_str(&format!(" {} in your library already.", import.in_library));
+    }
     if import.waiting > 0 {
         words.push_str(&format!(" {} wait for approval.", import.waiting));
     }
@@ -158,6 +162,7 @@ pub fn track_standing(track: &PlaylistImportTrack) -> String {
         ("already", _) => "Asked for already".to_owned(),
         ("unmatched", Some(why)) => format!("Not found: {why}"),
         ("unmatched", None) => "Not found".to_owned(),
+        ("in_library", _) => "In your library".to_owned(),
         _ => "Not looked up yet".to_owned(),
     }
 }
@@ -285,5 +290,47 @@ mod tests {
             "Done: 12 of 20 songs asked for, 3 asked already, 5 not found. 4 wait for approval."
         );
         assert!(!import_running(&import));
+    }
+
+    #[test]
+    fn an_import_counts_the_songs_the_library_has() {
+        let import = PlaylistImportSummary {
+            id: 5,
+            name: "Gym".into(),
+            state: "done".into(),
+            message: None,
+            created_at: NOW,
+            tracks: 10,
+            asked: 2,
+            already: 0,
+            unmatched: 1,
+            waiting: 0,
+            in_library: 7,
+            playlist_id: None,
+        };
+        assert_eq!(
+            import_tally(&import),
+            "Done: 2 of 10 songs asked for, 0 asked already, 1 not found. 7 in your library already."
+        );
+    }
+
+    #[test]
+    fn an_imported_track_the_library_has_says_so() {
+        let track = PlaylistImportTrack {
+            position: 1,
+            title: "Paper Lanterns".into(),
+            artist: Some("The Quiet Hours".into()),
+            state: "in_library".into(),
+            why: None,
+            request_id: None,
+        };
+        assert_eq!(track_standing(&track), "In your library");
+    }
+
+    #[test]
+    fn a_song_from_youtube_says_so() {
+        let mut downloading = request(RequestState::Approved, Some(("downloading", None)));
+        downloading.progress.as_mut().unwrap().source = Some("youtube".into());
+        assert_eq!(standing(&downloading), "Downloading from YouTube");
     }
 }
