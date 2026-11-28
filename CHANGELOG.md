@@ -11,6 +11,13 @@ state of every feature in more detail.
 - Remote access: a request made while every connection through the tunnel was
   open waited up to a minute for one to close by itself. It now takes the
   place of one that has sat idle for a second, so pages load at once.
+- Remote access over Wi-Fi or mobile data: covers and pages could take 10
+  seconds or more through the tunnel. Melete sent each connection's answer in
+  one burst, which such links partly drop, and every loss stalled it for a
+  second or more. Aoide now lets Melete send less at once, so a screen of
+  covers loads in a few seconds.
+- Remote access: a connection Melete turned away when many opened at once,
+  as a screen of covers opens them, failed. It's now asked for again.
 
 ### Added
 - Remote access, in Settings → Account: with Melete 0.10's own WireGuard

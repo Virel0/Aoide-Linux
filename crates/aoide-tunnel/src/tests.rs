@@ -277,3 +277,22 @@ async fn a_request_past_the_limit_takes_an_idle_connections_place_soon() {
     );
     drop(idle);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn connections_melete_turns_away_in_a_burst_are_made_again() {
+    // Melete keeps a few sockets listening, refilled as it goes: a burst of
+    // connections larger than that has the rest turned away at first.
+    let tunnel = tunnel_to_with(b"ok".to_vec(), 1).await;
+    let mut streams = Vec::new();
+    for _ in 0..4 {
+        streams.push(ask(&tunnel).await);
+    }
+    for mut stream in streams {
+        let mut answer = Vec::new();
+        tokio::time::timeout(Duration::from_secs(20), stream.read_to_end(&mut answer))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(body_of(&answer), b"ok");
+    }
+}

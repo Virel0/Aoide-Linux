@@ -21,7 +21,12 @@ use crate::pump::{Ends, PumpState, pump};
 pub const MTU: u16 = 1420;
 /// Packets held between the stack and WireGuard, each way.
 pub const QUEUE: usize = 256;
-const RX_BUFFER: usize = 256 * 1024;
+/// What Melete may send a connection before hearing back, which is all it sends
+/// at once: Melete's stack has no congestion control, so a larger window comes in
+/// bursts a Wi-Fi or mobile link drops, and each loss stalls the connection for
+/// a second or more. 32 KB still carries 4 Mbit/s a connection at a 60 ms round
+/// trip, more than lossless music needs.
+const RX_BUFFER: usize = 32 * 1024;
 const TX_BUFFER: usize = 64 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(60);
 const KEEP_ALIVE: Duration = Duration::from_secs(20);
@@ -31,6 +36,14 @@ const IDLE: Duration = Duration::from_millis(500);
 const FIRST_PORT: u16 = 49_152;
 /// How soon packets WireGuard had no room for are offered again.
 const BACKLOG: Duration = Duration::from_millis(2);
+/// Times a connection Melete turns away is asked for again: Melete keeps only a
+/// few sockets listening, so a burst of new connections has some refused.
+const RETRIES: u32 = 5;
+/// The first wait before asking again, doubled each time after.
+const RETRY_AFTER: Duration = Duration::from_millis(25);
+/// Refused this soon after asking, a connection was turned away; later, it
+/// timed out, and Melete isn't there to ask.
+const REFUSED_WITHIN: Duration = Duration::from_secs(5);
 
 /// Packets in and out of smoltcp, held until the loop moves them on.
 #[derive(Default)]
@@ -92,6 +105,8 @@ pub struct Stack {
     iface: Interface,
     sockets: SocketSet<'static>,
     conns: Vec<(SocketHandle, PumpState)>,
+    /// Connections Melete turned away, and when to ask for each again.
+    retrying: Vec<(std::time::Instant, PumpState)>,
     queues: Queues,
     joins: Joins,
     next_port: u16,
@@ -121,6 +136,7 @@ impl Stack {
             iface,
             sockets: SocketSet::new(Vec::new()),
             conns: Vec::new(),
+            retrying: Vec::new(),
             queues,
             joins,
             next_port: first,
@@ -145,7 +161,8 @@ impl Stack {
                     IDLE
                 } else {
                     BACKLOG
-                });
+                })
+                .min(self.next_retry());
             tokio::select! {
                 got = self.joins.from_tunnel.recv() => match got {
                     Some(packet) => self.queues.incoming.push_back(packet),
@@ -169,6 +186,7 @@ impl Stack {
 
     /// One turn: packets in, bytes moved, packets out. False once WireGuard is gone.
     fn step(&mut self) -> bool {
+        self.ask_again();
         let now = self.now();
         self.iface.poll(now, &mut self.queues, &mut self.sockets);
         for (handle, state) in &mut self.conns {
@@ -176,13 +194,23 @@ impl Stack {
         }
         self.iface.poll(now, &mut self.queues, &mut self.sockets);
         // Closed sockets go only now, after the poll that sent their last packet.
-        self.conns.retain(|(handle, _)| {
-            let open = self.sockets.get::<tcp::Socket>(*handle).is_open();
-            if !open {
-                self.sockets.remove(*handle);
+        for (handle, mut state) in std::mem::take(&mut self.conns) {
+            if self.sockets.get::<tcp::Socket>(handle).is_open() {
+                self.conns.push((handle, state));
+                continue;
             }
-            open
-        });
+            self.sockets.remove(handle);
+            if state.turned_away()
+                && state.tries < RETRIES
+                && state.asked.elapsed() < REFUSED_WITHIN
+            {
+                let wait = RETRY_AFTER * 2u32.pow(state.tries);
+                state.tries += 1;
+                self.retrying
+                    .push((std::time::Instant::now() + wait, state));
+            }
+            // Otherwise its state goes, and the app's connection closes with it.
+        }
         while let Some(packet) = self.queues.outgoing.pop_front() {
             match self.joins.to_tunnel.try_send(packet) {
                 Ok(()) => {}
@@ -197,6 +225,31 @@ impl Stack {
     }
 
     fn open(&mut self, ends: Ends) {
+        self.connect(PumpState::new(ends));
+    }
+
+    /// How long until a turned-away connection is next asked for.
+    fn next_retry(&self) -> Duration {
+        self.retrying
+            .iter()
+            .map(|(at, _)| at.saturating_duration_since(std::time::Instant::now()))
+            .min()
+            .unwrap_or(IDLE)
+    }
+
+    /// Asks again for the turned-away connections whose wait is over.
+    fn ask_again(&mut self) {
+        let now = std::time::Instant::now();
+        let (due, later) = std::mem::take(&mut self.retrying)
+            .into_iter()
+            .partition::<Vec<_>, _>(|(at, _)| *at <= now);
+        self.retrying = later;
+        for (_, state) in due {
+            self.connect(state);
+        }
+    }
+
+    fn connect(&mut self, mut state: PumpState) {
         let rx = tcp::SocketBuffer::new(vec![0; RX_BUFFER]);
         let tx = tcp::SocketBuffer::new(vec![0; TX_BUFFER]);
         let mut socket = tcp::Socket::new(rx, tx);
@@ -209,7 +262,8 @@ impl Stack {
         if socket.connect(self.iface.context(), remote, port).is_err() {
             return; // Dropping the ends closes the local connection at once.
         }
+        state.asked = std::time::Instant::now();
         let handle = self.sockets.add(socket);
-        self.conns.push((handle, PumpState::new(ends)));
+        self.conns.push((handle, state));
     }
 }
